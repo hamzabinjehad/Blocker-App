@@ -1,0 +1,92 @@
+[
+  {
+    "id": "google_safesearch_wildcard",
+    "domainPattern": "www.google.*",
+    "action": "REDIRECT",
+    "target": "forcesafesearch.google.com",
+    "category": "safesearch",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Google SafeSearch through DNS CNAME-style rewrite."
+  },
+  {
+    "id": "youtube_restricted_www",
+    "domainPattern": "www.youtube.com",
+    "action": "REDIRECT",
+    "target": "restrict.youtube.com",
+    "category": "youtube_restricted_mode",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force YouTube Restricted Mode."
+  },
+  {
+    "id": "youtube_restricted_mobile",
+    "domainPattern": "m.youtube.com",
+    "action": "REDIRECT",
+    "target": "restrict.youtube.com",
+    "category": "youtube_restricted_mode",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force YouTube Restricted Mode on mobile web."
+  },
+  {
+    "id": "youtube_restricted_youtubei_api",
+    "domainPattern": "youtubei.googleapis.com",
+    "action": "REDIRECT",
+    "target": "restrict.youtube.com",
+    "category": "youtube_restricted_mode",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Restricted Mode for YouTube internal API."
+  },
+  {
+    "id": "youtube_restricted_youtube_api",
+    "domainPattern": "youtube.googleapis.com",
+    "action": "REDIRECT",
+    "target": "restrict.youtube.com",
+    "category": "youtube_restricted_mode",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Restricted Mode for YouTube API."
+  },
+  {
+    "id": "youtube_restricted_nocookie",
+    "domainPattern": "www.youtube-nocookie.com",
+    "action": "REDIRECT",
+    "target": "restrict.youtube.com",
+    "category": "youtube_restricted_mode",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Restricted Mode for embedded YouTube."
+  },
+  {
+    "id": "bing_safesearch_www",
+    "domainPattern": "www.bing.com",
+    "action": "REDIRECT",
+    "target": "strict.bing.com",
+    "category": "safesearch",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Bing Strict SafeSearch."
+  },
+  {
+    "id": "bing_safesearch_edge_services",
+    "domainPattern": "edgeservices.bing.com",
+    "action": "REDIRECT",
+    "target": "strict.bing.com",
+    "category": "safesearch",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force Bing Strict SafeSearch for Microsoft Edge sidebar/services."
+  },
+  {
+    "id": "duckduckgo_safesearch",
+    "domainPattern": "duckduckgo.com",
+    "action": "REDIRECT",
+    "target": "safe.duckduckgo.com",
+    "category": "safesearch",
+    "enabled": true,
+    "strictOnly": false,
+    "reason": "Force DuckDuckGo Strict Safe Search."
+  }
+]

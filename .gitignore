@@ -1,0 +1,51 @@
+# Node dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+
+# Android build artifacts
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+modules/**/android/build/
+modules/**/android/.gradle/
+modules/**/android/local.properties
+*.apk
+*.aab
+
+# Environment variables and secrets
+.env
+.env.*
+*.keystore
+!android/app/debug.keystore
+
+# Script artifacts
+.artifacts/
+# Raw blocklists and rollback snapshots should not be versioned
+blocklists/raw/
+blocklists/rollback/
+blocklists/local/
+# Full attribution output is generated and exceeds GitHub's normal file limit.
+blocklists/processed/source_attribution.json
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Generated blocklists are included in the assets folder typically,
+# so we keep the processed folder for development transparency unless preferred otherwise.

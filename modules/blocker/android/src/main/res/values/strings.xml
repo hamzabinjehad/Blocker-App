@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="blocker_accessibility_service_description">Visible behavior protection checks search fields, screen labels, and supported screenshots for blocked keywords, adult imagery, usage limits, and configured app feature states. It does not capture private messages or passwords.</string>
+  <string name="blocker_device_admin_title">Parent Blocker administration</string>
+  <string name="blocker_device_admin_description">Lets Parent Blocker request transparent parental-control administration. Full uninstall blocking requires device-owner or profile-owner enrollment.</string>
+  <string name="blocker_accessibility_service_title">Parent Blocker Behavior Engine</string>
+  <string name="blocker_notification_listener_description">Scans social media notifications for adult keywords and blocks them before they are displayed. No message content is stored or transmitted.</string>
+</resources>

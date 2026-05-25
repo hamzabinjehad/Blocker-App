@@ -1,0 +1,543 @@
+{
+  "generatedAt": "2026-05-21T19:21:35.839Z",
+  "policy": "Dangerous app policy is bundled at build time. Strict Mode blocks high-risk bypass and discovery apps unless guardian allowlists them.",
+  "rules": [
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "ai.unsafe_image_chat",
+      "packageName": "marker:unsafe_ai",
+      "appName": "Unsafe AI apps",
+      "category": "unsafe_ai",
+      "riskLevel": "medium",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "AI chat and image apps can produce or search unsafe content.",
+      "packageMarkers": [
+        "characterai",
+        "chatai",
+        "ai.chat",
+        "image.generator",
+        "dream",
+        "waifu",
+        "nsfw"
+      ],
+      "labelMarkers": [
+        "ai chat",
+        "image generator",
+        "nsfw",
+        "waifu"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "browser.general",
+      "packageName": "com.android.chrome",
+      "appName": "General browsers",
+      "category": "browser",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Unmanaged browsers can bypass app-level controls.",
+      "packages": [
+        "com.android.chrome",
+        "com.microsoft.emmx",
+        "org.mozilla.firefox",
+        "org.mozilla.fenix",
+        "com.opera.browser",
+        "com.opera.mini.native",
+        "com.opera.gx",
+        "com.sec.android.app.sbrowser",
+        "com.vivaldi.browser",
+        "com.kiwibrowser.browser",
+        "com.yandex.browser",
+        "com.mi.globalbrowser",
+        "com.ucmobile.intl"
+      ],
+      "packageMarkers": [
+        "chrome",
+        "firefox",
+        "fenix",
+        "opera",
+        "sbrowser",
+        "emmx",
+        "vivaldi",
+        "kiwibrowser",
+        "yandex.browser",
+        "globalbrowser",
+        "ucmobile",
+        "browser"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "browser.private",
+      "packageName": "com.brave.browser",
+      "appName": "Private browsers",
+      "category": "private_browser",
+      "riskLevel": "critical",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Privacy-focused browsers can evade supervision and history review.",
+      "packages": [
+        "com.brave.browser",
+        "com.duckduckgo.mobile.android",
+        "org.mozilla.focus",
+        "org.mozilla.klar",
+        "org.torproject.torbrowser"
+      ],
+      "packageMarkers": [
+        "duckduckgo",
+        "brave",
+        "firefox.focus",
+        "mozilla.focus",
+        "privatebrowser",
+        "torbrowser",
+        "incognito"
+      ],
+      "labelMarkers": [
+        "private browser",
+        "incognito"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "bypass.app_cloner",
+      "packageName": "marker:app_cloner",
+      "appName": "App cloners",
+      "category": "app_cloner",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "App cloners can create unsupervised duplicates of blocked apps.",
+      "packageMarkers": [
+        "parallel",
+        "dualspace",
+        "island",
+        "shelter",
+        "clone"
+      ],
+      "labelMarkers": [
+        "parallel space",
+        "dual space",
+        "app cloner"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "bypass.hidden_vault",
+      "packageName": "marker:hidden_vault",
+      "appName": "Hidden vault apps",
+      "category": "hidden_vault",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "Hidden vault apps can conceal unsafe media or bypass behavior.",
+      "packageMarkers": [
+        "vault",
+        "hide",
+        "calculatorvault",
+        "securefolder"
+      ],
+      "labelMarkers": [
+        "vault",
+        "hide app",
+        "secure folder",
+        "calculator vault"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "bypass.proxy",
+      "packageName": "marker:proxy",
+      "appName": "Proxy apps",
+      "category": "proxy",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "Proxy tools can bypass domain and SafeSearch policy.",
+      "packageMarkers": [
+        "proxy",
+        "psiphon",
+        "ultrasurf"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "bypass.tor",
+      "packageName": "org.torproject.android",
+      "appName": "Tor apps",
+      "category": "tor",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "Tor tools can bypass DNS and network supervision.",
+      "packages": [
+        "org.torproject.torbrowser",
+        "org.torproject.android"
+      ],
+      "packageMarkers": [
+        "tor",
+        "orbot"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "bypass.vpn",
+      "packageName": "com.wireguard.android",
+      "appName": "VPN apps",
+      "category": "vpn",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "VPN apps can bypass the local protection VPN and DNS filtering.",
+      "packages": [
+        "com.cloudflare.onedotonedotonedotone",
+        "com.wireguard.android",
+        "net.openvpn.openvpn",
+        "de.blinkt.openvpn",
+        "com.expressvpn.vpn",
+        "com.nordvpn.android",
+        "com.surfshark.vpnclient.android",
+        "com.windscribe.vpn"
+      ],
+      "packageMarkers": [
+        "vpn",
+        "wireguard",
+        "openvpn",
+        "cloudflare",
+        "warp"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "install.apk_stores",
+      "packageName": "cm.aptoide.pt",
+      "appName": "APK stores and installers",
+      "category": "apk_store",
+      "riskLevel": "critical",
+      "defaultAction": "BLOCK",
+      "strictModeAction": "BLOCK",
+      "reason": "Third-party app stores can install bypass tools outside guardian review.",
+      "packages": [
+        "cm.aptoide.pt",
+        "com.apkpure.aegon",
+        "com.uptodown",
+        "org.fdroid.fdroid",
+        "com.android.vending.billing.inappbillingservice"
+      ],
+      "packageMarkers": [
+        "aptoide",
+        "apkpure",
+        "uptodown",
+        "apk",
+        "fdroid",
+        "f-droid"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "sharing.file_torrent",
+      "packageName": "marker:file_sharing",
+      "appName": "File sharing apps",
+      "category": "file_sharing",
+      "riskLevel": "medium",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "File sharing and torrent apps can be used to access unsafe media.",
+      "packageMarkers": [
+        "torrent",
+        "utorrent",
+        "bittorrent",
+        "mega",
+        "mediafire"
+      ],
+      "labelMarkers": [
+        "torrent",
+        "file sharing"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "short_video.tiktok",
+      "packageName": "com.zhiliaoapp.musically",
+      "appName": "TikTok",
+      "category": "short_video",
+      "riskLevel": "critical",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Short-form video feed with high adult-content and compulsive-use risk.",
+      "packages": [
+        "com.zhiliaoapp.musically",
+        "com.ss.android.ugc.trill",
+        "com.ss.android.ugc.aweme"
+      ],
+      "packageMarkers": [
+        "tiktok",
+        "musically",
+        "ss.android.ugc"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.dating",
+      "packageName": "marker:dating",
+      "appName": "Dating apps",
+      "category": "dating",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Dating apps are not appropriate in strict parental-control mode.",
+      "packageMarkers": [
+        "tinder",
+        "bumble",
+        "hinge",
+        "grindr",
+        "badoo",
+        "meetme",
+        "skout"
+      ],
+      "labelMarkers": [
+        "dating"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.discord",
+      "packageName": "com.discord",
+      "appName": "Discord",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Public servers and chat discovery can expose unsafe content.",
+      "packages": [
+        "com.discord"
+      ],
+      "packageMarkers": [
+        "discord"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.facebook",
+      "packageName": "com.facebook.katana",
+      "appName": "Facebook",
+      "category": "social_media",
+      "riskLevel": "medium",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Reels, groups, stories, and search surfaces can expose unsafe content.",
+      "packages": [
+        "com.facebook.katana",
+        "com.facebook.lite"
+      ],
+      "packageMarkers": [
+        "facebook",
+        "katana"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.instagram",
+      "packageName": "com.instagram.android",
+      "appName": "Instagram",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Explore, reels, and public search surfaces can expose unsafe content.",
+      "packages": [
+        "com.instagram.android"
+      ],
+      "packageMarkers": [
+        "instagram"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.pinterest_tumblr",
+      "packageName": "com.pinterest",
+      "appName": "Pinterest/Tumblr",
+      "category": "social_media",
+      "riskLevel": "medium",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Image discovery surfaces can expose unsafe content.",
+      "packages": [
+        "com.pinterest",
+        "com.tumblr"
+      ],
+      "packageMarkers": [
+        "pinterest",
+        "tumblr"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.random_chat",
+      "packageName": "marker:random_chat",
+      "appName": "Random chat apps",
+      "category": "random_chat",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Random chat and video chat apps can expose unsafe strangers and content.",
+      "packageMarkers": [
+        "omegle",
+        "ometv",
+        "azarlive",
+        "holla",
+        "chatroulette"
+      ],
+      "labelMarkers": [
+        "random chat",
+        "video chat"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.reddit",
+      "packageName": "com.reddit.frontpage",
+      "appName": "Reddit",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Public communities and search can expose adult content.",
+      "packages": [
+        "com.reddit.frontpage"
+      ],
+      "packageMarkers": [
+        "reddit"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.snapchat",
+      "packageName": "com.snapchat.android",
+      "appName": "Snapchat",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Discovery and public social surfaces can expose unsafe content.",
+      "packages": [
+        "com.snapchat.android"
+      ],
+      "packageMarkers": [
+        "snapchat"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.telegram",
+      "packageName": "org.telegram.messenger",
+      "appName": "Telegram",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Public channels and global search can expose adult or bypass content.",
+      "packages": [
+        "org.telegram.messenger",
+        "org.thunderdog.challegram"
+      ],
+      "packageMarkers": [
+        "telegram",
+        "challegram"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "social.x_twitter",
+      "packageName": "com.twitter.android",
+      "appName": "X/Twitter",
+      "category": "social_media",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Search, trends, media, and For You feeds can expose unsafe content.",
+      "packages": [
+        "com.twitter.android",
+        "com.x.android"
+      ],
+      "packageMarkers": [
+        "twitter.android",
+        "x.android",
+        "xcorp"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "streaming.live",
+      "packageName": "tv.twitch.android.app",
+      "appName": "Live streaming apps",
+      "category": "livestream",
+      "riskLevel": "high",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Live-streaming discovery and chat can expose unsafe content.",
+      "packages": [
+        "tv.twitch.android.app",
+        "com.kick.mobile",
+        "sg.bigo.live",
+        "com.younow.live",
+        "com.sgiggle.production",
+        "com.nimo.tv"
+      ],
+      "packageMarkers": [
+        "twitch",
+        "kick",
+        "bigo",
+        "liveme",
+        "younow",
+        "tango",
+        "nimo",
+        "trovo",
+        "nonolive",
+        "afreecatv"
+      ]
+    },
+    {
+      "source": "curated",
+      "enabled": true,
+      "id": "video.youtube",
+      "packageName": "com.google.android.youtube",
+      "appName": "YouTube",
+      "category": "short_video",
+      "riskLevel": "medium",
+      "defaultAction": "ASK_GUARDIAN",
+      "strictModeAction": "BLOCK",
+      "reason": "Shorts and search can expose unsafe content without restricted mode.",
+      "packages": [
+        "com.google.android.youtube",
+        "com.google.android.apps.youtube.kids"
+      ],
+      "packageMarkers": [
+        "youtube"
+      ]
+    }
+  ]
+}
