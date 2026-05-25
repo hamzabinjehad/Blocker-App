@@ -84,14 +84,14 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*') }}
 
       - name: Run Kotlin unit tests
-        run: cd android && ./gradlew test --no-daemon
+        run: cd android && ./gradlew :blocker:testDebugUnitTest --no-daemon --console=plain --stacktrace
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kotlin-test-results
-          path: android/app/build/reports/tests/
+          path: modules/blocker/android/build/reports/tests/testDebugUnitTest/
 
   build-android:
     runs-on: ubuntu-latest
