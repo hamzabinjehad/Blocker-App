@@ -599,6 +599,32 @@
       "reviewRequired": false
     },
     {
+      "term": "naked",
+      "classification": "HARD_BLOCK",
+      "locale": "en",
+      "language": "en",
+      "category": "SOFTCORE",
+      "severity": "HIGH",
+      "enabled": true,
+      "contexts": [
+        "BROWSER_SEARCH",
+        "WEB_PAGE",
+        "YOUTUBE_SEARCH",
+        "TELEGRAM_SEARCH",
+        "TELEGRAM_PUBLIC_CHANNEL",
+        "TIKTOK_SEARCH",
+        "TIKTOK_FEED",
+        "PUBLIC_FEED"
+      ],
+      "id": "curated.hard_block.12a667c9be6f",
+      "pattern": "naked",
+      "matchType": "NORMALIZED",
+      "normalized": "naked",
+      "compact": "naked",
+      "source": "curated",
+      "reviewRequired": false
+    },
+    {
       "term": "nudity",
       "classification": "HARD_BLOCK",
       "locale": "en",

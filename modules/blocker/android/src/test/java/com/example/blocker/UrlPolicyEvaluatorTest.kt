@@ -30,7 +30,7 @@ class UrlPolicyEvaluatorTest {
     whenever(repository.allowlistedDomains()).thenReturn(emptySet())
     whenever(repository.blockedDomains()).thenReturn(emptySet())
     whenever(repository.recordDomainEvent(any(), any(), any())).thenReturn(true)
-    whenever(repository.recordAuditEvent(any(), any(), any(), any(), any(), any())).thenReturn(Unit)
+    doNothing().whenever(repository).recordAuditEvent(any(), any(), any(), any(), any(), any())
     evaluator = UrlPolicyEvaluator(context, repository)
   }
 

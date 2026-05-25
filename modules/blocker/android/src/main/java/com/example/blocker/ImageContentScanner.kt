@@ -35,9 +35,11 @@ data class ImageScanDecision(
 
 object ImageContentScanner {
 
-  private val labeler = ImageLabeling.getClient(
-    ImageLabelerOptions.Builder().setConfidenceThreshold(0.55f).build()
-  )
+  private val labeler by lazy {
+    ImageLabeling.getClient(
+      ImageLabelerOptions.Builder().setConfidenceThreshold(0.55f).build()
+    )
+  }
 
   private val adultLabelWeights = mapOf(
     "skin" to 0.28,
@@ -143,7 +145,7 @@ object ImageContentScanner {
       weight * signal.confidence
     }
     val humanContextBoost = if (
-      weightedScore > 0.20 &&
+      weightedScore >= 0.15 &&
       signals.any { it.text.lowercase() in humanContextLabels && it.confidence >= 0.55 }
     ) {
       0.08

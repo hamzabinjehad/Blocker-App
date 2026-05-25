@@ -243,6 +243,7 @@ const CURATED_KEYWORDS: Array<
   keyword("pornography", "HARD_BLOCK", "en", "ADULT", "CRITICAL"),
   keyword("xxx", "HARD_BLOCK", "en", "ADULT", "CRITICAL"),
   keyword("nude", "HARD_BLOCK", "en", "SOFTCORE", "HIGH"),
+  keyword("naked", "HARD_BLOCK", "en", "SOFTCORE", "HIGH"),
   keyword("nudity", "HARD_BLOCK", "en", "SOFTCORE", "HIGH"),
   keyword("onlyfans", "HARD_BLOCK", "en", "PLATFORM", "CRITICAL"),
   keyword("hentai", "HARD_BLOCK", "en", "ADULT", "CRITICAL"),

@@ -28,16 +28,21 @@
       </intent-filter>
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Visible local parental-control VPN for DNS/domain and scoped app traffic filtering; optional HTTPS proxy host filtering after consent."/>
     </service>
-    <service android:name="com.example.blocker.behavior.BehaviorAccessibilityService" android:exported="false" android:label="@string/blocker_accessibility_service_title" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <service android:name="com.example.blocker.behavior.BehaviorAccessibilityService" android:exported="false" android:label="Behavior Protection" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
       <intent-filter>
         <action android:name="android.accessibilityservice.AccessibilityService"/>
       </intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/blocker_accessibility_service"/>
     </service>
-    <service android:name="com.example.blocker.BlockOverlayService" android:exported="true" android:foregroundServiceType="specialUse">
+    <service android:name="com.example.blocker.BlockOverlayService" android:exported="false" android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Visible parental-control blocking overlay shown above unsafe content or tamper attempts after explicit overlay permission."/>
     </service>
     <service android:name="com.example.blocker.VpnRestartJobService" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE"/>
+    <service android:name="com.example.blocker.ContentNotificationListener" android:exported="false" android:label="Content Notification Filter" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService"/>
+      </intent-filter>
+    </service>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

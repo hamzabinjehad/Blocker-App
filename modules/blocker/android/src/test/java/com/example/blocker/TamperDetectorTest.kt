@@ -24,7 +24,7 @@ class TamperDetectorTest {
     whenever(repository.isProtectionRequested()).thenReturn(true)
     whenever(repository.isNotificationFilteringEnabled()).thenReturn(false)
     whenever(repository.isNotificationListenerConnected()).thenReturn(false)
-    whenever(repository.recordAuditEvent(any(), any(), any(), any(), any(), any())).thenReturn(Unit)
+    doNothing().whenever(repository).recordAuditEvent(any(), any(), any(), any(), any(), any())
     detector = TamperDetector(context, repository)
   }
 
@@ -63,11 +63,12 @@ class TamperDetectorTest {
   fun `evaluateAndRecord records audit events for detected signals`() {
     detector.evaluateAndRecord(vpnActive = false)
     verify(repository, atLeastOnce()).recordAuditEvent(
-      eventType = eq("TAMPER_SIGNAL"),
-      severity = any(),
-      category = eq("tamper"),
-      subject = any(),
-      action = any()
+      eq("TAMPER_SIGNAL"),
+      any(),
+      eq("tamper"),
+      any(),
+      any(),
+      any()
     )
   }
 

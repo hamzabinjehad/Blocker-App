@@ -22,6 +22,7 @@ object KeywordMatcher {
     "sex video",
     "nude",
     "nudes",
+    "naked",
     "nudity",
     "onlyfans",
     "fansly",
