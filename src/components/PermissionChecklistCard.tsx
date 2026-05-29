@@ -61,11 +61,13 @@ export function PermissionChecklistCard({
   ];
   const readyCount = items.filter((item) => item.ready).length;
   const progress = `${(readyCount / items.length) * 100}%` as `${number}%`;
+  const missingCount = items.length - readyCount;
 
   return (
     <Card
-      title="Setup Checklist"
-      subtitle={`${readyCount} of ${items.length} permissions ready`}
+      accent={missingCount === 0 ? 'green' : 'amber'}
+      title={missingCount === 0 ? 'Setup complete' : 'Finish setup'}
+      subtitle={missingCount === 0 ? 'All protection permissions are ready.' : `${missingCount} permission${missingCount === 1 ? '' : 's'} need attention.`}
     >
       <View style={[s.progressTrack, { backgroundColor: colors.bg.tertiary }]}>
         <View style={[s.progressFill, { backgroundColor: colors.green[500], width: progress }]} />
@@ -127,11 +129,11 @@ const s = StyleSheet.create({
   row: {
     alignItems: 'center',
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
-    minHeight: 50,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },

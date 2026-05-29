@@ -68,10 +68,10 @@ const LEVEL_THRESHOLDS = [
 ];
 
 const LEVEL_NAMES = [
-  '', 'Seedling', 'Sprout', 'Sapling', 'Grower', 'Bloomer',
-  'Thriver', 'Guardian', 'Sentinel', 'Champion', 'Legend',
-  'Vanguard', 'Fortress', 'Titan', 'Sage', 'Paragon',
-  'Ascendant', 'Transcendent', 'Mythic', 'Eternal', 'Apex',
+  '', 'Newcomer', 'Committed', 'Grounded', 'Aware', 'Aware',
+  'Steady', 'Focused', 'Balanced', 'Resilient', 'Resilient',
+  'Anchored', 'Clear', 'Brave', 'Strong', 'Strong',
+  'Renewed', 'Trusted', 'Whole', 'Free', 'Free',
 ];
 
 const BADGE_DEFS = [
@@ -95,6 +95,22 @@ const BADGE_DEFS = [
   { id: 'clean_500h', label: '500 clean hours', icon: '🕐', cleanHoursRequired: 500 },
   { id: 'weekly_perfect', label: 'Perfect week', icon: '📅', weeklyPerfectRequired: 1 },
   { id: 'monthly_perfect', label: 'Perfect month', icon: '🗓️', monthlyPerfectRequired: 1 },
+] as const;
+
+const RECOVERY_BADGE_DEFS = [
+  { id: 'first_block', label: 'First Block', icon: 'shield', blocksRequired: 1 },
+  { id: 'first_day', label: 'First clean day', icon: 'check', streakRequired: 1 },
+  { id: 'surfer', label: 'Surfer', icon: 'wave', urgesRequired: 10 },
+  { id: 'week_warrior', label: '7-day streak', icon: 'streak', streakRequired: 7 },
+  { id: 'month_master', label: 'Milestone: 30 days', icon: 'award', streakRequired: 30 },
+  { id: 'sixty_days', label: 'Milestone: 60 days', icon: 'award', streakRequired: 60 },
+  { id: 'quarter_king', label: 'Milestone: 90 days', icon: 'award', streakRequired: 90 },
+  { id: 'year_legend', label: 'Milestone: 1 year', icon: 'award', streakRequired: 365 },
+  { id: 'level_5', label: 'Aware', icon: 'level', levelRequired: 5 },
+  { id: 'level_10', label: 'Resilient', icon: 'level', levelRequired: 10 },
+  { id: 'level_15', label: 'Strong', icon: 'level', levelRequired: 15 },
+  { id: 'clean_100h', label: '100 clean hours', icon: 'clock', cleanHoursRequired: 100 },
+  { id: 'clean_500h', label: '500 clean hours', icon: 'clock', cleanHoursRequired: 500 },
 ] as const;
 
 const MILESTONE_DEFS: Omit<Milestone, 'reached' | 'reachedAt'>[] = [
@@ -168,7 +184,7 @@ const defaultState: GamificationState = {
   todayCleanHours: 0,
   totalCleanHours: 0,
   totalBlocksLifetime: 0,
-  badges: BADGE_DEFS.map((b) => ({ id: b.id, label: b.label, icon: b.icon, earned: false })),
+  badges: RECOVERY_BADGE_DEFS.map((b) => ({ id: b.id, label: b.label, icon: b.icon, earned: false })),
   milestones: MILESTONE_DEFS.map((m) => ({ ...m, reached: false })),
   lastXpAwardedAt: 0,
   lastCleanDayRecordedAt: 0,
@@ -196,7 +212,7 @@ export function useGamification() {
         setState((current) => ({
           ...current,
           ...parsed,
-          badges: BADGE_DEFS.map((def) => {
+          badges: RECOVERY_BADGE_DEFS.map((def) => {
             const saved = (parsed.badges ?? []).find((b: Badge) => b.id === def.id);
             return {
               id: def.id,
@@ -355,7 +371,7 @@ export function useGamification() {
 
   const recordUrgeSurfed = useCallback(() => {
     setState((current) => {
-      const baseXp = 25;
+      const baseXp = 50;
       const multiplied = Math.round(baseXp * current.streakMultiplier);
       const newXp = current.xp + multiplied;
       const newLevel = getLevel(newXp);
@@ -434,7 +450,7 @@ export function useGamification() {
 function evaluateBadges(badges: Badge[], state: Partial<GamificationState & { weeklyStreaks: WeeklyStreak[]; monthlyStreaks: MonthlyStreak[] }>): Badge[] {
   return badges.map((badge) => {
     if (badge.earned) return badge;
-    const def = BADGE_DEFS.find((d) => d.id === badge.id);
+    const def = RECOVERY_BADGE_DEFS.find((d) => d.id === badge.id);
     if (!def) return badge;
     let earned = false;
     if ('streakRequired' in def) earned = (state.currentStreak ?? 0) >= def.streakRequired;

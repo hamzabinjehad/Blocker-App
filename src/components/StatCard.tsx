@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/AppIcon';
 import type { AppIconName } from '@/components/AppIcon';
 import { useTheme } from '@/theme';
-import { radius, shadow, spacing, typography } from '@/theme';
+import { radius, spacing, typography } from '@/theme';
 
 type Color = 'teal' | 'purple' | 'amber' | 'red';
 
@@ -34,7 +34,6 @@ export function StatCard({ label, value, color = 'teal', iconName }: StatCardPro
           backgroundColor: colors.bg.elevated,
           borderColor: colors.border.subtle,
         },
-        shadow.sm,
       ]}
     >
       <View style={s.topRow}>
@@ -44,28 +43,19 @@ export function StatCard({ label, value, color = 'teal', iconName }: StatCardPro
         </View>
       </View>
       <Text selectable style={[s.value, { color: colors.text.primary }]}>{value}</Text>
-      <View style={[s.accent, { backgroundColor: selected.accent }]} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  accent: {
-    bottom: 0,
-    height: 3,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-  },
   card: {
     alignItems: 'flex-start',
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
     gap: spacing.sm,
     justifyContent: 'center',
-    minHeight: 96,
-    overflow: 'hidden',
+    minHeight: 88,
     padding: spacing.md,
   },
   iconBox: {

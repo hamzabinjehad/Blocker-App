@@ -10,13 +10,13 @@ type AnimatedCardProps = PropsWithChildren<{
 
 export function AnimatedCard({ children, delay = 0, style }: AnimatedCardProps) {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(16)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(opacity, {
         delay,
-        duration: 350,
+        duration: 220,
         easing: Easing.out(Easing.quad),
         toValue: 1,
         useNativeDriver: true,

@@ -9,7 +9,7 @@ type CardProps = PropsWithChildren<{
   title?: string;
   subtitle?: string;
   action?: ReactNode;
-  accent?: 'teal' | 'purple' | 'amber' | 'red' | 'none';
+  accent?: 'teal' | 'purple' | 'amber' | 'red' | 'green' | 'none';
   padding?: number;
   style?: StyleProp<ViewStyle>;
 }>;
@@ -30,6 +30,7 @@ export function Card({
     purple: colors.purple[500],
     amber: colors.amber[500],
     red: colors.red[500],
+    green: colors.green[500],
   };
 
   return (
@@ -64,7 +65,7 @@ export function Card({
 const s = StyleSheet.create({
   card: {
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.md,
     overflow: 'hidden',
   },
@@ -73,8 +74,8 @@ const s = StyleSheet.create({
     left: spacing.sm,
     top: 0,
     right: spacing.sm,
-    opacity: 0.85,
-    height: 3,
+    opacity: 0.7,
+    height: 2,
     borderBottomLeftRadius: radius.full,
     borderBottomRightRadius: radius.full,
   },

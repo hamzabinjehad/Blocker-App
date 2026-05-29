@@ -15,22 +15,15 @@ type TabFeatherIconName = ComponentProps<typeof Feather>['name'];
 const tabIcons: Record<string, TabFeatherIconName> = {
   index: 'shield',
   progress: 'trending-up',
-  focus: 'target',
+  coach: 'heart',
   rules: 'sliders',
-  admin: 'lock',
+  admin: 'users',
 };
 
 function TabIcon({ name, color, focused }: { name: TabFeatherIconName; color: string; focused: boolean }) {
   const { colors } = useTheme();
   return (
-    <View
-      style={[
-        styles.tabIconWrap,
-        focused
-          ? { backgroundColor: colors.green[50], borderColor: colors.border.green }
-          : { borderColor: 'transparent' },
-      ]}
-    >
+    <View style={[styles.tabIconWrap, focused ? { backgroundColor: colors.green[50] } : undefined]}>
       <Feather name={name} size={21} color={color} />
     </View>
   );
@@ -60,7 +53,7 @@ function AppContent() {
           tabBarInactiveTintColor: colors.text.muted,
           tabBarLabelStyle: {
             fontSize: 11,
-            fontWeight: '700',
+            fontWeight: '600',
             marginBottom: 5,
             letterSpacing: 0,
           },
@@ -69,14 +62,12 @@ function AppContent() {
             backgroundColor: colors.bg.elevated,
             borderTopColor: colors.border.subtle,
             borderTopWidth: StyleSheet.hairlineWidth,
-            height: 72,
+            height: 70,
             paddingBottom: 8,
             paddingTop: 8,
             elevation: 0,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -3 },
-            shadowOpacity: isDark ? 0.18 : 0.035,
-            shadowRadius: 12,
+            shadowColor: 'transparent',
+            shadowOpacity: 0,
           },
         }}
       >
@@ -95,26 +86,27 @@ function AppContent() {
           }}
         />
         <Tabs.Screen
-          name="focus"
+          name="coach"
           options={{
-            title: 'Focus',
-            tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.focus} color={color} focused={focused} />,
+            title: 'Coach',
+            tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.coach} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="rules"
           options={{
-            title: 'Rules',
+            title: 'Control',
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.rules} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="admin"
           options={{
-            title: 'Admin',
+            title: 'Guardian',
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.admin} color={color} focused={focused} />,
           }}
         />
+        <Tabs.Screen name="focus" options={{ href: null }} />
       </Tabs>
     </PaperProvider>
   );
@@ -131,10 +123,9 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   tabIconWrap: {
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     height: 32,
     justifyContent: 'center',
-    width: 46,
+    width: 44,
   },
 });

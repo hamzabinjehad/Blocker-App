@@ -13,13 +13,19 @@ export type AppIconName =
   | 'shield'
   | 'streak'
   | 'xp'
-  | 'check';
+  | 'check'
+  | 'coach'
+  | 'guardian'
+  | 'control';
 
 const iconSources = {
   admin: 'lock',
   block: 'slash',
   'clean-hours': 'clock',
+  coach: 'heart',
+  control: 'sliders',
   focus: 'target',
+  guardian: 'users',
   progress: 'trending-up',
   rules: 'sliders',
   shield: 'shield',

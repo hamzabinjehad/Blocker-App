@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   Easing,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -31,8 +29,6 @@ type PermissionItem = {
   onPress: () => Promise<void>;
   optional?: boolean;
 };
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const { colors, isDark, mode, setMode } = useTheme();
@@ -135,22 +131,23 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const renderWelcome = () => (
     <View style={s.stepContent}>
-      <Animated.View
-        style={[s.heroContainer, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}
-      >
-        <LinearGradient
-          colors={isDark ? ['#064E3B', '#0D2818', '#0D1117'] : ['#ECFDF5', '#D1FAE5', '#FFFFFF']}
-          style={s.heroGradient}
+      <Animated.View style={[s.heroContainer, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}>
+        <View
+          style={[
+            s.heroIconWrap,
+            {
+              backgroundColor: isDark ? colors.green[50] : colors.green[50],
+              borderColor: colors.border.subtle,
+            },
+          ]}
         >
-          <View style={[s.heroIconWrap, { backgroundColor: isDark ? colors.green[100] : colors.green[50] }]}>
-            <AppIcon name="shield" size={64} color={colors.green[500]} />
-          </View>
-        </LinearGradient>
+          <AppIcon name="shield" size={52} color={colors.green[500]} />
+        </View>
       </Animated.View>
 
       <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>Welcome to Guardian</Text>
       <Text style={[s.welcomeSubtitle, { color: colors.text.secondary }]}>
-        Your personal content filter and digital wellbeing companion. Let's get you set up in a few quick steps.
+        Set up the protection basics, then start filtering with one tap.
       </Text>
 
       <View style={s.themeSelector}>
@@ -171,12 +168,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 size={18}
                 color={mode === opt ? colors.green[500] : colors.text.muted}
               />
-              <Text
-                style={[
-                  s.themeOptionText,
-                  { color: mode === opt ? colors.text.primary : colors.text.muted },
-                ]}
-              >
+              <Text style={[s.themeOptionText, { color: mode === opt ? colors.text.primary : colors.text.muted }]}>
                 {opt.charAt(0).toUpperCase() + opt.slice(1)}
               </Text>
             </Pressable>
@@ -190,7 +182,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     <View style={s.stepContent}>
       <Text style={[s.stepTitle, { color: colors.text.primary }]}>Enable Permissions</Text>
       <Text style={[s.stepSubtitle, { color: colors.text.secondary }]}>
-        Guardian needs a few permissions to protect you effectively. Tap each to enable.
+        Enable the required permissions. Device admin can be added later from Admin.
       </Text>
 
       <View style={[s.progressBar, { backgroundColor: colors.bg.tertiary }]}>
@@ -205,7 +197,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         />
       </View>
       <Text style={[s.progressText, { color: colors.text.muted }]}>
-        {readyCount} of {permissions.length} ready
+        {requiredReady} of {requiredTotal} required ready
       </Text>
 
       <View style={s.permissionList}>
@@ -275,13 +267,13 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>You're All Set!</Text>
       <Text style={[s.welcomeSubtitle, { color: colors.text.secondary }]}>
-        Guardian is ready to keep you safe. Start your protection and begin building your streak.
+        Guardian is ready. Start protection when you land on Home.
       </Text>
 
       <View style={s.featureList}>
         {[
           { icon: 'shield-check', label: 'Content filtering active' },
-          { icon: 'chart-timeline-variant-shimmer', label: 'Progress tracking enabled' },
+          { icon: 'chart-timeline-variant-shimmer', label: 'Progress tracking ready' },
           { icon: 'target', label: 'Focus mode available' },
         ].map((feat) => (
           <View key={feat.label} style={s.featureRow}>
@@ -348,9 +340,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               step === 1 && !canProceed && { opacity: 0.4 },
             ]}
           >
-            <Text style={s.nextText}>
-              {step === 0 ? 'Get Started' : 'Continue'}
-            </Text>
+            <Text style={s.nextText}>{step === 0 ? 'Set up' : 'Continue'}</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color="#FFFFFF" />
           </Pressable>
         ) : (
@@ -362,7 +352,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               pressed && { opacity: 0.9 },
             ]}
           >
-            <Text style={s.nextText}>Start Protection</Text>
+            <Text style={s.nextText}>Go to Home</Text>
             <MaterialCommunityIcons name="shield-check" size={20} color="#FFFFFF" />
           </Pressable>
         )}
@@ -393,7 +383,7 @@ const s = StyleSheet.create({
   stepContent: {
     flex: 1,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing['2xl'],
+    paddingTop: spacing.xl,
   },
   stepContentCenter: {
     alignItems: 'center',
@@ -402,21 +392,15 @@ const s = StyleSheet.create({
   },
   heroContainer: {
     alignItems: 'center',
-    marginBottom: spacing['2xl'],
-  },
-  heroGradient: {
-    alignItems: 'center',
-    borderRadius: 40,
-    height: 160,
-    justifyContent: 'center',
-    width: 160,
+    marginBottom: spacing.xl,
   },
   heroIconWrap: {
     alignItems: 'center',
-    borderRadius: 30,
-    height: 100,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 104,
     justifyContent: 'center',
-    width: 100,
+    width: 104,
   },
   completeCircle: {
     alignItems: 'center',
@@ -427,27 +411,25 @@ const s = StyleSheet.create({
   },
   welcomeTitle: {
     ...typography.h1,
-    fontSize: 30,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
   welcomeSubtitle: {
-    ...typography.bodyLg,
-    lineHeight: 26,
+    ...typography.body,
     textAlign: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
   themeSelector: {
     alignItems: 'center',
-    marginTop: spacing['3xl'],
-    gap: spacing.md,
+    marginTop: spacing['2xl'],
+    gap: spacing.sm,
   },
   themeSelectorLabel: {
     ...typography.label,
     letterSpacing: 1,
   },
   themeOptions: {
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     flexDirection: 'row',
     gap: 4,
     padding: 4,
@@ -492,8 +474,8 @@ const s = StyleSheet.create({
   },
   permissionRow: {
     alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.md,
     padding: spacing.md,
@@ -558,8 +540,9 @@ const s = StyleSheet.create({
     borderRadius: radius.lg,
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md + 2,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   nextText: {
     ...typography.bodyMd,

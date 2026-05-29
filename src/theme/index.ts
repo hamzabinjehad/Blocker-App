@@ -6,16 +6,16 @@ export const shadow = {
   sm: {
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.035,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 0,
   },
   md: {
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.045,
-    shadowRadius: 18,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 1,
   },
   lg: {
     shadowColor: '#000000',
@@ -44,10 +44,10 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 22,
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 14,
   full: 9999,
 } as const;
 

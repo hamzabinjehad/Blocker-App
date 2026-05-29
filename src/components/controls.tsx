@@ -90,10 +90,10 @@ export function Field({ label, value, placeholder, secureTextEntry, keyboardType
 
 const s = StyleSheet.create({
   button: {
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
   },
   buttonContent: {
-    minHeight: 50,
+    minHeight: 48,
   },
   buttonLabel: {
     ...typography.bodyMd,

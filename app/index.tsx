@@ -1,55 +1,47 @@
-import { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { AnimatedCard } from '@/components/AnimatedCard';
-import { Card } from '@/components/Card';
-import { CoachingCard } from '@/components/CoachingCard';
-import { HeroStatusCard } from '@/components/HeroStatusCard';
-import { MoodCheckInCard } from '@/components/MoodCheckInCard';
-import { PermissionChecklistCard } from '@/components/PermissionChecklistCard';
-import { PersonalizedChallengeCard } from '@/components/PersonalizedChallengeCard';
-import { ScreenScaffold } from '@/components/ScreenScaffold';
-import { StatCard } from '@/components/StatCard';
-import { StreakCard } from '@/components/StreakCard';
-import { XpBar } from '@/components/XpBar';
-import { XpPopup } from '@/components/XpPopup';
+import { AppIcon } from '@/components/AppIcon';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
-import { useGamification } from '@/store/useGamification';
-import { useProtectionState } from '@/store/useProtectionState';
+import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { XpPopup } from '@/components/XpPopup';
 import { getStoredMood, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
-import { useTheme } from '@/theme';
-import { spacing, typography } from '@/theme';
+import { useGamification } from '@/store/useGamification';
+import { useProtectionState } from '@/store/useProtectionState';
+import { radius, shadow, spacing, typography, useTheme } from '@/theme';
+
+const moodOptions: Array<{ value: MoodCheckIn; icon: string }> = [
+  { value: 'steady', icon: '\u{1F642}' },
+  { value: 'stressed', icon: '\u{1F61F}' },
+  { value: 'bored', icon: '\u{1F610}' },
+  { value: 'tempted', icon: '\u{1FAE4}' },
+  { value: 'tired', icon: '\u{1F634}' },
+];
 
 export default function HomeScreen() {
   const { colors } = useTheme();
   const protection = useProtectionState();
   const gamification = useGamification();
-  const { width } = useWindowDimensions();
   const [showXp, setShowXp] = useState(false);
-  const [xpAmount, setXpAmount] = useState(25);
   const [mood, setMood] = useState<MoodCheckIn>('steady');
+  const [disableCountdown, setDisableCountdown] = useState(0);
   const [pinNoticeVisible, setPinNoticeVisible] = useState(false);
 
-  const compactLayout = width < 420;
   const isProtected = protection.status === 'active' || protection.vpnActive;
   const cleanMinutes = gamification.todayCleanHours * 60;
-  const xpCurrent = gamification.xpProgress.current;
-  const xpRequired = gamification.xpProgress.required;
-  const setupComplete =
-    protection.vpnPermissionGranted &&
-    protection.accessibilityServiceEnabled &&
-    protection.overlayPermissionGranted &&
-    protection.usageAccessStatus.granted &&
-    protection.batteryOptimizationStatus.ignored &&
-    protection.managedDeviceStatus.deviceAdminActive;
 
   useEffect(() => {
     void getStoredMood().then(setMood);
   }, []);
 
-  const showXpGain = (amount = 25) => {
-    setXpAmount(amount);
+  useEffect(() => {
+    if (disableCountdown <= 0) return;
+    const timer = setTimeout(() => setDisableCountdown((current) => current - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [disableCountdown]);
+
+  const showXpGain = () => {
     setShowXp(true);
     setTimeout(() => setShowXp(false), 1800);
   };
@@ -57,35 +49,37 @@ export default function HomeScreen() {
   const handleMoodChange = (nextMood: MoodCheckIn) => {
     setMood(nextMood);
     void saveMood(nextMood);
+    void gamification.awardXP(10, 'daily_mood_check_in');
   };
 
   const handleProtectionToggle = () => {
     setPinNoticeVisible(false);
-    if (isProtected) {
-      if (protection.pinConfigured) {
-        setPinNoticeVisible(true);
-        return;
-      }
-      void protection.stopProtection('');
+    if (!isProtected) {
+      void protection.startProtection().then(showXpGain);
       return;
     }
 
-    void protection.startProtection().then(() => showXpGain(25));
-  };
+    if (disableCountdown === 0) {
+      setDisableCountdown(10);
+      return;
+    }
 
-  const weakSpots = [
-    protection.activeBlockEvent?.screen,
-    ...protection.tamperReport.filter((signal) => signal.detected).map((signal) => signal.subject),
-  ].filter((value): value is string => Boolean(value));
+    if (protection.pinConfigured) {
+      setPinNoticeVisible(true);
+      return;
+    }
+
+    void protection.stopProtection('');
+    setDisableCountdown(0);
+  };
 
   return (
     <ScreenScaffold
-      iconName="shield"
-      title="Guardian"
-      subtitle="Protection and progress at a glance."
+      title="Control Yourself"
+      subtitle="Progress over perfection."
       floatingContent={
         <>
-          <XpPopup amount={xpAmount} visible={showXp} />
+          <XpPopup amount={25} visible={showXp} />
           <BlockScreenOverlay
             durationSeconds={protection.behaviorPolicy.behaviorBlockDurationSeconds}
             event={protection.activeBlockEvent}
@@ -102,128 +96,209 @@ export default function HomeScreen() {
         />
       }
     >
-      <AnimatedCard>
-        <HeroStatusCard
-          cleanMinutes={cleanMinutes}
-          blockedCount={gamification.totalBlocksLifetime}
-          isProtected={isProtected}
-          level={gamification.level}
-          loading={protection.loading}
-          onToggle={handleProtectionToggle}
-          streak={gamification.currentStreak}
-        />
-      </AnimatedCard>
+      <View style={s.topRow}>
+        <View />
+        <View style={[s.streakBadge, { backgroundColor: colors.green[50], borderColor: colors.border.green }]}>
+          <Text style={[s.streakText, { color: colors.green[600] }]}>
+            {'\u{1F525}'} {gamification.currentStreak} days
+          </Text>
+        </View>
+      </View>
+
+      <View style={s.hero}>
+        <View
+          style={[
+            s.shield,
+            {
+              backgroundColor: isProtected ? colors.green[50] : colors.bg.tertiary,
+              borderColor: isProtected ? colors.border.green : colors.border.subtle,
+            },
+            shadow.sm,
+          ]}
+        >
+          <AppIcon name="shield" size={72} color={isProtected ? colors.green[500] : colors.text.muted} />
+        </View>
+        <Text style={[s.status, { color: colors.text.primary }]}>
+          {isProtected ? 'Protected' : 'Protection is off'}
+        </Text>
+        <Text style={[s.statusCopy, { color: colors.text.secondary }]}>
+          {isProtected ? "You're covered right now." : 'Turn protection on when you are ready.'}
+        </Text>
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleProtectionToggle}
+        style={[
+          s.primaryAction,
+          {
+            backgroundColor: isProtected && disableCountdown > 0 ? colors.amber[500] : colors.green[600],
+          },
+        ]}
+      >
+        <Text style={[s.primaryActionText, { color: colors.text.inverse }]}>
+          {!isProtected
+            ? 'Turn on protection'
+            : disableCountdown > 0
+              ? `Confirm in ${disableCountdown}s`
+              : 'Turn protection off'}
+        </Text>
+      </Pressable>
+
+      {disableCountdown > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => setDisableCountdown(0)} style={s.secondaryAction}>
+          <Text style={[s.secondaryActionText, { color: colors.text.secondary }]}>Stay protected</Text>
+        </Pressable>
+      ) : null}
 
       {pinNoticeVisible ? (
-        <AnimatedCard>
-          <Card accent="amber" style={s.noticeCard}>
-            <Text selectable style={[s.noticeText, { color: colors.text.secondary }]}>
-              Parent PIN is required before protection can be turned off. Use the existing protection controls or
-              admin settings to stop it.
-            </Text>
-          </Card>
-        </AnimatedCard>
+        <Text style={[s.notice, { color: colors.text.secondary }]}>
+          A parent PIN is required before protection can be turned off.
+        </Text>
       ) : null}
 
-      {protection.error ? (
-        <AnimatedCard>
-          <Card accent="red" style={s.noticeCard}>
-            <Text selectable style={[s.errorText, { color: colors.red[500] }]}>{protection.error}</Text>
-          </Card>
-        </AnimatedCard>
-      ) : null}
+      {protection.error ? <Text style={[s.notice, { color: colors.red[500] }]}>{protection.error}</Text> : null}
 
-      {!setupComplete ? (
-        <AnimatedCard delay={40}>
-          <PermissionChecklistCard
-            accessibilityServiceEnabled={protection.accessibilityServiceEnabled}
-            batteryOptimizationIgnored={protection.batteryOptimizationStatus.ignored}
-            deviceAdminActive={protection.managedDeviceStatus.deviceAdminActive}
-            onGrantVpnPermission={protection.prepareVpn}
-            onOpenAccessibilitySettings={protection.openAccessibilitySettings}
-            onOpenOverlaySettings={protection.openOverlaySettings}
-            onOpenUsageAccessSettings={protection.openUsageAccessSettings}
-            onRequestDeviceAdminPermission={protection.requestDeviceAdminPermission}
-            onRequestIgnoreBatteryOptimizations={protection.requestIgnoreBatteryOptimizations}
-            overlayPermissionGranted={protection.overlayPermissionGranted}
-            usageAccessGranted={protection.usageAccessStatus.granted}
-            vpnPermissionGranted={protection.vpnPermissionGranted}
-          />
-        </AnimatedCard>
-      ) : null}
+      <View style={s.statsRow}>
+        <Stat label="Blocks" value={String(gamification.totalBlocksLifetime)} />
+        <Stat label="Level" value={String(gamification.level)} />
+        <Stat label="Clean" value={`${Math.floor(cleanMinutes / 60)}h`} />
+      </View>
 
-      <AnimatedCard delay={60} style={[s.statsRow, compactLayout && s.statsRowCompact]}>
-        <StatCard iconName="block" label="Blocks" value={gamification.totalBlocksLifetime} color="red" />
-        <StatCard iconName="clean-hours" label="Clean hours" value={`${gamification.todayCleanHours}h`} color="teal" />
-        <StatCard iconName="xp" label="Level" value={gamification.level} color="purple" />
-      </AnimatedCard>
-
-      <AnimatedCard delay={80} style={[s.row, compactLayout && s.stack]}>
-        <XpBar xp={xpCurrent} xpToNext={xpRequired} level={gamification.level} />
-        <StreakCard streak={gamification.currentStreak} />
-      </AnimatedCard>
-
-      <AnimatedCard delay={100}>
-        <MoodCheckInCard onChange={handleMoodChange} value={mood} />
-      </AnimatedCard>
-
-      <AnimatedCard delay={120}>
-        <CoachingCard
-          stats={{
-            streak: gamification.currentStreak,
-            level: gamification.level,
-            blocksYesterday: 0,
-            cleanHoursYesterday: gamification.todayCleanHours,
-            mood,
-          }}
-        />
-      </AnimatedCard>
-
-      <AnimatedCard delay={140}>
-        <PersonalizedChallengeCard
-          input={{
-            streak: gamification.currentStreak,
-            cleanHours: gamification.todayCleanHours,
-            totalBlocks: gamification.totalBlocksLifetime,
-            mood,
-            focusActive: protection.focusState.active,
-            anomalyRiskLevel: protection.anomalyDetectionStatus.riskLevel,
-            mediaScanningActive: protection.mediaScanningStatus.imageScanningActive,
-            weakSpots,
-          }}
-          onComplete={(amount) => {
-            void gamification.awardXP(amount, 'personalized_challenge');
-            showXpGain(amount);
-          }}
-        />
-      </AnimatedCard>
+      <View style={[s.moodStrip, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+        <Text style={[s.moodTitle, { color: colors.text.primary }]}>How are you?</Text>
+        <View style={s.moodOptions}>
+          {moodOptions.map((option) => (
+            <Pressable
+              accessibilityRole="button"
+              key={option.value}
+              onPress={() => handleMoodChange(option.value)}
+              style={[
+                s.moodButton,
+                {
+                  backgroundColor: mood === option.value ? colors.green[50] : colors.bg.primary,
+                  borderColor: mood === option.value ? colors.border.green : colors.border.subtle,
+                },
+              ]}
+            >
+              <Text style={s.moodIcon}>{option.icon}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     </ScreenScaffold>
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[s.stat, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+      <Text style={[s.statValue, { color: colors.text.primary }]}>{value}</Text>
+      <Text style={[s.statLabel, { color: colors.text.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  errorText: {
+  hero: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
+  moodButton: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  moodIcon: {
+    fontSize: 24,
+  },
+  moodOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  moodStrip: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  moodTitle: {
     ...typography.bodyMd,
   },
-  noticeCard: {
-    marginTop: 0,
+  notice: {
+    ...typography.body,
+    textAlign: 'center',
   },
-  noticeText: {
+  primaryAction: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+  },
+  primaryActionText: {
+    ...typography.bodyMd,
+  },
+  secondaryAction: {
+    alignItems: 'center',
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
     ...typography.body,
   },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.md,
+  shield: {
+    alignItems: 'center',
+    borderRadius: 80,
+    borderWidth: 1,
+    height: 148,
+    justifyContent: 'center',
+    width: 148,
+  },
+  stat: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    gap: 2,
+    padding: spacing.md,
+  },
+  statLabel: {
+    ...typography.caption,
+  },
+  statValue: {
+    ...typography.h3,
   },
   statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  statsRowCompact: {
-    flexDirection: 'column',
+  status: {
+    ...typography.display,
+    textAlign: 'center',
   },
-  stack: {
-    flexDirection: 'column',
+  statusCopy: {
+    ...typography.body,
+    textAlign: 'center',
+  },
+  streakBadge: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  streakText: {
+    ...typography.captionMd,
+  },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 });

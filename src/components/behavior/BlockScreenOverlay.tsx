@@ -4,7 +4,7 @@ import { ProgressBar, Surface, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Field } from '../controls';
-import { colors, radius, shadow } from '@/theme';
+import { radius, shadow, spacing, typography, useTheme } from '@/theme';
 import type { BlockEvent } from '@/types/blocker';
 
 type BlockScreenOverlayProps = {
@@ -15,11 +15,12 @@ type BlockScreenOverlayProps = {
 };
 
 export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDismiss }: BlockScreenOverlayProps) {
+  const { colors } = useTheme();
   const [remaining, setRemaining] = useState(durationSeconds);
   const [pin, setPin] = useState('');
 
   useEffect(() => {
-    setRemaining(durationSeconds);
+    setRemaining(Math.max(5, durationSeconds));
     setPin('');
   }, [durationSeconds, event?.id]);
 
@@ -34,41 +35,51 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
     return () => clearTimeout(timer);
   }, [event, onDismiss, remaining, requiresPin]);
 
+  const total = Math.max(5, durationSeconds);
+
   return (
     <Modal animationType="fade" presentationStyle="fullScreen" visible={Boolean(event)}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg.primary }]}>
         <View style={styles.content}>
-          <Surface mode="elevated" style={styles.panel}>
-            <Text style={styles.eyebrow}>BLOCK_EVENT</Text>
-            <Text style={styles.title}>Content Blocked</Text>
-            <Text style={styles.reason}>
-              Reason: {formatReason(event?.reason)}
+          <Surface
+            mode="elevated"
+            style={[
+              styles.panel,
+              {
+                backgroundColor: colors.bg.secondary,
+                borderColor: colors.border.green,
+              },
+            ]}
+          >
+            <View style={[styles.breathCircle, { backgroundColor: colors.green[50], borderColor: colors.border.green }]}>
+              <Text style={[styles.breathText, { color: colors.green[600] }]}>Breathe</Text>
+            </View>
+            <Text style={[styles.title, { color: colors.text.primary }]}>This is blocked. Take a breath.</Text>
+            <Text style={[styles.copy, { color: colors.text.secondary }]}>
+              You're doing the right thing by giving yourself space.
             </Text>
-            <Text style={styles.keyword}>{event?.keyword}</Text>
-            <Text style={styles.meta}>
-              {event?.appName || event?.packageName} {event?.screen ? `- ${event.screen}` : ''}
-            </Text>
+
             {!requiresPin ? (
-              <ProgressBar color={colors.red[400]} progress={durationSeconds > 0 ? remaining / durationSeconds : 0} />
+              <ProgressBar color={colors.green[500]} progress={total > 0 ? remaining / total : 0} />
             ) : null}
 
             {requiresPin ? (
               <>
                 <Field
                   keyboardType="number-pad"
-                  label="Parent PIN required"
+                  label="Parent PIN"
                   onChangeText={setPin}
                   placeholder="Enter PIN"
                   secureTextEntry
                   value={pin}
                 />
-                <Button onPress={() => void onDismiss(pin)}>Dismiss Block</Button>
+                <Button onPress={() => void onDismiss(pin)}>Dismiss</Button>
               </>
             ) : (
               <>
-                <Text style={styles.timer}>Dismisses in {remaining}s</Text>
+                <Text style={[styles.timer, { color: colors.text.secondary }]}>A few seconds: {remaining}s</Text>
                 <Button tone="neutral" onPress={() => void onDismiss()}>
-                  Dismiss Now
+                  Dismiss
                 </Button>
               </>
             )}
@@ -80,74 +91,43 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bg.primary,
+  breathCircle: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    borderRadius: 62,
+    borderWidth: 1,
+    height: 124,
+    justifyContent: 'center',
+    width: 124,
+  },
+  breathText: {
+    ...typography.bodyMd,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
+  },
+  copy: {
+    ...typography.body,
+    textAlign: 'center',
   },
   panel: {
-    backgroundColor: colors.bg.secondary,
-    borderColor: colors.border.red,
     borderRadius: radius.xl,
     borderWidth: 1,
-    gap: 16,
-    padding: 24,
+    gap: spacing.lg,
+    padding: spacing.xl,
     ...shadow.lg,
   },
-  eyebrow: {
-    color: colors.red[400],
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  title: {
-    color: colors.text.primary,
-    fontSize: 34,
-    fontWeight: '900',
-  },
-  reason: {
-    color: colors.text.secondary,
-    fontSize: 16,
-    lineHeight: 23,
-  },
-  keyword: {
-    color: colors.red[400],
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  meta: {
-    color: colors.text.secondary,
-    fontSize: 14,
-    lineHeight: 20,
+  safeArea: {
+    flex: 1,
   },
   timer: {
-    color: colors.text.primary,
-    fontSize: 15,
-    fontWeight: '800',
+    ...typography.captionMd,
+    textAlign: 'center',
+  },
+  title: {
+    ...typography.h2,
+    textAlign: 'center',
   },
 });
-
-function formatReason(reason?: string) {
-  switch (reason) {
-    case 'blocked_app_feature':
-      return 'blocked app feature';
-    case 'focus_mode':
-      return 'Focus Mode';
-    case 'blocked_app':
-      return 'blocked app';
-    case 'bypass_domain':
-      return 'bypass protection';
-    case 'usage_limit':
-      return 'daily usage limit';
-    case 'sideloaded_apk':
-      return 'sideloaded APK blocked';
-    case 'keyword_match':
-      return 'keyword match';
-    default:
-      return reason || 'protection policy';
-  }
-}

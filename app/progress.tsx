@@ -1,13 +1,20 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AnimatedCard } from '@/components/AnimatedCard';
 import { Badge } from '@/components/Badge';
 import { Card } from '@/components/Card';
+import { CoachingCard } from '@/components/CoachingCard';
+import { MoodCheckInCard } from '@/components/MoodCheckInCard';
+import { PersonalizedChallengeCard } from '@/components/PersonalizedChallengeCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { StatCard } from '@/components/StatCard';
 import { AppIcon } from '@/components/AppIcon';
 import type { AppIconName } from '@/components/AppIcon';
+import { getStoredMood, saveMood } from '@/services/mood';
+import type { MoodCheckIn } from '@/services/mood';
 import { useGamification } from '@/store/useGamification';
+import { useProtectionState } from '@/store/useProtectionState';
 import { useTheme } from '@/theme';
 import { radius, shadow, spacing, typography } from '@/theme';
 
@@ -48,7 +55,23 @@ function StreakCalendar({ currentStreak }: { currentStreak: number }) {
 export default function ProgressScreen() {
   const { colors } = useTheme();
   const gamification = useGamification();
+  const protection = useProtectionState();
+  const [mood, setMood] = useState<MoodCheckIn>('steady');
   const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
+
+  useEffect(() => {
+    void getStoredMood().then(setMood);
+  }, []);
+
+  const handleMoodChange = (nextMood: MoodCheckIn) => {
+    setMood(nextMood);
+    void saveMood(nextMood);
+  };
+
+  const weakSpots = [
+    protection.activeBlockEvent?.screen,
+    ...protection.tamperReport.filter((signal) => signal.detected).map((signal) => signal.subject),
+  ].filter((value): value is string => Boolean(value));
 
   return (
     <ScreenScaffold
@@ -118,6 +141,41 @@ export default function ProgressScreen() {
             </View>
           ))}
         </ScrollView>
+      </AnimatedCard>
+
+      <AnimatedCard delay={190}>
+        <SectionTitle title="Check-in" />
+        <MoodCheckInCard onChange={handleMoodChange} value={mood} />
+      </AnimatedCard>
+
+      <AnimatedCard delay={230}>
+        <CoachingCard
+          stats={{
+            streak: gamification.currentStreak,
+            level: gamification.level,
+            blocksYesterday: 0,
+            cleanHoursYesterday: gamification.todayCleanHours,
+            mood,
+          }}
+        />
+      </AnimatedCard>
+
+      <AnimatedCard delay={270}>
+        <PersonalizedChallengeCard
+          input={{
+            streak: gamification.currentStreak,
+            cleanHours: gamification.todayCleanHours,
+            totalBlocks: gamification.totalBlocksLifetime,
+            mood,
+            focusActive: protection.focusState.active,
+            anomalyRiskLevel: protection.anomalyDetectionStatus.riskLevel,
+            mediaScanningActive: protection.mediaScanningStatus.imageScanningActive,
+            weakSpots,
+          }}
+          onComplete={(amount) => {
+            void gamification.awardXP(amount, 'personalized_challenge');
+          }}
+        />
       </AnimatedCard>
     </ScreenScaffold>
   );
