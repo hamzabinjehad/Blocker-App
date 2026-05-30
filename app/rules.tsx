@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
@@ -19,11 +20,36 @@ const sections: Array<{
   label: string;
   icon: 'shield' | 'search' | 'list' | 'apps';
   summary: string;
+  detail: string;
 }> = [
-  { id: 'filtering', label: 'Filtering', icon: 'shield', summary: 'Adult content and bypass protection' },
-  { id: 'safe-search', label: 'Safe Search', icon: 'search', summary: 'Search engine safety settings' },
-  { id: 'lists', label: 'Custom Lists', icon: 'list', summary: 'Domains, allowlist, and keywords' },
-  { id: 'apps', label: 'Advanced App Rules', icon: 'apps', summary: 'In-app behavior and feature blocking' },
+  {
+    id: 'filtering',
+    label: 'Filtering',
+    icon: 'shield',
+    summary: 'Adult content and bypass protection',
+    detail: 'Blocks unsafe sites and common bypass tools.',
+  },
+  {
+    id: 'safe-search',
+    label: 'Safe Search',
+    icon: 'search',
+    summary: 'Search and video safety',
+    detail: 'Keeps supported search engines in family-safe mode.',
+  },
+  {
+    id: 'lists',
+    label: 'Custom Lists',
+    icon: 'list',
+    summary: 'Websites and keywords',
+    detail: 'Add sites or words that should always be blocked or allowed.',
+  },
+  {
+    id: 'apps',
+    label: 'App Rules',
+    icon: 'apps',
+    summary: 'Risky app surfaces',
+    detail: 'Limit high-risk features inside social, video, and browser apps.',
+  },
 ];
 
 export default function RulesScreen() {
@@ -33,8 +59,32 @@ export default function RulesScreen() {
   const statuses = useMemo(() => getSectionStatuses(protection), [protection]);
   const active = sections.find((section) => section.id === activeSection) ?? sections[0]!;
 
+  const overview = useMemo(() => getOverview(protection), [protection]);
+
   return (
     <ScreenScaffold title="Control" subtitle="Protection details and filtering rules." iconName="control">
+      <View style={[s.overviewPanel, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+        <View style={s.overviewHeader}>
+          <View style={[s.overviewIcon, { backgroundColor: overview.tone === 'success' ? colors.green[50] : colors.amber[50] }]}>
+            <Feather
+              name={overview.tone === 'success' ? 'shield' : 'alert-triangle'}
+              size={20}
+              color={overview.tone === 'success' ? colors.green[600] : colors.amber[700]}
+            />
+          </View>
+          <View style={s.overviewCopy}>
+            <Text style={[s.overviewTitle, { color: colors.text.primary }]}>{overview.title}</Text>
+            <Text style={[s.overviewSubtitle, { color: colors.text.secondary }]}>{overview.subtitle}</Text>
+          </View>
+          <StatusChip label={overview.label} tone={overview.tone} />
+        </View>
+        <View style={s.metricRow}>
+          <Metric label="Domains" value={protection.blockedDomainCount.toLocaleString()} />
+          <Metric label="Safe search" value={statuses['safe-search'].label} />
+          <Metric label="App rules" value={statuses.apps.label} />
+        </View>
+      </View>
+
       <View style={s.sectionGrid}>
         {sections.map((section) => {
           const selected = section.id === activeSection;
@@ -68,7 +118,15 @@ export default function RulesScreen() {
         })}
       </View>
 
-      <Card title={active.label} subtitle={active.summary} action={<StatusChip label={statuses[active.id].label} tone={statuses[active.id].tone} />}>
+      <View style={[s.detailHeader, { borderColor: colors.border.subtle }]}>
+        <View style={s.detailCopy}>
+          <Text style={[s.detailTitle, { color: colors.text.primary }]}>{active.label}</Text>
+          <Text style={[s.detailSubtitle, { color: colors.text.secondary }]}>{active.detail}</Text>
+        </View>
+        <StatusChip label={statuses[active.id].label} tone={statuses[active.id].tone} />
+      </View>
+
+      <Card padding={spacing.md}>
         {activeSection === 'filtering' ? (
           <View style={s.panelStack}>
             <PolicyCard
@@ -145,6 +203,35 @@ function getSectionStatuses(protection: ReturnType<typeof useProtectionState>): 
   };
 }
 
+function getOverview(protection: ReturnType<typeof useProtectionState>): { title: string; subtitle: string; label: string; tone: StatusTone } {
+  const statuses = getSectionStatuses(protection);
+  const issueCount = Object.values(statuses).filter((status) => status.tone === 'warning').length;
+  if (issueCount === 0) {
+    return {
+      title: 'Core protection is configured',
+      subtitle: 'Filtering, safe search, custom rules, and app safeguards are ready to review.',
+      label: 'Healthy',
+      tone: 'success',
+    };
+  }
+  return {
+    title: 'Review protection settings',
+    subtitle: `${issueCount} area${issueCount === 1 ? '' : 's'} may need attention before protection feels complete.`,
+    label: `${issueCount} issue${issueCount === 1 ? '' : 's'}`,
+    tone: 'warning',
+  };
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[s.metric, { backgroundColor: colors.bg.tertiary }]}>
+      <Text style={[s.metricValue, { color: colors.text.primary }]} numberOfLines={1}>{value}</Text>
+      <Text style={[s.metricLabel, { color: colors.text.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
 function StatusChip({ label, tone }: { label: string; tone: StatusTone }) {
   const { colors } = useTheme();
   const backgroundColor =
@@ -160,6 +247,70 @@ function StatusChip({ label, tone }: { label: string; tone: StatusTone }) {
 }
 
 const s = StyleSheet.create({
+  detailCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  detailHeader: {
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  detailSubtitle: {
+    ...typography.body,
+  },
+  detailTitle: {
+    ...typography.h3,
+  },
+  metric: {
+    borderRadius: radius.md,
+    flex: 1,
+    gap: 2,
+    minHeight: 58,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  metricLabel: {
+    ...typography.caption,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  metricValue: {
+    ...typography.bodyMd,
+  },
+  overviewCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  overviewHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  overviewIcon: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  overviewPanel: {
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  overviewSubtitle: {
+    ...typography.body,
+  },
+  overviewTitle: {
+    ...typography.h3,
+  },
   panelStack: {
     gap: spacing.lg,
   },
@@ -169,12 +320,14 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.sm,
-    minHeight: 76,
+    minHeight: 92,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    width: '100%',
+    width: '48%',
   },
   sectionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   sectionLabel: {

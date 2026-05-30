@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Chip, Switch, Text } from 'react-native-paper';
+import { Feather } from '@expo/vector-icons';
 
 import { Card } from './Card';
 import { Button, Field } from './controls';
@@ -26,6 +27,7 @@ export function PolicyCard({
 }: PolicyCardProps) {
   const { colors } = useTheme();
   const [pin, setPin] = useState('');
+  const [technicalOpen, setTechnicalOpen] = useState(false);
 
   const update = (policy: PolicyUpdate) => {
     void onUpdatePolicy(pinConfigured ? { ...policy, adminPin: pin } : policy);
@@ -35,7 +37,8 @@ export function PolicyCard({
     <>
       <Card
         title="Adult Content Blocking"
-        subtitle="Blocks adult content at the network level before it reaches your device."
+        subtitle="Blocks adult sites before they open."
+        action={<Chip compact icon={adultFilteringEnabled ? 'shield-check-outline' : 'shield-alert-outline'}>{adultFilteringEnabled ? 'On' : 'Off'}</Chip>}
       >
         <View style={styles.row}>
           <Text style={[styles.label, { color: colors.text.primary }]}>Adult-domain filtering</Text>
@@ -44,11 +47,27 @@ export function PolicyCard({
             value={adultFilteringEnabled}
           />
         </View>
-        <Text style={[styles.body, { color: colors.text.secondary }]}>Blocks adult content at the network level before it reaches your device.</Text>
+        <View style={[styles.summaryBox, { backgroundColor: colors.bg.tertiary, borderColor: colors.border.subtle }]}>
+          <Feather name="shield" size={18} color={adultFilteringEnabled ? colors.green[500] : colors.text.muted} />
+          <Text style={[styles.body, { color: colors.text.secondary }]}>
+            {adultFilteringEnabled
+              ? 'Adult sites and known bypass domains are blocked during protected sessions.'
+              : 'Adult-domain filtering is currently off.'}
+          </Text>
+        </View>
         <View style={styles.chipRow}>
           <Chip compact>{blockedDomainCount.toLocaleString()} domains blocked</Chip>
           <Chip compact>{formatBlocklistAge(lastBlocklistUpdate)}</Chip>
         </View>
+        <Pressable accessibilityRole="button" onPress={() => setTechnicalOpen((value) => !value)} style={styles.technicalToggle}>
+          <Text style={[styles.technicalText, { color: colors.text.secondary }]}>Technical info</Text>
+          <Feather name={technicalOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.text.muted} />
+        </Pressable>
+        {technicalOpen ? (
+          <Text style={[styles.note, { color: colors.text.muted }]}>
+            Allowed lookups use family-safe encrypted DNS. Blocked lookups are answered locally.
+          </Text>
+        ) : null}
       </Card>
 
       <Card
@@ -67,21 +86,25 @@ export function PolicyCard({
         ) : null}
         <PolicyRow
           label="Block VPN apps"
+          helper="Prevents alternate VPN apps from bypassing protection."
           value={riskySettings.blockVpnApps}
           onValueChange={(blockVpnApps) => update({ blockVpnApps })}
         />
         <PolicyRow
           label="Block private browsers"
+          helper="Limits browsers commonly used to avoid filters."
           value={riskySettings.blockPrivateBrowsers}
           onValueChange={(blockPrivateBrowsers) => update({ blockPrivateBrowsers })}
         />
         <PolicyRow
           label="Block bypass tools"
+          helper="Flags tools designed to route around protection."
           value={riskySettings.blockBypassTools}
           onValueChange={(blockBypassTools) => update({ blockBypassTools })}
         />
         <PolicyRow
           label="Block sideloaded APK installs"
+          helper="Reduces installs from outside approved app stores."
           value={riskySettings.blockSideloadedApps}
           onValueChange={(blockSideloadedApps) => update({ blockSideloadedApps })}
         />
@@ -94,11 +117,24 @@ export function PolicyCard({
   );
 }
 
-function PolicyRow({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (value: boolean) => void }) {
+function PolicyRow({
+  label,
+  helper,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  helper: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
   const { colors } = useTheme();
   return (
     <View style={styles.row}>
-      <Text style={[styles.label, { color: colors.text.primary }]}>{label}</Text>
+      <View style={styles.rowCopy}>
+        <Text style={[styles.label, { color: colors.text.primary }]}>{label}</Text>
+        <Text style={[styles.helper, { color: colors.text.muted }]}>{helper}</Text>
+      </View>
       <Switch onValueChange={onValueChange} value={value} />
     </View>
   );
@@ -111,9 +147,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: {
-    flex: 1,
     fontSize: 15,
     fontWeight: '600',
+  },
+  helper: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  rowCopy: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 12,
   },
   body: {
     fontSize: 14,
@@ -128,6 +172,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     fontStyle: 'italic',
+  },
+  summaryBox: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+  },
+  technicalText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  technicalToggle: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
 });
 

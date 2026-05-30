@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { Chip, Text } from 'react-native-paper';
+import { Feather } from '@expo/vector-icons';
 
 import { Card } from './Card';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -25,10 +26,16 @@ export function SafeSearchCard({ settings }: SafeSearchCardProps) {
 
   return (
     <Card
-      title="Search Enforcement"
-      subtitle="SafeSearch, restricted video search, and unknown search engine blocking are locked on."
+      title="Safe Search"
+      subtitle="Keeps search and video results in safer modes."
       action={<Chip compact icon="lock-check-outline">Always on</Chip>}
     >
+      <View style={styles.summaryBox}>
+        <Feather name="lock" size={18} color={colors.green[500]} />
+        <Text style={styles.summaryText}>
+          These search protections are read-only here, so they stay consistent with DNS filtering.
+        </Text>
+      </View>
       <View style={styles.grid}>
         <LockedSearchRow label="Google Search" enabled={enforced.googleSafeSearch} />
         <LockedSearchRow label="Bing Search" enabled={enforced.bingSafeSearch} />
@@ -46,7 +53,10 @@ export function SafeSearchCard({ settings }: SafeSearchCardProps) {
 function LockedSearchRow({ label, enabled }: { label: string; enabled: boolean }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.engineCopy}>
+        <Feather name={enabled ? 'check-circle' : 'alert-circle'} size={16} color={enabled ? colors.green[500] : colors.amber[500]} />
+        <Text style={styles.label}>{label}</Text>
+      </View>
       <Chip compact icon={enabled ? 'lock-check-outline' : 'lock-alert-outline'} style={styles.statusChip}>
         {enabled ? 'Enforced' : 'Locked'}
       </Chip>
@@ -76,10 +86,31 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     flex: 1,
   },
+  engineCopy: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   note: {
     ...typography.caption,
     color: colors.text.muted,
     lineHeight: 18,
+  },
+  summaryBox: {
+    alignItems: 'center',
+    backgroundColor: colors.green[50],
+    borderColor: colors.border.green,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  summaryText: {
+    ...typography.body,
+    color: colors.text.secondary,
+    flex: 1,
   },
   statusChip: {
     backgroundColor: colors.green[50],

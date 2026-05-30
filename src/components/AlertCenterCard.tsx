@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Badge, Chip, Divider, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -89,7 +89,7 @@ export function AlertCenterCard({
   return (
     <Card
       title="Alert Center"
-      subtitle="Violation alerts and notification preferences."
+      subtitle={unreadCount > 0 ? `${unreadCount} unread alert${unreadCount === 1 ? '' : 's'} need attention.` : 'Everything is quiet right now.'}
       accent={criticalCount > 0 ? 'red' : warningCount > 0 ? 'amber' : 'none'}
       action={
         unreadCount > 0 ? (
@@ -99,29 +99,38 @@ export function AlertCenterCard({
         ) : null
       }
     >
-      <View style={styles.statsRow}>
-        <StatPill label="Critical" count={criticalCount} color={colors.red[400]} onPress={() => setFilter('critical')} />
-        <StatPill label="Warning" count={warningCount} color={colors.amber[400]} onPress={() => setFilter('warning')} />
-        <StatPill label="Info" count={infoCount} color={colors.blue[400]} onPress={() => setFilter('info')} />
+      <View style={styles.summaryPanel}>
+        <View style={styles.summaryCopy}>
+          <MaterialCommunityIcons
+            name={unreadCount > 0 ? 'bell-alert-outline' : 'bell-check-outline'}
+            size={24}
+            color={unreadCount > 0 ? colors.amber[400] : colors.green[400]}
+          />
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryTitle}>{unreadCount > 0 ? 'Needs review' : 'All clear'}</Text>
+            <Text style={styles.summarySubtitle}>
+              {unreadCount > 0 ? 'Review recent protection events.' : 'No bypass, tamper, or block alerts are unread.'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <StatPill label="Critical" count={criticalCount} color={colors.red[400]} selected={filter === 'critical'} onPress={() => setFilter('critical')} />
+          <StatPill label="Warning" count={warningCount} color={colors.amber[400]} selected={filter === 'warning'} onPress={() => setFilter('warning')} />
+          <StatPill label="Info" count={infoCount} color={colors.blue[400]} selected={filter === 'info'} onPress={() => setFilter('info')} />
+        </View>
       </View>
 
-      {/* Filters */}
       <View style={styles.filterRow}>
         {(['all', 'critical', 'warning', 'info'] as const).map((f) => (
-          <Chip
+          <FilterPill
             key={f}
-            compact
             selected={filter === f}
             onPress={() => setFilter(f)}
-            style={filter === f ? styles.filterActive : styles.filterInactive}
-            textStyle={{ fontSize: 11, textTransform: 'capitalize' }}
-          >
-            {f}
-          </Chip>
+            label={f}
+          />
         ))}
       </View>
 
-      {/* Actions */}
       <View style={styles.actionsRow}>
         {unreadCount > 0 && (
           <Button icon="check-all" tone="neutral" onPress={() => void onMarkAllAsRead()}>
@@ -138,18 +147,23 @@ export function AlertCenterCard({
           tone="neutral"
           onPress={() => setShowSettings(!showSettings)}
         >
-          {showSettings ? 'Hide preferences' : 'Notification preferences'}
+          {showSettings ? 'Hide preferences' : 'Preferences'}
         </Button>
       </View>
 
-      {/* Alert list */}
       {displayedAlerts.length === 0 ? (
         <View style={styles.emptyState}>
-          <MaterialCommunityIcons name="bell-check-outline" size={32} color={colors.green[400]} />
+          <View style={styles.emptyIconWrap}>
+            <MaterialCommunityIcons name="bell-check-outline" size={34} color={colors.green[400]} />
+          </View>
           <Text style={styles.emptyTitle}>{filter === 'all' ? 'All clear' : `No ${filter} alerts`}</Text>
           <Text style={styles.emptyText}>
             {filter === 'all' ? 'No alerts have been triggered yet. Protection is working quietly.' : 'Nothing in this filter right now.'}
           </Text>
+          <Pressable accessibilityRole="button" onPress={() => setShowSettings(true)} style={styles.emptyLink}>
+            <MaterialCommunityIcons name="cog-outline" size={16} color={colors.text.secondary} />
+            <Text style={styles.emptyLinkText}>Adjust notification preferences</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.alertList}>
@@ -174,42 +188,40 @@ export function AlertCenterCard({
         </Text>
       )}
 
-      {/* Settings panel */}
       {showSettings && (
         <View style={styles.settingsPanel}>
           <Divider />
-          <Text style={styles.settingsTitle}>Notification Preferences</Text>
+          <View style={styles.settingsHeader}>
+            <View>
+              <Text style={styles.settingsTitle}>Notification Preferences</Text>
+              <Text style={styles.settingsSubtitle}>Choose a preset, then fine-tune any alert type.</Text>
+            </View>
+          </View>
           <View style={styles.presetRow}>
-            <Chip compact onPress={() => void onUpdatePreferences({
+            <PresetPill label="Minimal" active={preferences.minSeverity === 'critical'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: false,
               notifyOnTamper: true,
               notifyOnBypass: true,
               notifyOnUnlockRequest: true,
               minSeverity: 'critical',
               dailyDigestEnabled: false,
-            })}>
-              Minimal
-            </Chip>
-            <Chip compact onPress={() => void onUpdatePreferences({
+            })} />
+            <PresetPill label="Balanced" active={preferences.minSeverity === 'warning'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: true,
               notifyOnTamper: true,
               notifyOnBypass: true,
               notifyOnUnlockRequest: true,
               minSeverity: 'warning',
               dailyDigestEnabled: true,
-            })}>
-              Balanced
-            </Chip>
-            <Chip compact onPress={() => void onUpdatePreferences({
+            })} />
+            <PresetPill label="All alerts" active={preferences.minSeverity === 'info'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: true,
               notifyOnTamper: true,
               notifyOnBypass: true,
               notifyOnUnlockRequest: true,
               minSeverity: 'info',
               dailyDigestEnabled: false,
-            })}>
-              All alerts
-            </Chip>
+            })} />
           </View>
 
           <ToggleRow
@@ -332,13 +344,56 @@ function AlertRow({
   );
 }
 
-function StatPill({ label, count, color, onPress }: { label: string; count: number; color: string; onPress: () => void }) {
+function StatPill({
+  label,
+  count,
+  color,
+  selected,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  color: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
   const activeColor = count > 0 ? color : colors.border.subtle;
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={[styles.statPill, { borderColor: activeColor }]}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.statPill,
+        { borderColor: selected ? color : activeColor },
+        selected ? { backgroundColor: color + '18' } : null,
+      ]}
+    >
       <Text style={[styles.statCount, { color: count > 0 ? color : colors.text.primary }]}>{count}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </TouchableOpacity>
+  );
+}
+
+function FilterPill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.filterPill, selected ? styles.filterPillSelected : null]}
+    >
+      <Text style={[styles.filterText, selected ? styles.filterTextSelected : null]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function PresetPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={[styles.presetPill, active ? styles.presetPillActive : null]}>
+      <Text style={[styles.presetText, active ? styles.presetTextActive : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -370,6 +425,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  summaryPanel: {
+    backgroundColor: colors.bg.tertiary,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  summaryCopy: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  summarySubtitle: {
+    ...typography.caption,
+    color: colors.text.secondary,
+  },
+  summaryText: {
+    flex: 1,
+    gap: 2,
+  },
+  summaryTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+  },
   statPill: {
     alignItems: 'center',
     borderRadius: radius.sm,
@@ -390,13 +470,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
   },
-  filterActive: {
-    backgroundColor: colors.green[50],
-  },
-  filterInactive: {
+  filterPill: {
+    borderRadius: radius.full,
     backgroundColor: colors.bg.tertiary,
     borderColor: colors.border.default,
     borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterPillSelected: {
+    backgroundColor: colors.green[50],
+    borderColor: colors.border.green,
+  },
+  filterText: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
+    textTransform: 'capitalize',
+  },
+  filterTextSelected: {
+    color: colors.green[600],
   },
   actionsRow: {
     flexDirection: 'row',
@@ -467,6 +559,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.muted,
     textAlign: 'center',
+    maxWidth: 260,
   },
   emptyTitle: {
     ...typography.h3,
@@ -477,8 +570,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     justifyContent: 'center',
-    minHeight: 220,
-    paddingVertical: spacing.xl,
+    minHeight: 300,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing['2xl'],
+  },
+  emptyIconWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.green[50],
+    borderRadius: radius.full,
+    height: 64,
+    justifyContent: 'center',
+    width: 64,
+  },
+  emptyLink: {
+    alignItems: 'center',
+    borderColor: colors.border.subtle,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  emptyLinkText: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
   },
   moreText: {
     ...typography.caption,
@@ -492,10 +609,38 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text.primary,
   },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  settingsSubtitle: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
   presetRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  presetPill: {
+    backgroundColor: colors.bg.tertiary,
+    borderColor: colors.border.default,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  presetPillActive: {
+    backgroundColor: colors.green[50],
+    borderColor: colors.border.green,
+  },
+  presetText: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
+  },
+  presetTextActive: {
+    color: colors.green[600],
   },
   severityDot: {
     borderRadius: 5,
