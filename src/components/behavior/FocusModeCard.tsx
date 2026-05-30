@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
@@ -28,13 +28,15 @@ export function FocusModeCard({
   const [pin, setPin] = useState('');
   const [startTime, setStartTime] = useState(minutesToTime(schedule.startMinutes));
   const [endTime, setEndTime] = useState(minutesToTime(schedule.endMinutes));
-  const [packageInput, setPackageInput] = useState('');
+  const [selectedDays, setSelectedDays] = useState(schedule.daysOfWeek);
   const [appSearch, setAppSearch] = useState('');
+  const [selectedApp, setSelectedApp] = useState<InstalledApp | null>(null);
 
   useEffect(() => {
     setStartTime(minutesToTime(schedule.startMinutes));
     setEndTime(minutesToTime(schedule.endMinutes));
-  }, [schedule.endMinutes, schedule.startMinutes]);
+    setSelectedDays(schedule.daysOfWeek);
+  }, [schedule.daysOfWeek, schedule.endMinutes, schedule.startMinutes]);
 
   const appRows = useMemo(
     () => {
@@ -54,21 +56,21 @@ export function FocusModeCard({
     void onChange(pinConfigured ? { ...patch, adminPin: pin } : patch);
   };
 
-  const saveSchedule = () => {
+  const applySchedule = (nextStart = startTime, nextEnd = endTime, nextDays = selectedDays) => {
     update({
       schedules: [
         {
           ...schedule,
           enabled: true,
-          startMinutes: timeToMinutes(startTime, schedule.startMinutes),
-          endMinutes: timeToMinutes(endTime, schedule.endMinutes),
-          daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+          startMinutes: timeToMinutes(nextStart, schedule.startMinutes),
+          endMinutes: timeToMinutes(nextEnd, schedule.endMinutes),
+          daysOfWeek: nextDays.length > 0 ? nextDays : schedule.daysOfWeek,
         },
       ],
     });
   };
 
-  const addPackage = (kind: 'allow' | 'block', packageName = packageInput) => {
+  const addPackage = (kind: 'allow' | 'block', packageName: string) => {
     const normalized = normalizePackage(packageName);
     if (!normalized) return;
     if (kind === 'allow') {
@@ -76,7 +78,6 @@ export function FocusModeCard({
     } else {
       update({ blockedPackages: [...new Set([...policy.blockedPackages, normalized])] });
     }
-    setPackageInput('');
   };
 
   const removePackage = (kind: 'allow' | 'block', packageName: string) => {
@@ -90,11 +91,11 @@ export function FocusModeCard({
 
   return (
     <Card
-      title="Focus Mode and App Blocking"
-      subtitle="Managed mode can suspend apps; Accessibility also blocks foreground apps during active focus windows."
+      title="Focus Schedule"
+      subtitle="Block apps during specific hours."
       action={
         <Chip compact icon={state.active ? 'timer-lock-outline' : 'timer-outline'}>
-          {state.active ? 'Focus active' : 'Focus idle'}
+          {state.active ? 'Active' : 'Schedule off'}
         </Chip>
       }
     >
@@ -115,28 +116,45 @@ export function FocusModeCard({
       </View>
 
       <View style={styles.grid}>
-        <View style={{ flex: 1 }}><Field label="Start time" onChangeText={setStartTime} placeholder="22:00" value={startTime} /></View>
-        <View style={{ flex: 1 }}><Field label="End time" onChangeText={setEndTime} placeholder="06:00" value={endTime} /></View>
+        <TimeChip
+          icon="moon-waning-crescent"
+          label={startTime}
+          onPress={() => {
+            const next = minutesToTime(timeToMinutes(startTime, schedule.startMinutes) + 30);
+            setStartTime(next);
+            applySchedule(next, endTime, selectedDays);
+          }}
+        />
+        <Text style={styles.timeArrow}>to</Text>
+        <TimeChip
+          icon="weather-sunset-up"
+          label={endTime}
+          onPress={() => {
+            const next = minutesToTime(timeToMinutes(endTime, schedule.endMinutes) + 30);
+            setEndTime(next);
+            applySchedule(startTime, next, selectedDays);
+          }}
+        />
       </View>
-      <Button icon="content-save-outline" tone="neutral" onPress={saveSchedule}>
-        Save Daily Focus Window
-      </Button>
-
-      <Field
-        label="Package name"
-        onChangeText={setPackageInput}
-        placeholder="com.example.app"
-        value={packageInput}
-      />
-      <View style={styles.buttonRow}>
-        <Button icon="check-circle-outline" onPress={() => addPackage('allow')}>
-          Allow
-        </Button>
-        <Button icon="block-helper" tone="danger" onPress={() => addPackage('block')}>
-          Block
-        </Button>
+      <View style={styles.timeSummary}>
+        <Text style={styles.empty}>{focusDurationLabel(startTime, endTime)} · {daySummary(selectedDays)}</Text>
       </View>
-
+      <View style={styles.dayRow}>
+        {dayOptions.map((day) => (
+          <Chip
+            key={day.value}
+            compact
+            selected={selectedDays.includes(day.value)}
+            onPress={() => {
+              const nextDays = toggleDay(selectedDays, day.value);
+              setSelectedDays(nextDays);
+              applySchedule(startTime, endTime, nextDays);
+            }}
+          >
+            {day.label}
+          </Chip>
+        ))}
+      </View>
       <PackageChips
         emptyLabel="No extra allowed apps."
         icon="check"
@@ -153,7 +171,7 @@ export function FocusModeCard({
       />
 
       <View style={styles.appListHeader}>
-        <Text style={styles.label}>Installed apps</Text>
+        <Text style={styles.label}>Add an app</Text>
         <Button icon="refresh" tone="neutral" onPress={() => void onRefreshApps()}>
           Refresh
         </Button>
@@ -166,31 +184,46 @@ export function FocusModeCard({
       />
       <View style={styles.appList}>
         {appRows.length > 0 ? appRows.map((app) => (
-          <View key={app.packageName} style={styles.appRow}>
+          <Pressable
+            accessibilityRole="button"
+            key={app.packageName}
+            onPress={() => setSelectedApp(app)}
+            style={[
+              styles.appRow,
+              selectedApp?.packageName === app.packageName ? styles.appRowSelected : null,
+            ]}
+          >
             <View style={styles.appNameGroup}>
               <Text style={styles.appLabel}>{app.label}</Text>
               <Text style={styles.packageName} numberOfLines={1}>
-                {app.packageName}
+                {appStatusLabel(app.packageName, policy.allowedPackages, policy.blockedPackages)}
               </Text>
             </View>
-            <View style={styles.appActions}>
-              <Button icon="check" tone="neutral" onPress={() => addPackage('allow', app.packageName)}>
-                Allow
-              </Button>
-              <Button icon="block-helper" tone="danger" onPress={() => addPackage('block', app.packageName)}>
-                Block
-              </Button>
-            </View>
-          </View>
+            <Text style={styles.selectHint}>Select</Text>
+          </Pressable>
         )) : (
           <Text style={styles.empty}>No installed apps match this filter.</Text>
         )}
       </View>
 
-      <Text style={styles.note}>
-        Current focus allowlist includes default phone, SMS, launcher, System UI, and this app automatically. Suspended
-        packages: {state.suspendedPackageCount}.
-      </Text>
+      {selectedApp ? (
+        <View style={styles.selectionPanel}>
+          <View style={styles.appNameGroup}>
+            <Text style={styles.appLabel}>{selectedApp.label}</Text>
+            <Text style={styles.empty}>{appStatusLabel(selectedApp.packageName, policy.allowedPackages, policy.blockedPackages)}</Text>
+          </View>
+          <View style={styles.appActions}>
+            <Button icon="check" tone="neutral" onPress={() => addPackage('allow', selectedApp.packageName)}>
+              Allow during focus
+            </Button>
+            <Button icon="block-helper" tone="danger" onPress={() => addPackage('block', selectedApp.packageName)}>
+              Block during focus
+            </Button>
+          </View>
+        </View>
+      ) : null}
+
+      <Text style={styles.note}>Core phone, SMS, launcher, System UI, and this app stay available automatically.</Text>
     </Card>
   );
 }
@@ -230,6 +263,14 @@ function PackageChips({
   );
 }
 
+function TimeChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={styles.timeChip}>
+      <Chip compact icon={icon}>{label} ▾</Chip>
+    </Pressable>
+  );
+}
+
 const defaultSchedule = {
   id: 'daily-night-focus',
   label: 'Daily night focus',
@@ -239,12 +280,35 @@ const defaultSchedule = {
   daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
 };
 
+const dayOptions = [
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+  { label: 'Sun', value: 7 },
+];
+
+function toggleDay(current: number[], day: number) {
+  if (current.includes(day)) return current.filter((item) => item !== day);
+  return [...current, day].sort((left, right) => left - right);
+}
+
+function daySummary(days: number[]) {
+  if (days.length === 7) return 'every day';
+  if (days.length === 5 && days.every((day) => day >= 1 && day <= 5)) return 'weekdays';
+  if (days.length === 2 && days.includes(6) && days.includes(7)) return 'weekends';
+  if (days.length === 0) return 'no days selected';
+  return `${days.length} days`;
+}
+
 function normalizePackage(value: string) {
   return value.trim().toLowerCase();
 }
 
 function minutesToTime(value: number) {
-  const minutes = Math.min(1439, Math.max(0, Math.round(value)));
+  const minutes = ((Math.round(value) % 1440) + 1440) % 1440;
   const hour = Math.floor(minutes / 60);
   const minute = minutes % 60;
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
@@ -257,6 +321,22 @@ function timeToMinutes(value: string, fallback: number) {
   const minute = Number(match[2]);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
   return hour * 60 + minute;
+}
+
+function focusDurationLabel(start: string, end: string) {
+  const startMinutes = timeToMinutes(start, 22 * 60);
+  const endMinutes = timeToMinutes(end, 6 * 60);
+  const duration = endMinutes > startMinutes ? endMinutes - startMinutes : 1440 - startMinutes + endMinutes;
+  const hours = Math.floor(duration / 60);
+  const minutes = duration % 60;
+  if (minutes === 0) return `${hours} hours`;
+  return `${hours}h ${minutes}m`;
+}
+
+function appStatusLabel(packageName: string, allowedPackages: string[], blockedPackages: string[]) {
+  if (allowedPackages.includes(packageName)) return 'Allowed during focus';
+  if (blockedPackages.includes(packageName)) return 'Blocked during focus';
+  return 'Tap to choose focus behavior';
 }
 
 const styles = StyleSheet.create({
@@ -275,10 +355,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
-  buttonRow: {
+  dayRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginVertical: spacing.sm,
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
   chipList: {
     flexDirection: 'row',
@@ -328,13 +408,43 @@ const styles = StyleSheet.create({
     color: colors.text.muted,
   },
   appActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: spacing.xs,
+  },
+  appRowSelected: {
+    backgroundColor: colors.green[50],
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
   },
   note: {
     ...typography.caption,
     color: colors.text.muted,
     fontStyle: 'italic',
     marginTop: spacing.md,
+  },
+  selectHint: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
+  },
+  selectionPanel: {
+    backgroundColor: colors.bg.tertiary,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  timeArrow: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
+  },
+  timeSummary: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  timeChip: {
+    borderRadius: radius.full,
   },
 });

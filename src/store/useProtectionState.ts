@@ -87,10 +87,10 @@ const initialFeatureBlocks: FeatureBlockSettings = {
   pinterestSearch: false,
   liveStreamingApps: false,
   browserUnsafeModes: true,
-  androidTamperSettings: false,
-  playStoreUninstallControls: false,
+  androidTamperSettings: true,
+  playStoreUninstallControls: true,
   playStoreAdultInstallControls: true,
-  packageInstallerControls: false,
+  packageInstallerControls: true,
 };
 
 const initialBehaviorPolicy: BehaviorPolicy = {
@@ -463,7 +463,7 @@ export function useProtectionState() {
     }
   }, []);
 
-  const startProtection = useCallback(async () => {
+  const startProtection = useCallback(async (durationDays = 7) => {
     setLoading(true);
     try {
       const permission = await BlockerModule.prepareVpn();
@@ -474,7 +474,25 @@ export function useProtectionState() {
         return;
       }
 
-      const result = await BlockerModule.startProtection();
+      if (!managedDeviceStatus.deviceAdminActive) {
+        const adminResult = await BlockerModule.requestDeviceAdminPermission();
+        setManagedDeviceStatus(normalizeManagedDeviceStatus(adminResult.managedDeviceStatus));
+        setStatus('inactive');
+        setError('Approve Device Admin so protection can prevent the app from being removed.');
+        return;
+      }
+
+      const result = await BlockerModule.startProtection(durationDays);
+      if (result.status === 'time_locked') {
+        setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
+        await refreshStatus(false);
+        return;
+      }
+      if (result.status === 'unlock_countdown_active') {
+        setError('Protection is already waiting to turn off.');
+        await refreshStatus(false);
+        return;
+      }
       setStatus(result.status === 'pin_required' ? 'inactive' : result.status);
       setVpnActive(result.status === 'active');
       setTampered(result.status === 'tampered');
@@ -485,15 +503,26 @@ export function useProtectionState() {
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus]);
+  }, [managedDeviceStatus.deviceAdminActive, refreshStatus]);
 
   const stopProtection = useCallback(
     async (pin: string) => {
       setLoading(true);
       try {
         const result = await BlockerModule.stopProtection(pin);
+        if (result.status === 'time_locked') {
+          setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
+          await refreshStatus(false);
+          return;
+        }
         if (result.status === 'pin_required') {
           setError('Parent PIN is required or incorrect.');
+          return;
+        }
+        if (result.status === 'unlock_countdown_active') {
+          const seconds = Math.ceil(Number(result.remainingMs ?? 0) / 1000);
+          setError(`Protection can be turned off in ${Math.max(1, seconds)} seconds.`);
+          await refreshStatus(false);
           return;
         }
         setStatus(result.status);
@@ -1577,6 +1606,11 @@ function clampUsageLimit(value?: number) {
   const minutes = Number(value ?? 0);
   if (!Number.isFinite(minutes)) return 0;
   return Math.min(1440, Math.max(0, Math.round(minutes)));
+}
+
+function formatLockDate(value?: number | null) {
+  if (!value) return 'the lock time ends';
+  return new Date(value).toLocaleString();
 }
 
 function managedPolicyReason(reason?: string) {

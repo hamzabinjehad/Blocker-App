@@ -53,7 +53,7 @@ class PackageChangeReceiver : BroadcastReceiver() {
           bypassLike -> "vpn_proxy_tor"
           else -> "private_browser"
         }
-        val severity = if (sideloaded || bypassLike) "critical" else "high"
+        val severity = if (sideloaded || bypassLike || privateBrowserLike) "critical" else "high"
         repository.recordAuditEvent(
           eventType = "ANOMALY_SIGNAL",
           severity = severity,
@@ -66,16 +66,30 @@ class PackageChangeReceiver : BroadcastReceiver() {
             "sideloaded" to sideloaded.toString()
           )
         )
-        if (severity == "critical") {
-          GuardianNotifier.notify(
-            context = context,
-            eventType = "ANOMALY_SIGNAL",
-            severity = severity,
-            subject = packageName,
-            action = "new_install_or_update",
-            metadata = mapOf("label" to label, "category" to anomalyCategory)
-          )
-        }
+        GuardianNotifier.notify(
+          context = context,
+          eventType = "RISKY_APP_INSTALLED",
+          severity = severity,
+          subject = packageName,
+          action = "new_install_or_update",
+          metadata = mapOf("label" to label, "category" to anomalyCategory)
+        )
+        val event = BehaviorBlockEvent(
+          keyword = label,
+          keywordSource = anomalyCategory,
+          appName = label,
+          packageName = packageName,
+          screen = "Package install/change",
+          source = "package_receiver",
+          reason = "risky_app_installed",
+          action = "blocked"
+        )
+        TriggerManager.emit(context, repository, event)
+        BlockOverlayService.show(
+          context,
+          label,
+          "A bypass-capable app was installed. Protection is still active."
+        )
       }
     }
 

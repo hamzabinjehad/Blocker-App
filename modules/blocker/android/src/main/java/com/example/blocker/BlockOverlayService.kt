@@ -174,8 +174,20 @@ class BlockOverlayService : Service() {
         val pin = intent?.getStringExtra(EXTRA_PIN) ?: ""
         val requiresPin = repository.isStrictModeEnabled() || repository.isBehaviorBlockPinRequired()
         if (requiresPin && !repository.verifyPin(pin)) {
+            val attempts = repository.recordFailedPinAttempt()
+            if (attempts == 5) {
+                GuardianNotifier.notify(
+                    context = this,
+                    eventType = "PIN_ATTEMPTS_FAILED",
+                    severity = "critical",
+                    subject = "guardian_pin",
+                    action = "five_failed_attempts",
+                    metadata = mapOf("attempts" to attempts)
+                )
+            }
             return
         }
+        repository.clearFailedPinAttempts()
         hideOverlay()
         stopSelf()
     }

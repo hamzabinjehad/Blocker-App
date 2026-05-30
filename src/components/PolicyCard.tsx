@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Switch, Text } from 'react-native-paper';
+import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from './Card';
 import { Button, Field } from './controls';
@@ -35,7 +35,7 @@ export function PolicyCard({
     <>
       <Card
         title="Adult Content Blocking"
-        subtitle="Intercepts device DNS locally, blocks adult categories before connection, then resolves allowed domains over family-safe DoH."
+        subtitle="Blocks adult content at the network level before it reaches your device."
       >
         <View style={styles.row}>
           <Text style={[styles.label, { color: colors.text.primary }]}>Adult-domain filtering</Text>
@@ -44,16 +44,16 @@ export function PolicyCard({
             value={adultFilteringEnabled}
           />
         </View>
-        <Text style={[styles.body, { color: colors.text.secondary }]}>Blocked categories: adult content, pornography, explicit media, and configured bypass domains.</Text>
-        <Text style={[styles.body, { color: colors.text.secondary }]}>Upstream safety: Cloudflare 1.1.1.3, CleanBrowsing Family, OpenDNS FamilyShield.</Text>
-        <Text style={[styles.body, { color: colors.text.secondary }]}>Blocked domains: {blockedDomainCount}</Text>
-        <Text style={[styles.body, { color: colors.text.secondary }]}>Last blocklist update: {lastBlocklistUpdate}</Text>
-        <Text style={[styles.note, { color: colors.text.muted }]}>Allowed lookups use encrypted DNS-over-HTTPS; blocked lookups are answered locally without an upstream request.</Text>
+        <Text style={[styles.body, { color: colors.text.secondary }]}>Blocks adult content at the network level before it reaches your device.</Text>
+        <View style={styles.chipRow}>
+          <Chip compact>{blockedDomainCount.toLocaleString()} domains blocked</Chip>
+          <Chip compact>{formatBlocklistAge(lastBlocklistUpdate)}</Chip>
+        </View>
       </Card>
 
       <Card
         title="Risky App / Bypass Protection"
-        subtitle="Detects hardcoded DNS resolvers, blocks encrypted DNS resolver traffic, and flags bypass apps through managed or accessibility flows."
+        subtitle="Blocks common ways people try to get around protection."
       >
         {pinConfigured ? (
           <Field
@@ -88,7 +88,7 @@ export function PolicyCard({
         <Button icon="eraser" tone="neutral" onPress={() => setPin('')}>
           Clear PIN Entry
         </Button>
-        <Text style={[styles.note, { color: colors.text.muted }]}>Strict bypass policy also strips DNS HTTPS/SVCB hints used to advertise encrypted SNI/ECH when safe fallback records are available.</Text>
+        <Text style={[styles.note, { color: colors.text.muted }]}>These safeguards help keep protection active during protected sessions.</Text>
       </Card>
     </>
   );
@@ -119,9 +119,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   note: {
     fontSize: 13,
     lineHeight: 20,
     fontStyle: 'italic',
   },
 });
+
+function formatBlocklistAge(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 'Lists updated recently';
+  const days = Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
+  if (days < 1) return 'Lists updated today';
+  return `Lists updated ${days} day${days === 1 ? '' : 's'} ago`;
+}

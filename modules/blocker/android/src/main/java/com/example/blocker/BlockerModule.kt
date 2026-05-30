@@ -41,8 +41,8 @@ class BlockerModule : Module() {
       prepareVpn()
     }
 
-    AsyncFunction("startProtection") {
-      startProtection()
+    AsyncFunction("startProtection") { durationDays: Int? ->
+      startProtection(durationDays)
     }
 
     AsyncFunction("stopProtection") { pin: String ->
@@ -289,7 +289,7 @@ class BlockerModule : Module() {
     return mapOf("granted" to false, "needsPermission" to true)
   }
 
-  private fun startProtection(): Map<String, Any?> {
+  private fun startProtection(durationDays: Int?): Map<String, Any?> {
     val context = reactContext()
     if (VpnService.prepare(context) != null) {
       return mapOf("status" to "needs_vpn_permission")
@@ -299,6 +299,11 @@ class BlockerModule : Module() {
     NotificationHelper.ensureChannel(context)
     repo.setProtectionRequested(true)
     repo.setTampered(false)
+    repo.clearPanicUnlockCountdown()
+    UninstallLockManager(context, repo).enableForActiveProtection(durationDays)
+    ManagedPrivateDnsBackup.configureIfPossible(context, repo)
+    BlocklistUpdateWorker.scheduleWeekly(context)
+    NightModeWorker.schedule(context)
 
     val intent = Intent(context, FilterVpnService::class.java).apply {
       action = FilterVpnService.ACTION_START
@@ -315,14 +320,61 @@ class BlockerModule : Module() {
 
   private fun stopProtection(pin: String): Map<String, Any?> {
     val repo = repository()
-    if (!repo.verifyPin(pin)) {
+    if (repo.isUninstallLockWindowActive()) {
+      return mapOf(
+        "status" to "time_locked",
+        "unlocksAt" to repo.uninstallLockExpiresAt(),
+        "remainingMs" to repo.uninstallLockRemainingMs()
+      )
+    }
+
+    if (repo.isNightModeActive() && (!repo.isPinConfigured() || !repo.verifyPin(pin))) {
+      recordFailedPinIfNeeded(repo)
       return mapOf("status" to "pin_required")
+    }
+
+    if (!repo.verifyPin(pin)) {
+      recordFailedPinIfNeeded(repo)
+      return mapOf("status" to "pin_required")
+    }
+    repo.clearFailedPinAttempts()
+
+    val now = System.currentTimeMillis()
+    val existingReadyAt = repo.panicUnlockReadyAt()
+    if (existingReadyAt <= 0L || now < existingReadyAt) {
+      val readyAt = repo.startPanicUnlockCountdown()
+      val remainingMs = (readyAt - now).coerceAtLeast(0L)
+      if (existingReadyAt <= 0L) {
+        val context = reactContext()
+        repo.recordAuditEvent(
+          eventType = "PANIC_UNLOCK_COUNTDOWN_STARTED",
+          severity = "critical",
+          category = "protection",
+          subject = "vpn_protection",
+          action = "countdown_started",
+          metadata = mapOf("delaySeconds" to 30)
+        )
+        GuardianNotifier.notify(
+          context = context,
+          eventType = "PANIC_UNLOCK_COUNTDOWN_STARTED",
+          severity = "critical",
+          subject = "vpn_protection",
+          action = "countdown_started",
+          metadata = mapOf("readyAt" to readyAt, "delaySeconds" to 30)
+        )
+      }
+      return mapOf(
+        "status" to "unlock_countdown_active",
+        "unlocksAt" to readyAt,
+        "remainingMs" to remainingMs
+      )
     }
 
     val context = reactContext()
     repo.setProtectionRequested(false)
     repo.setTampered(false)
     repo.setVpnActive(false)
+    repo.clearPanicUnlockCountdown()
 
     val intent = Intent(context, FilterVpnService::class.java).apply {
       action = FilterVpnService.ACTION_STOP
@@ -335,9 +387,17 @@ class BlockerModule : Module() {
   private fun getStatus(): Map<String, Any?> {
     val context = reactContext()
     IntegrityChecker.checkOncePerLaunch(context)
+    BlocklistUpdateWorker.scheduleWeekly(context)
+    NightModeWorker.schedule(context)
     val repo = repository()
     val vpnPermissionGranted = VpnService.prepare(context) == null
     val vpnActive = FilterVpnService.isRunning && repo.isVpnActive()
+    if (repo.isProtectionRequested() && repo.isNightModeActive()) {
+      ManagedPrivateDnsBackup.configureIfPossible(context, repo)
+      val enforcement = ManagedEnforcer(context, repo)
+      enforcement.applyPackageSuspension()
+      enforcement.enforceAlwaysOnVpnLockdown()
+    }
     val accessibilityServiceEnabled = isAccessibilityServiceEnabled(context)
     recordBehaviorTamperIfNeeded(repo, accessibilityServiceEnabled)
     TamperMonitor(repo, context).isTampered(vpnActive)
@@ -516,6 +576,20 @@ class BlockerModule : Module() {
     }
 
     return mapOf("applied" to true, "managedDeviceStatus" to managedDeviceStatus(context))
+  }
+
+  private fun recordFailedPinIfNeeded(repo: PolicyRepository) {
+    val attempts = repo.recordFailedPinAttempt()
+    if (attempts == 5) {
+      GuardianNotifier.notify(
+        context = reactContext(),
+        eventType = "PIN_ATTEMPTS_FAILED",
+        severity = "critical",
+        subject = "guardian_pin",
+        action = "five_failed_attempts",
+        metadata = mapOf("attempts" to attempts)
+      )
+    }
   }
 
   private fun copyTextToClipboard(label: String, text: String): Map<String, Any?> {

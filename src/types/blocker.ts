@@ -364,7 +364,9 @@ export type TamperSignal = {
 };
 
 export type NativeStartStopResult = {
-  status: ProtectionStatus | 'pin_required';
+  status: ProtectionStatus | 'pin_required' | 'time_locked' | 'unlock_countdown_active';
+  unlocksAt?: number | null;
+  remainingMs?: number | null;
 };
 
 export type BlocklistImportResult = {
@@ -529,7 +531,7 @@ export type AppUsageDetail = {
 export type BlockerNativeModule = {
   addListener?(eventName: 'onBlockEvent', listener: (event: BlockEvent) => void): { remove: () => void };
   prepareVpn(): Promise<VpnPrepareResult>;
-  startProtection(): Promise<NativeStartStopResult>;
+  startProtection(durationDays?: number): Promise<NativeStartStopResult>;
   stopProtection(pin: string): Promise<NativeStartStopResult>;
   getStatus(): Promise<ProtectionStatusResult>;
   canDrawOverlays(): Promise<{ granted: boolean }>;

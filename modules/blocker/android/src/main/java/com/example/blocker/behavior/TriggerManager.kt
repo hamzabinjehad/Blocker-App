@@ -62,7 +62,7 @@ object TriggerManager {
   }
 
   private fun launchBlockScreen(context: Context, event: BehaviorBlockEvent) {
-    BlockOverlayService.show(context, event.appName, event.reason)
+    BlockOverlayService.show(context, event.appName, overlayReasonFor(event))
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
     launchIntent
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -78,5 +78,15 @@ object TriggerManager {
       "tamper", "package_install_blocked", "bypass_domain" -> "critical"
       "blocked_app", "blocked_app_feature", "focus_mode", "usage_limit" -> "high"
       else -> "medium"
+    }
+
+  private fun overlayReasonFor(event: BehaviorBlockEvent): String =
+    when (event.reason) {
+      "tamper" -> "Protection settings are locked until your protection time ends."
+      "blocked_app_feature" -> "This app feature is blocked while protection is on."
+      "blocked_app" -> "This app is blocked while protection is on."
+      "focus_mode" -> "Focus Mode is active right now."
+      "usage_limit" -> "This app has reached its daily limit."
+      else -> "This content is blocked. Take a breath."
     }
 }

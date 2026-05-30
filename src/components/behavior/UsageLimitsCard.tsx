@@ -88,8 +88,8 @@ export function UsageLimitsCard({
 
   return (
     <Card
-      title="App Usage Limit"
-      subtitle="Daily limits are checked from Android Usage Access when an app comes to the foreground."
+      title="Daily Limits"
+      subtitle="Set a time budget per app."
       action={
         <Chip compact icon={usageAccessGranted ? 'timeline-check-outline' : 'timeline-alert-outline'}>
           {usageAccessGranted ? 'Usage ready' : 'Usage needed'}
@@ -178,11 +178,22 @@ export function UsageLimitsCard({
       <View style={styles.limitPanel}>
         <Text style={styles.sectionTitle}>Today</Text>
         {policy.trackedApps.length > 0 ? policy.trackedApps.slice(0, 8).map((app) => (
-          <View key={`${app.packageName}-${app.source}`} style={styles.usageRow}>
-            <Text style={styles.appLabel}>{app.appLabel}</Text>
-            <Chip compact icon={app.usedMinutes >= app.limitMinutes ? 'timer-alert-outline' : 'timer-outline'}>
-              {app.usedMinutes}/{app.limitMinutes} min
-            </Chip>
+          <View key={`${app.packageName}-${app.source}`} style={styles.usageDashboardRow}>
+            <View style={styles.usageRow}>
+              <Text style={styles.appLabel}>{app.appLabel}</Text>
+              <Text style={styles.usageText}>{app.usedMinutes} min / {app.limitMinutes} min</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: app.usedMinutes >= app.limitMinutes ? colors.red[400] : colors.green[500],
+                    width: `${Math.min(100, Math.round((app.usedMinutes / Math.max(1, app.limitMinutes)) * 100))}%`,
+                  },
+                ]}
+              />
+            </View>
           </View>
         )) : (
           <Text style={styles.note}>No usage-limited apps are tracked yet.</Text>
@@ -301,6 +312,23 @@ const styles = StyleSheet.create({
   },
   note: {
     ...typography.body,
+    color: colors.text.secondary,
+  },
+  progressFill: {
+    borderRadius: radius.full,
+    height: '100%',
+  },
+  progressTrack: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radius.full,
+    height: 8,
+    overflow: 'hidden',
+  },
+  usageDashboardRow: {
+    gap: spacing.xs,
+  },
+  usageText: {
+    ...typography.captionMd,
     color: colors.text.secondary,
   },
 });

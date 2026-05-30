@@ -73,7 +73,7 @@ class TamperDetector(
       TamperSignal(
         id = "private_dns_enabled",
         severity = "high",
-        detected = strict && privateDnsMode().let { it == "hostname" || it == "opportunistic" },
+        detected = strict && unmanagedPrivateDnsEnabled(),
         subject = "Private DNS",
         recommendation = "Disable Private DNS or control it through Device Owner policy."
       ),
@@ -180,6 +180,17 @@ class TamperDetector(
     } else {
       ""
     }
+
+  private fun unmanagedPrivateDnsEnabled(): Boolean {
+    val mode = privateDnsMode()
+    if (mode != "hostname" && mode != "opportunistic") return false
+    val host = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      Settings.Global.getString(context.contentResolver, "private_dns_specifier").orEmpty().lowercase()
+    } else {
+      ""
+    }
+    return host.isNotBlank() && host != ManagedPrivateDnsBackup.DEFAULT_HOSTNAME
+  }
 
   private fun globalInt(name: String): Int =
     runCatching { Settings.Global.getInt(context.contentResolver, name, 0) }.getOrDefault(0)

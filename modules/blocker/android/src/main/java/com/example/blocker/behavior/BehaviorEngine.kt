@@ -65,6 +65,33 @@ class BehaviorEngine(
 
   fun analyzeScreenContext(screenContext: ScreenContext): Map<String, Any?>? {
     repository.setCurrentScreenContext(screenContext.packageName, screenContext.screenType)
+    val protectionSurfaceMonitoringActive =
+      repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
+
+    if (protectionSurfaceMonitoringActive) {
+      val protectedSurface = ScreenContextDetector.matchProtectedSettingsSurface(
+        packageName = screenContext.packageName,
+        screenText = "${screenContext.screenType} ${screenContext.visibleText}",
+        ownPackageName = context.packageName,
+        appLabels = ownAppLabels()
+      )
+      if (protectedSurface != null) {
+        return TriggerManager.emit(
+          context,
+          repository,
+          BehaviorBlockEvent(
+            keyword = protectedSurface.label,
+            keywordSource = "tamper",
+            appName = protectedSurface.appName,
+            packageName = screenContext.packageName,
+            screen = protectedSurface.screen,
+            source = screenContext.source,
+            reason = "tamper"
+          )
+        )
+      }
+    }
+
     if (!repository.isBehaviorProtectionEnabled()) return null
 
     val usageLimitDecision = com.example.blocker.AppUsageLimiter(context, repository)
@@ -205,5 +232,15 @@ class BehaviorEngine(
       screen = screenContext.screenType,
       source = screenContext.source
     )
+  }
+
+  private fun ownAppLabels(): List<String> {
+    val packageManager = context.packageManager
+    val label = runCatching {
+      val appInfo = packageManager.getApplicationInfo(context.packageName, 0)
+      packageManager.getApplicationLabel(appInfo).toString()
+    }.getOrNull()
+
+    return listOfNotNull(label, "Control Yourself", "Parent Blocker", "Guardian")
   }
 }

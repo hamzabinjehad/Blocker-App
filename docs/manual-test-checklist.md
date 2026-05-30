@@ -1,65 +1,99 @@
-# Manual Blocking Test Checklist
+# Control Yourself Manual Test Checklist
 
-Run these tests on a physical Android device with the app installed.
+Generated: 2026-05-29 23:47
 
-## Layer 1 — DNS Blocking
+Use this checklist on a physical Android device. Some tests require Device Owner or Profile Owner enrollment; those are marked clearly.
 
-- [ ] Open Chrome, navigate to a blocked domain — should fail silently (no DNS)
-- [ ] Open Chrome, navigate to google.com — should redirect to forcesafesearch
-- [ ] Open Chrome, navigate to youtube.com — should load in Restricted Mode
-- [ ] Open a VPN app (e.g. NordVPN) in strict mode — domain should fail to resolve
-- [ ] Enable DoH in Chrome settings, navigate to blocked site — should still be blocked
-- [ ] Set custom DNS to 8.8.8.8 in device settings — DNS should still be intercepted
-- [ ] Verify IPv6-only DNS queries are also blocked for adult domains
+## Setup
 
-## Layer 2 — URL/Keyword Filtering (HTTPS inspection mode)
+- [ ] Install a fresh debug build.
+- [ ] Grant VPN permission.
+- [ ] Grant overlay permission.
+- [ ] Grant usage access.
+- [ ] Enable accessibility service for behavior protection.
+- [ ] Enable device admin.
+- [ ] For managed tests, enroll as Device Owner/Profile Owner.
+- [ ] Start protection from Home.
 
-- [ ] Search "adult content" on Google — SafeSearch should filter results
-- [ ] Search on Bing with adult terms — adlt=strict should be appended
-- [ ] Search on DuckDuckGo — kp=1 should be appended
-- [ ] Navigate to URL with adult keyword in path — should be blocked
+## Blocking - DNS & VPN
 
-## Layer 3 — Accessibility/Keyword Detection
+- [ ] DNS blocking active on mobile data
+  - Pass: a known adult test domain fails or is blocked while mobile data is active.
+- [ ] DNS blocking active on WiFi
+  - Pass: the same domain is blocked on WiFi.
+- [ ] VPN stays alive after screen off
+  - Pass: after 5 minutes screen-off, VPN is still active and blocked domains still fail.
+- [ ] Blocklist update applies within 60 seconds
+  - Pass: updated local blocklist is reflected after invalidation/refresh.
+- [ ] Custom blocked domain works
+  - Pass: adding a domain in Settings blocks it without reinstalling the app.
 
-- [ ] Open Instagram, type a blocked keyword in search bar — overlay should appear
-- [ ] Open Telegram, paste a blocked keyword in chat — should be detected
-- [ ] Open YouTube, search for blocked keyword — overlay should appear
-- [ ] Open private browser tab in Chrome — overlay should appear immediately
-- [ ] Open private browser tab in Firefox — overlay should appear immediately
-- [ ] Open private browser tab in Brave — overlay should appear immediately
-- [ ] Open InPrivate tab in Edge — overlay should appear immediately
-- [ ] Open Secret mode in Samsung Internet — overlay should appear immediately
+## Bypass & Tamper Resistance
 
-## Layer 4 — Image Scanning
+- [ ] Uninstall blocked without PIN
+  - Requires: Device Admin for basic protection; Device Owner for stronger uninstall block.
+- [ ] VPN cannot be disabled from system settings
+  - Requires: Device Owner/Profile Owner always-on VPN lockdown.
+- [ ] Private browser is detected and blocked
+  - Pass: installing or updating Brave/Tor/Firefox Focus shows overlay and alert.
+- [ ] VPN app is detected and blocked
+  - Pass: installing WireGuard/OpenVPN/1.1.1.1 shows overlay and alert.
+- [ ] Safe mode boot is detected
+  - Pass: next normal boot logs safe-mode tamper and shows warning.
+- [ ] Wrong PIN triggers alert after 5 attempts
+  - Pass: five failed PIN attempts queues a critical guardian alert.
+- [ ] Turning off protection requires delay
+  - Pass: native stop call returns countdown for 30 seconds and guardian alert is queued immediately.
 
-- [ ] Open a website with swimwear/sports ads — should NOT trigger (false positive test)
-- [ ] Open app with NSFW test image — overlay should appear
-- [ ] Verify scan throttle works: rapid page loads should not cause excessive battery use
-- [ ] Verify large images are downscaled (check memory usage)
+## SafeSearch & Platform Filtering
 
-## Layer 5 — App Blocking
+- [ ] Google SafeSearch enforced
+  - Pass: Google resolves through SafeSearch rewrite or strict search behavior.
+- [ ] YouTube Restricted Mode enforced
+  - Pass: YouTube restricted mode is active through DNS/header policy where supported.
+- [ ] In-app blocking on Instagram (Reels/Explore)
+  - Pass: accessibility screen context triggers block overlay for configured surfaces.
+- [ ] Keyword detection via accessibility
+  - Pass: typing a blocked keyword in a monitored app triggers overlay.
 
-- [ ] Install a test VPN app — should be detected and flagged in strict mode
-- [ ] Open a blocked app in strict mode — should be suspended
-- [ ] Focus mode active, open a non-allowed app — should be blocked
+## Coach & Urge Support
 
-## Anti-Tamper
+- [ ] Urge surfing timer launches from block overlay
+  - Pass: tapping "I'm struggling" opens the 7-minute breathing timer.
+- [ ] Urge surfing timer launches from Coach tab
+  - Pass: tapping "I'm struggling" in Coach opens the same timer.
+- [ ] XP awarded after completing urge timer
+  - Pass: completion shows "You made it. +50 XP" and XP increases.
+- [ ] Relapse log submits without error
+  - Pass: emotional state, trigger, and optional note save locally with no guardian alert.
+- [ ] Journal entry saves and appears in recent list
+  - Pass: saved entry appears under Recent journal.
 
-- [ ] Try to disable Accessibility Service — TamperMonitor should alert within 30s
-- [ ] Reboot in safe mode — guardian notification should appear on next normal boot
-- [ ] Try to uninstall app — should be prevented by Device Admin
-- [ ] Kill app from Recent Apps — VPN watchdog should restart it within 15 min
-- [ ] Verify TamperDetector reports all signals correctly in status screen
+## Gamification
 
-## Bypass Attempts
+- [ ] Streak increments correctly at midnight
+  - Pass: a clean day records once per date and increments streak only once.
+- [ ] Streak resets after relapse log
+  - Pass: logging a moment resets current streak unless a freeze is used.
+- [ ] Mood check-in awards XP once per day
+  - Pass: first check-in awards +10 XP; repeat same day does not stack.
+- [ ] Badge unlocks at 7-day milestone
+  - Pass: 7-day badge unlocks and milestone modal appears.
+- [ ] Level up triggers confirmation screen
+  - Pass: milestone/level screen appears with grounded recovery message.
 
-- [ ] Enable Airplane mode + WiFi — VPN should restart and continue filtering
-- [ ] Use 1.1.1.1 app (hardcoded DNS) — should be intercepted and redirected
-- [ ] Try connecting to known DoH resolvers on port 443 — should be dropped
-- [ ] Try enabling Private DNS in Android settings — should be detected
+## Guardian & PIN
 
-## Blocklist Updates
+- [ ] Guardian alert received for tamper event
+  - Pass: tamper event appears in Alert Center/guardian alert queue.
+- [ ] Guardian cannot see journal or relapse details
+  - Pass: guardian alerts contain no journal text, relapse note, emotional state, or trigger detail.
+- [ ] Emergency unlock works and alerts guardian
+  - Pass: emergency unlock changes protection state and queues guardian alert.
+- [ ] PIN recovery only works via guardian device
+  - Status: not implemented yet; requires guardian-device recovery flow.
 
-- [ ] Trigger a delta blocklist update — should use ETag caching
-- [ ] Verify 304 response does not re-download full list
-- [ ] Verify updated blocklist takes effect after invalidation
+## Current Known Gaps
+
+- PIN recovery via guardian device is not implemented yet.
+- Managed tests require Android Device Owner/Profile Owner enrollment; normal app installs cannot silently enforce those policies.

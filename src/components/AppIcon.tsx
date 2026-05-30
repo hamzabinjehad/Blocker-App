@@ -16,10 +16,18 @@ export type AppIconName =
   | 'check'
   | 'coach'
   | 'guardian'
-  | 'control';
+  | 'control'
+  | 'alerts'
+  | 'appearance'
+  | 'search'
+  | 'list'
+  | 'apps';
 
 const iconSources = {
   admin: 'lock',
+  alerts: 'bell',
+  appearance: 'sliders',
+  apps: 'grid',
   block: 'slash',
   'clean-hours': 'clock',
   coach: 'heart',
@@ -28,6 +36,8 @@ const iconSources = {
   guardian: 'users',
   progress: 'trending-up',
   rules: 'sliders',
+  search: 'search',
+  list: 'list',
   shield: 'shield',
   streak: 'zap',
   xp: 'award',

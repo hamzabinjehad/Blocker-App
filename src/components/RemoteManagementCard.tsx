@@ -35,12 +35,23 @@ export function RemoteManagementCard({
   const recentRequests = session.pendingRequests.slice(0, 5);
 
   return (
-    <Card title="Remote Management" subtitle="Pair devices for remote administration and oversight.">
+    <Card
+      title="Remote Management"
+      subtitle="Pair devices for remote administration and oversight."
+      action={
+        <Chip compact icon={session.paired ? 'cellphone-check' : 'cellphone-link'} style={session.paired ? styles.approvedChip : styles.expiredChip}>
+          {session.paired ? 'Paired' : 'Not paired'}
+        </Chip>
+      }
+    >
       {/* Connected devices */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Connected Devices</Text>
         {session.devices.length === 0 ? (
-          <Text style={styles.emptyText}>No devices paired yet.</Text>
+          <View style={styles.emptyState}>
+            <MaterialCommunityIcons name="devices" size={24} color={colors.text.muted} />
+            <Text style={styles.emptyText}>No guardian device paired yet.</Text>
+          </View>
         ) : (
           <View style={styles.deviceList}>
             {session.devices.map((device) => (
@@ -260,8 +271,11 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     color: colors.text.muted,
-    fontStyle: 'italic',
     textAlign: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.md,
   },
   helpText: {

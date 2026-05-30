@@ -7,6 +7,7 @@ const mockSetPin = jest.fn();
 const mockPrepareVpn = jest.fn();
 const mockGetGuardianAlerts = jest.fn();
 const mockGetLaunchableApps = jest.fn();
+const mockRequestDeviceAdminPermission = jest.fn();
 
 jest.mock('../../native/BlockerModule', () => ({
   __esModule: true,
@@ -17,6 +18,7 @@ jest.mock('../../native/BlockerModule', () => ({
     prepareVpn: mockPrepareVpn,
     startProtection: mockStartProtection,
     stopProtection: mockStopProtection,
+    requestDeviceAdminPermission: mockRequestDeviceAdminPermission,
     setPin: mockSetPin,
     addListener: jest.fn(() => ({ remove: jest.fn() })),
     removeListeners: jest.fn(),
@@ -78,6 +80,10 @@ describe('useProtectionState', () => {
     mockGetGuardianAlerts.mockResolvedValue([]);
     mockGetLaunchableApps.mockResolvedValue([]);
     mockPrepareVpn.mockResolvedValue({ granted: true, needsPermission: false });
+    mockRequestDeviceAdminPermission.mockResolvedValue({
+      permissionRequested: true,
+      managedDeviceStatus: { deviceAdminActive: false },
+    });
   });
 
   it('starts with protection inactive', async () => {
@@ -106,25 +112,29 @@ describe('useProtectionState', () => {
   });
 
   it('startProtection calls native module', async () => {
-    mockStartProtection.mockResolvedValueOnce({ success: true });
+    mockStartProtection.mockResolvedValueOnce({ status: 'active' });
     mockGetStatus
-      .mockResolvedValueOnce(defaultStatus)
+      .mockResolvedValueOnce({
+        ...defaultStatus,
+        managedDeviceStatus: { deviceAdminActive: true },
+      })
       .mockResolvedValueOnce({
         ...defaultStatus,
         status: 'active',
         vpnActive: true,
+        managedDeviceStatus: { deviceAdminActive: true },
       });
 
     const { result } = renderHook(() => useProtectionState());
     await waitFor(() => {
-      expect(result.current.refreshStatus).toBeDefined();
+      expect(result.current.managedDeviceStatus.deviceAdminActive).toBe(true);
     });
 
     await act(async () => {
       await result.current.startProtection();
     });
 
-    expect(mockStartProtection).toHaveBeenCalled();
+    expect(mockStartProtection).toHaveBeenCalledWith(7);
   });
 
   it('handles getStatus failure gracefully', async () => {

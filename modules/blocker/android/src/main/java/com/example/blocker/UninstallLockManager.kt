@@ -38,10 +38,42 @@ class UninstallLockManager(
     }
   }
 
+  fun enableForActiveProtection(durationDays: Int? = null): Map<String, Any?> {
+    if (!isManagedOwner()) {
+      val expiresAt = repository.setUninstallLockWindow(durationDays ?: repository.uninstallLockDurationDays())
+      scheduleExpiry(appContext, expiresAt)
+      repository.recordAuditEvent(
+        eventType = "PROTECTION_TIME_LOCK_STARTED",
+        severity = "high",
+        category = "protection",
+        subject = appContext.packageName,
+        action = "timer_only",
+        metadata = mapOf(
+          "durationDays" to repository.uninstallLockDurationDays(),
+          "managedOwner" to "false"
+        )
+      )
+      return mapOf(
+        "applied" to false,
+        "reason" to "device_owner_or_profile_owner_required",
+        "uninstallLockExpiresAt" to expiresAt,
+        "uninstallLockRemainingMs" to repository.uninstallLockRemainingMs()
+      )
+    }
+
+    return enable(durationDays)
+  }
+
   fun reconcile() {
     if (!isManagedOwner()) {
-      repository.clearUninstallLockWindow()
-      cancelExpiryAlarm(appContext)
+      if (repository.isUninstallLockWindowActive()) {
+        scheduleExpiry(appContext, repository.uninstallLockExpiresAt())
+      } else if (repository.uninstallLockExpiresAt() > 0L) {
+        repository.clearUninstallLockWindow()
+        cancelExpiryAlarm(appContext)
+      } else {
+        cancelExpiryAlarm(appContext)
+      }
       return
     }
 

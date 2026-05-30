@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type MoodCheckIn = 'steady' | 'stressed' | 'bored' | 'tempted' | 'tired';
 
 const MOOD_STORAGE_KEY = 'mood_check_in';
+const MOOD_DATE_STORAGE_KEY = 'mood_check_in_date';
 
 export const moodOptions: Array<{ value: MoodCheckIn; label: string }> = [
   { value: 'steady', label: 'Steady' },
@@ -17,8 +18,21 @@ export async function getStoredMood(): Promise<MoodCheckIn> {
   return isMood(value) ? value : 'steady';
 }
 
+export async function getTodaysMood(): Promise<MoodCheckIn | null> {
+  const [value, date] = await Promise.all([
+    AsyncStorage.getItem(MOOD_STORAGE_KEY),
+    AsyncStorage.getItem(MOOD_DATE_STORAGE_KEY),
+  ]);
+  const today = new Date().toISOString().split('T')[0];
+  return date === today && isMood(value) ? value : null;
+}
+
 export async function saveMood(mood: MoodCheckIn) {
-  await AsyncStorage.setItem(MOOD_STORAGE_KEY, mood);
+  const today = new Date().toISOString().split('T')[0];
+  await Promise.all([
+    AsyncStorage.setItem(MOOD_STORAGE_KEY, mood),
+    AsyncStorage.setItem(MOOD_DATE_STORAGE_KEY, today),
+  ]);
 }
 
 export function isMood(value: unknown): value is MoodCheckIn {

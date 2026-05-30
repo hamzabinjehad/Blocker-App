@@ -41,6 +41,12 @@ const TYPE_ICONS: Record<ViolationAlert['type'], string> = {
   unlock_request: 'lock-open-variant',
 };
 
+const SEVERITY_WEIGHT: Record<AlertSeverity, number> = {
+  info: 0,
+  warning: 1,
+  critical: 2,
+};
+
 function formatTimeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60_000);
@@ -66,11 +72,19 @@ export function AlertCenterCard({
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | AlertSeverity>('all');
 
-  const filteredAlerts = filter === 'all' ? alerts : alerts.filter((a) => a.severity === filter);
+  const sortedAlerts = [...alerts].sort((left, right) => {
+    if (!left.read && right.read) return -1;
+    if (left.read && !right.read) return 1;
+    const severityDelta = SEVERITY_WEIGHT[right.severity] - SEVERITY_WEIGHT[left.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return right.timestamp - left.timestamp;
+  });
+  const filteredAlerts = filter === 'all' ? sortedAlerts : sortedAlerts.filter((a) => a.severity === filter);
   const displayedAlerts = filteredAlerts.slice(0, 20);
 
   const criticalCount = alerts.filter((a) => a.severity === 'critical' && !a.read).length;
   const warningCount = alerts.filter((a) => a.severity === 'warning' && !a.read).length;
+  const infoCount = alerts.filter((a) => a.severity === 'info' && !a.read).length;
 
   return (
     <Card
@@ -85,11 +99,10 @@ export function AlertCenterCard({
         ) : null
       }
     >
-      {/* Summary stats */}
       <View style={styles.statsRow}>
-        <StatPill label="Critical" count={criticalCount} color={colors.red[400]} />
-        <StatPill label="Warning" count={warningCount} color={colors.amber[400]} />
-        <StatPill label="Total" count={alerts.length} color={colors.text.muted} />
+        <StatPill label="Critical" count={criticalCount} color={colors.red[400]} onPress={() => setFilter('critical')} />
+        <StatPill label="Warning" count={warningCount} color={colors.amber[400]} onPress={() => setFilter('warning')} />
+        <StatPill label="Info" count={infoCount} color={colors.blue[400]} onPress={() => setFilter('info')} />
       </View>
 
       {/* Filters */}
@@ -125,15 +138,19 @@ export function AlertCenterCard({
           tone="neutral"
           onPress={() => setShowSettings(!showSettings)}
         >
-          {showSettings ? 'Hide Settings' : 'Settings'}
+          {showSettings ? 'Hide preferences' : 'Notification preferences'}
         </Button>
       </View>
 
       {/* Alert list */}
       {displayedAlerts.length === 0 ? (
-        <Text style={styles.emptyText}>
-          {filter === 'all' ? 'No alerts yet.' : `No ${filter} alerts.`}
-        </Text>
+        <View style={styles.emptyState}>
+          <MaterialCommunityIcons name="bell-check-outline" size={32} color={colors.green[400]} />
+          <Text style={styles.emptyTitle}>{filter === 'all' ? 'All clear' : `No ${filter} alerts`}</Text>
+          <Text style={styles.emptyText}>
+            {filter === 'all' ? 'No alerts have been triggered yet. Protection is working quietly.' : 'Nothing in this filter right now.'}
+          </Text>
+        </View>
       ) : (
         <View style={styles.alertList}>
           {displayedAlerts.map((alert) => (
@@ -162,6 +179,38 @@ export function AlertCenterCard({
         <View style={styles.settingsPanel}>
           <Divider />
           <Text style={styles.settingsTitle}>Notification Preferences</Text>
+          <View style={styles.presetRow}>
+            <Chip compact onPress={() => void onUpdatePreferences({
+              notifyOnBlock: false,
+              notifyOnTamper: true,
+              notifyOnBypass: true,
+              notifyOnUnlockRequest: true,
+              minSeverity: 'critical',
+              dailyDigestEnabled: false,
+            })}>
+              Minimal
+            </Chip>
+            <Chip compact onPress={() => void onUpdatePreferences({
+              notifyOnBlock: true,
+              notifyOnTamper: true,
+              notifyOnBypass: true,
+              notifyOnUnlockRequest: true,
+              minSeverity: 'warning',
+              dailyDigestEnabled: true,
+            })}>
+              Balanced
+            </Chip>
+            <Chip compact onPress={() => void onUpdatePreferences({
+              notifyOnBlock: true,
+              notifyOnTamper: true,
+              notifyOnBypass: true,
+              notifyOnUnlockRequest: true,
+              minSeverity: 'info',
+              dailyDigestEnabled: false,
+            })}>
+              All alerts
+            </Chip>
+          </View>
 
           <ToggleRow
             label="Alerts enabled"
@@ -242,16 +291,14 @@ function AlertRow({
     <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.alertRow, !alert.read && styles.alertUnread]}>
         <View style={styles.alertHeader}>
-          <MaterialCommunityIcons
-            name={TYPE_ICONS[alert.type] as any}
-            size={18}
-            color={SEVERITY_COLORS[alert.severity]}
-          />
+          <View style={[styles.severityDot, { backgroundColor: SEVERITY_COLORS[alert.severity] }]} />
           <View style={styles.alertInfo}>
             <Text style={[styles.alertTitle, !alert.read && styles.alertTitleUnread]} numberOfLines={isExpanded ? undefined : 1}>
               {alert.title}
             </Text>
-            <Text style={styles.alertTime}>{formatTimeAgo(alert.timestamp)}</Text>
+            <Text style={styles.alertTime}>
+              {[alert.app, formatTimeAgo(alert.timestamp)].filter(Boolean).join(' · ')}
+            </Text>
           </View>
           {!alert.read && <View style={styles.unreadDot} />}
         </View>
@@ -265,6 +312,8 @@ function AlertRow({
             {alert.domain && (
               <Text style={styles.alertMeta}>Domain: {alert.domain}</Text>
             )}
+            <Text style={styles.alertMeta}>Action taken: {alert.type.replace(/_/g, ' ')}</Text>
+            <Text style={styles.alertMeta}>Device state: captured at alert time</Text>
             <View style={styles.alertActions}>
               <Chip compact icon={SEVERITY_ICONS[alert.severity]} style={{ backgroundColor: SEVERITY_COLORS[alert.severity] + '22' }}>
                 {alert.severity}
@@ -283,12 +332,13 @@ function AlertRow({
   );
 }
 
-function StatPill({ label, count, color }: { label: string; count: number; color: string }) {
+function StatPill({ label, count, color, onPress }: { label: string; count: number; color: string; onPress: () => void }) {
+  const activeColor = count > 0 ? color : colors.border.subtle;
   return (
-    <View style={[styles.statPill, { borderColor: color + '33' }]}>
-      <Text style={[styles.statCount, { color }]}>{count}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={[styles.statPill, { borderColor: activeColor }]}>
+      <Text style={[styles.statCount, { color: count > 0 ? color : colors.text.primary }]}>{count}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -345,6 +395,8 @@ const styles = StyleSheet.create({
   },
   filterInactive: {
     backgroundColor: colors.bg.tertiary,
+    borderColor: colors.border.default,
+    borderWidth: 1,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -415,7 +467,18 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.muted,
     textAlign: 'center',
-    paddingVertical: spacing.md,
+  },
+  emptyTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    textAlign: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 220,
+    paddingVertical: spacing.xl,
   },
   moreText: {
     ...typography.caption,
@@ -428,6 +491,16 @@ const styles = StyleSheet.create({
   settingsTitle: {
     ...typography.h3,
     color: colors.text.primary,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  severityDot: {
+    borderRadius: 5,
+    height: 10,
+    width: 10,
   },
   toggleRow: {
     alignItems: 'center',

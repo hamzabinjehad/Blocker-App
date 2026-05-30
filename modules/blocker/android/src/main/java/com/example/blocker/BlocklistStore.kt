@@ -6,6 +6,9 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.security.MessageDigest
 
 data class BlocklistSnapshot(
@@ -51,6 +54,11 @@ object BlocklistStore {
   private const val PREFS_KEY_HASH = "blocklist_hash_"
   private const val BLOCKLISTS_DIR = "blocklists"
   private const val FETCH_TIMEOUT_MS = 10_000
+  private val ADULT_DOMAIN_SOURCES = listOf(
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt",
+    "https://raw.githubusercontent.com/blocklistproject/Lists/master/porn.txt",
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"
+  )
 
   fun get(context: Context): BlocklistSnapshot {
     snapshot?.let { return it }
@@ -104,6 +112,52 @@ object BlocklistStore {
     }
   }
 
+  fun updateAdultDomains(context: Context): Map<String, Any?> {
+    val current = get(context).adultDomains
+    val fetched = mutableSetOf<String>()
+    val errors = mutableListOf<String>()
+    var updatedSources = 0
+
+    ADULT_DOMAIN_SOURCES.forEachIndexed { index, sourceUrl ->
+      when (val result = fetchWithDelta(context, sourceUrl, "adult_source_$index")) {
+        is FetchResult.Updated -> {
+          updatedSources += 1
+          fetched += parseDomainList(result.body)
+        }
+        FetchResult.NotModified -> {
+          fetched += readCachedSource(context, "adult_source_$index").flatMapTo(mutableSetOf()) { line ->
+            parseDomainList(line)
+          }
+        }
+        is FetchResult.Error -> errors.add(result.message)
+      }
+    }
+
+    val next = (current + fetched).filter { it.isNotBlank() }.toSortedSet()
+    if (next.size < 1_000) {
+      return mapOf(
+        "updated" to false,
+        "accepted" to 0,
+        "total" to current.size,
+        "reason" to "too_few_domains",
+        "errors" to errors.joinToString(";").take(300)
+      )
+    }
+
+    val dir = File(context.filesDir, BLOCKLISTS_DIR)
+    if (!dir.exists()) dir.mkdirs()
+    File(dir, "adult_domains.txt").writeText(next.joinToString(separator = "\n"))
+    invalidate()
+
+    return mapOf(
+      "updated" to (updatedSources > 0),
+      "accepted" to fetched.size,
+      "total" to next.size,
+      "updatedAt" to SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
+      "errors" to errors.joinToString(";").take(300)
+    )
+  }
+
   private fun load(context: Context): BlocklistSnapshot {
     val adultDomains = readLineSet(context, "adult_domains.txt")
     val bypassDomains = readLineSet(context, "bypass_domains.txt")
@@ -155,6 +209,35 @@ object BlocklistStore {
       }
     } catch (_: Exception) {
       emptySet()
+    }
+  }
+
+  private fun readCachedSource(context: Context, sourceId: String): List<String> {
+    val file = File(File(context.filesDir, BLOCKLISTS_DIR), "$sourceId.txt")
+    if (!file.exists()) return emptyList()
+    return runCatching { file.readLines() }.getOrDefault(emptyList())
+  }
+
+  private fun parseDomainList(body: String): Set<String> =
+    body.lineSequence()
+      .mapNotNull { parseDomainLine(it) }
+      .toSet()
+
+  private fun parseDomainLine(rawLine: String): String? {
+    var line = rawLine.substringBefore("#").substringBefore("!").trim().lowercase()
+    if (line.isBlank() || line.startsWith("[") || line.startsWith("title:")) return null
+    if (line.startsWith("||")) line = line.removePrefix("||").substringBefore("^")
+    if (line.startsWith("0.0.0.0 ") || line.startsWith("127.0.0.1 ")) line = line.split(Regex("\\s+")).getOrNull(1).orEmpty()
+    line = line
+      .removePrefix("address=/")
+      .substringBefore("/")
+      .removePrefix(".")
+      .trim('.')
+    if (!line.contains('.') || line.any { it.isWhitespace() || it == '/' || it == '*' }) return null
+    return line.takeIf { domain ->
+      domain.length <= 253 && domain.split('.').all { label ->
+        label.isNotBlank() && label.length <= 63 && label.first() != '-' && label.last() != '-'
+      }
     }
   }
 

@@ -47,6 +47,34 @@ class PolicyRepository(context: Context) {
     preferences.edit().putBoolean(KEY_VPN_ACTIVE, active).apply()
   }
 
+  fun panicUnlockStartedAt(): Long = preferences.getLong(KEY_PANIC_UNLOCK_STARTED_AT, 0L)
+
+  fun panicUnlockReadyAt(): Long = preferences.getLong(KEY_PANIC_UNLOCK_READY_AT, 0L)
+
+  fun isPanicUnlockCountdownActive(): Boolean {
+    val readyAt = panicUnlockReadyAt()
+    return readyAt > 0L && System.currentTimeMillis() < readyAt
+  }
+
+  fun startPanicUnlockCountdown(): Long {
+    val now = System.currentTimeMillis()
+    val existingReadyAt = panicUnlockReadyAt()
+    if (existingReadyAt > now) return existingReadyAt
+    val readyAt = now + PANIC_UNLOCK_DELAY_MS
+    preferences.edit()
+      .putLong(KEY_PANIC_UNLOCK_STARTED_AT, now)
+      .putLong(KEY_PANIC_UNLOCK_READY_AT, readyAt)
+      .apply()
+    return readyAt
+  }
+
+  fun clearPanicUnlockCountdown() {
+    preferences.edit()
+      .remove(KEY_PANIC_UNLOCK_STARTED_AT)
+      .remove(KEY_PANIC_UNLOCK_READY_AT)
+      .apply()
+  }
+
   fun setTampered(tampered: Boolean) {
     preferences.edit().putBoolean(KEY_TAMPERED, tampered).apply()
   }
@@ -211,13 +239,13 @@ class PolicyRepository(context: Context) {
     KEY_FEATURE_PINTEREST_SEARCH to preferences.getBoolean(KEY_FEATURE_PINTEREST_SEARCH, false),
     KEY_FEATURE_LIVE_STREAMING_APPS to preferences.getBoolean(KEY_FEATURE_LIVE_STREAMING_APPS, false),
     KEY_FEATURE_BROWSER_UNSAFE_MODES to preferences.getBoolean(KEY_FEATURE_BROWSER_UNSAFE_MODES, true),
-    KEY_FEATURE_ANDROID_TAMPER_SETTINGS to preferences.getBoolean(KEY_FEATURE_ANDROID_TAMPER_SETTINGS, false),
-    KEY_FEATURE_PLAY_STORE_UNINSTALL_CONTROLS to preferences.getBoolean(KEY_FEATURE_PLAY_STORE_UNINSTALL_CONTROLS, false),
+    KEY_FEATURE_ANDROID_TAMPER_SETTINGS to preferences.getBoolean(KEY_FEATURE_ANDROID_TAMPER_SETTINGS, true),
+    KEY_FEATURE_PLAY_STORE_UNINSTALL_CONTROLS to preferences.getBoolean(KEY_FEATURE_PLAY_STORE_UNINSTALL_CONTROLS, true),
     KEY_FEATURE_PLAY_STORE_ADULT_INSTALL_CONTROLS to preferences.getBoolean(
       KEY_FEATURE_PLAY_STORE_ADULT_INSTALL_CONTROLS,
       true
     ),
-    KEY_FEATURE_PACKAGE_INSTALLER_CONTROLS to preferences.getBoolean(KEY_FEATURE_PACKAGE_INSTALLER_CONTROLS, false)
+    KEY_FEATURE_PACKAGE_INSTALLER_CONTROLS to preferences.getBoolean(KEY_FEATURE_PACKAGE_INSTALLER_CONTROLS, true)
   )
 
   fun currentScreenContext(): Map<String, Any?> = mapOf(
@@ -267,6 +295,10 @@ class PolicyRepository(context: Context) {
 
   fun lastBlocklistUpdate(): String =
     preferences.getString(KEY_LAST_BLOCKLIST_UPDATE, null) ?: BlocklistStore.get(appContext).generatedAt
+
+  fun setLastBlocklistUpdate(label: String) {
+    preferences.edit().putString(KEY_LAST_BLOCKLIST_UPDATE, label).apply()
+  }
 
   fun isBlockVpnAppsEnabled(): Boolean = preferences.getBoolean(KEY_BLOCK_VPN_APPS, true)
 
@@ -470,6 +502,24 @@ class PolicyRepository(context: Context) {
       )
     }
     return verified
+  }
+
+  fun recordFailedPinAttempt(): Int {
+    val attempts = preferences.getInt(KEY_FAILED_PIN_ATTEMPTS, 0) + 1
+    preferences.edit().putInt(KEY_FAILED_PIN_ATTEMPTS, attempts).apply()
+    recordAuditEvent(
+      eventType = "PIN_ATTEMPT_FAILED",
+      severity = if (attempts >= 5) "critical" else "high",
+      category = "pin",
+      subject = "guardian_pin",
+      action = "failed",
+      metadata = mapOf("attempts" to attempts)
+    )
+    return attempts
+  }
+
+  fun clearFailedPinAttempts() {
+    preferences.edit().remove(KEY_FAILED_PIN_ATTEMPTS).apply()
   }
 
   fun assertCanChangePolicy(pin: String?) {
@@ -852,6 +902,7 @@ class PolicyRepository(context: Context) {
   fun focusPolicySnapshot(): Map<String, Any?> = mapOf(
     "strictModeEnabled" to isStrictModeEnabled(),
     "focusModeEnabled" to isFocusModeEnabled(),
+    "nightModeEnabled" to isNightModeEnabled(),
     "packageSuspensionEnabled" to isPackageSuspensionEnabled(),
     "schedules" to focusScheduleMaps(),
     "allowedPackages" to focusAllowedPackages().toList().sorted(),
@@ -866,6 +917,7 @@ class PolicyRepository(context: Context) {
     return mapOf(
       "active" to active,
       "strictModeActive" to isStrictModeEnabled(),
+      "nightModeActive" to isNightModeActive(),
       "activeScheduleId" to activeFocusScheduleId(),
       "allowedPackages" to allowedPackages,
       "blockedPackages" to blockedAppPackages().toList().sorted(),
@@ -965,6 +1017,8 @@ class PolicyRepository(context: Context) {
 
   fun isFocusModeEnabled(): Boolean = preferences.getBoolean(KEY_FOCUS_MODE_ENABLED, false)
 
+  fun isNightModeEnabled(): Boolean = preferences.getBoolean(KEY_NIGHT_MODE_ENABLED, true)
+
   fun isPackageSuspensionEnabled(): Boolean = preferences.getBoolean(KEY_PACKAGE_SUSPENSION_ENABLED, false)
 
   fun setPackageSuspensionEnabled(enabled: Boolean, pin: String? = null) {
@@ -1057,6 +1111,8 @@ class PolicyRepository(context: Context) {
   }
 
   fun isFocusActive(calendar: Calendar = Calendar.getInstance()): Boolean {
+    if (!isFocusModeEnabled() && !isNightModeEnabled()) return false
+    if (isNightModeActive(calendar)) return true
     if (!isFocusModeEnabled()) return false
     val schedules = focusSchedulesJson()
 
@@ -1071,7 +1127,14 @@ class PolicyRepository(context: Context) {
   fun isAppAllowlistActive(calendar: Calendar = Calendar.getInstance()): Boolean =
     isStrictModeEnabled() || isFocusActive(calendar)
 
+  fun isNightModeActive(calendar: Calendar = Calendar.getInstance()): Boolean {
+    if (!isNightModeEnabled()) return false
+    val currentMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+    return currentMinutes >= DEFAULT_BEDTIME_START_MINUTES || currentMinutes < DEFAULT_WAKE_MINUTES
+  }
+
   fun activeFocusScheduleId(calendar: Calendar = Calendar.getInstance()): String? {
+    if (isNightModeActive(calendar)) return "night-mode"
     if (!isFocusModeEnabled()) return null
     val schedules = focusSchedulesJson()
 
@@ -1263,7 +1326,7 @@ class PolicyRepository(context: Context) {
       .put("id", "daily-night-focus")
       .put("label", "Daily night focus")
       .put("enabled", true)
-      .put("startMinutes", 22 * 60)
+      .put("startMinutes", DEFAULT_BEDTIME_START_MINUTES)
       .put("endMinutes", 6 * 60)
       .put("daysOfWeek", JSONArray((1..7).toList()))
   }
@@ -1409,6 +1472,8 @@ class PolicyRepository(context: Context) {
     private const val KEY_ADULT_FILTERING = "adultFilteringEnabled"
     private const val KEY_PROTECTION_REQUESTED = "protectionRequested"
     private const val KEY_VPN_ACTIVE = "vpnActive"
+    private const val KEY_PANIC_UNLOCK_STARTED_AT = "panicUnlockStartedAt"
+    private const val KEY_PANIC_UNLOCK_READY_AT = "panicUnlockReadyAt"
     private const val KEY_TAMPERED = "tampered"
     private const val KEY_BLOCKED_DOMAINS = "blockedDomains"
     private const val KEY_ALLOWLISTED_DOMAINS = "allowlistedDomains"
@@ -1417,6 +1482,7 @@ class PolicyRepository(context: Context) {
     private const val KEY_PIN_HASH = "pinHash"
     private const val KEY_PIN_ALGORITHM = "pinAlgorithm"
     private const val KEY_PIN_ITERATIONS = "pinIterations"
+    private const val KEY_FAILED_PIN_ATTEMPTS = "failedPinAttempts"
     private const val KEY_GOOGLE_SAFESEARCH = "googleSafeSearch"
     private const val KEY_BING_SAFESEARCH = "bingSafeSearch"
     private const val KEY_DUCKDUCKGO_SAFESEARCH = "duckDuckGoSafeSearch"
@@ -1439,6 +1505,7 @@ class PolicyRepository(context: Context) {
     private const val KEY_SCREENSHOT_AUDIT_INTERVAL_MINUTES = "screenshotAuditIntervalMinutes"
     private const val KEY_STRICT_MODE_ENABLED = "strictModeEnabled"
     private const val KEY_FOCUS_MODE_ENABLED = "focusModeEnabled"
+    private const val KEY_NIGHT_MODE_ENABLED = "nightModeEnabled"
     private const val KEY_PACKAGE_SUSPENSION_ENABLED = "packageSuspensionEnabled"
     private const val KEY_ALWAYS_ON_VPN_LOCKDOWN = "alwaysOnVpnLockdown"
     private const val KEY_EMERGENCY_LOCK_ENABLED = "emergencyLockEnabled"
@@ -1521,8 +1588,11 @@ class PolicyRepository(context: Context) {
     private const val MAX_GUARDIAN_ALERTS = 100
     private const val MAX_CUSTOM_DOMAIN_IMPORT = 5_000
     private const val MINUTES_PER_DAY = 24 * 60
+    private const val DEFAULT_BEDTIME_START_MINUTES = 21 * 60
+    private const val DEFAULT_WAKE_MINUTES = 6 * 60
     private const val MAX_USAGE_LIMIT_MINUTES = MINUTES_PER_DAY
     private const val DOMAIN_EVENT_RATE_LIMIT_MS = 30_000L
+    private const val PANIC_UNLOCK_DELAY_MS = 30_000L
     private const val UNINSTALL_LOCK_DAY_MS = 24L * 60L * 60L * 1000L
     private const val MIN_UNINSTALL_LOCK_DAYS = 1
     private const val MAX_UNINSTALL_LOCK_DAYS = 365

@@ -62,6 +62,22 @@ class ManagedEnforcer(
     }
   }
 
+  fun enforceAlwaysOnVpnLockdown(): Map<String, Any?> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      return result(false, "always_on_vpn_requires_android_7_or_newer")
+    }
+    if (!isManagedOwner()) {
+      return result(false, "device_owner_or_profile_owner_required")
+    }
+    return try {
+      manager.setAlwaysOnVpnPackage(component, context.packageName, true)
+      result(true)
+    } catch (_: Exception) {
+      result(false, "android_rejected_always_on_vpn")
+    }
+  }
+
+
   fun setPackageSuspensionEnabled(enabled: Boolean, pin: String? = null): Map<String, Any?> {
     repository.setPackageSuspensionEnabled(enabled, pin)
     return applyPackageSuspension()
@@ -127,8 +143,19 @@ class ManagedEnforcer(
       .filter { repository.shouldBlockPackageAsApp(it.packageName, it.label) }
       .map { it.packageName.lowercase() }
       .toSet()
+    val nightModeBlocked = if (repository.isNightModeActive()) {
+      launchableApps
+        .filter { app ->
+          val rule = app.riskRule
+          rule?.category in setOf("social_media", "private_browser", "browser", "short_video", "random_chat", "dating")
+        }
+        .map { it.packageName.lowercase() }
+        .toSet()
+    } else {
+      emptySet()
+    }
 
-    return (blocked + focusBlocked + ruleBlocked)
+    return (blocked + focusBlocked + ruleBlocked + nightModeBlocked)
       .map { it.lowercase() }
       .filter { it.isNotBlank() && it !in essential }
       .toSet()

@@ -45,9 +45,7 @@ export function Card({
         style,
       ]}
     >
-      {accent !== 'none' && (
-        <View style={[s.accentStripe, { backgroundColor: accentColors[accent] }]} />
-      )}
+      {accent !== 'none' && <View style={[s.accentStripe, { backgroundColor: accentColors[accent] }]} />}
       {title || subtitle || action ? (
         <View style={s.header}>
           <View style={s.titleGroup}>
@@ -64,20 +62,17 @@ export function Card({
 
 const s = StyleSheet.create({
   card: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.md,
     overflow: 'hidden',
   },
   accentStripe: {
     position: 'absolute',
-    left: spacing.sm,
+    bottom: spacing.md,
+    left: 0,
     top: 0,
-    right: spacing.sm,
-    opacity: 0.7,
-    height: 2,
-    borderBottomLeftRadius: radius.full,
-    borderBottomRightRadius: radius.full,
+    width: 3,
   },
   header: {
     alignItems: 'flex-start',

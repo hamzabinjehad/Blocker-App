@@ -335,6 +335,55 @@ object ScreenContextDetector {
     return null
   }
 
+  fun matchProtectedSettingsSurface(
+    packageName: String,
+    screenText: String,
+    ownPackageName: String,
+    appLabels: List<String>
+  ): BlockedFeature? {
+    val app = packageName.lowercase()
+    val text = KeywordMatcher.normalize("$packageName $screenText")
+    val ownPackage = ownPackageName.lowercase()
+    val labels = (appLabels + listOf("control yourself", "parent blocker", ownPackageName))
+      .map { KeywordMatcher.normalize(it) }
+      .filter { it.isNotBlank() }
+
+    if (isLauncher(app) && isOwnAppUninstallSurface(text, ownPackage, labels)) {
+      return BlockedFeature(
+        "protectedLauncherUninstall",
+        "App launcher",
+        "App uninstall controls",
+        "Launcher uninstall"
+      )
+    }
+
+    if ((isPlayStore(app) || isPackageInstaller(app)) && isOwnAppUninstallSurface(text, ownPackage, labels)) {
+      return BlockedFeature(
+        "protectedAppUninstall",
+        if (isPlayStore(app)) "Google Play" else "Package installer",
+        "App uninstall controls",
+        "App uninstall"
+      )
+    }
+
+    if (isAndroidSettings(app)) {
+      if (isDnsSettingsSurface(text)) {
+        return BlockedFeature("protectedDnsSettings", "Android Settings", "DNS settings", "DNS settings")
+      }
+
+      if (isProtectionWeakeningSettingsSurface(text, ownPackage, labels)) {
+        return BlockedFeature(
+          "protectedSystemSettings",
+          "Android Settings",
+          "Protection settings",
+          "Protection settings"
+        )
+      }
+    }
+
+    return null
+  }
+
   fun matchStrictTamperSurface(packageName: String, screenText: String): BlockedFeature? {
     val app = packageName.lowercase()
     val text = KeywordMatcher.normalize("$packageName $screenText")
@@ -658,6 +707,86 @@ object ScreenContextDetector {
   private fun isPlayStore(packageName: String): Boolean =
     packageName.contains("vending")
 
+  private fun isLauncher(packageName: String): Boolean =
+    packageName.contains("launcher") ||
+      packageName.contains("trebuchet") ||
+      packageName.contains("quickstep") ||
+      packageName.contains("home") ||
+      packageName.contains("oneui.home") ||
+      packageName.contains("miui.home") ||
+      packageName.contains("huawei.android.launcher") ||
+      packageName.contains("oppo.launcher") ||
+      packageName.contains("vivo.launcher") ||
+      packageName.contains("pixel.launcher") ||
+      packageName.contains("lawnchair") ||
+      packageName.contains("nova")
+
+  private fun isOwnAppUninstallSurface(text: String, ownPackageName: String, appLabels: List<String>): Boolean {
+    val namesOwnApp = text.contains(ownPackageName) || appLabels.any { label -> text.contains(label) }
+    val uninstallIntent = containsAny(
+      text,
+      "uninstall",
+      "remove",
+      "delete app",
+      "app info",
+      "application info",
+      "manage app",
+      "disable",
+      "force stop",
+      "clear data",
+      "storage"
+    )
+    return namesOwnApp && uninstallIntent
+  }
+
+  private fun isDnsSettingsSurface(text: String): Boolean =
+    containsAny(
+      text,
+      "private dns",
+      "dns server",
+      "dns servers",
+      "custom dns",
+      "dns provider",
+      "dns hostname",
+      "private dns provider hostname",
+      "network dns",
+      "wifi dns",
+      "wi fi dns",
+      "ip settings",
+      "static ip",
+      "network and internet dns"
+    ) ||
+      (text.contains("dns") && containsAny(text, "network", "internet", "wifi", "wi fi", "advanced", "server"))
+
+  private fun isProtectionWeakeningSettingsSurface(
+    text: String,
+    ownPackageName: String,
+    appLabels: List<String>
+  ): Boolean {
+    val namesOwnApp = text.contains(ownPackageName) || appLabels.any { label -> text.contains(label) }
+    return containsAny(
+      text,
+      "accessibility",
+      "vpn",
+      "device admin",
+      "device administrator",
+      "draw over other apps",
+      "display over other apps",
+      "appear on top",
+      "usage access",
+      "usage data access",
+      "battery optimization",
+      "unrestricted battery",
+      "install unknown apps",
+      "unknown sources",
+      "developer options",
+      "usb debugging",
+      "multiple users",
+      "guest",
+      "factory reset"
+    ) || (namesOwnApp && containsAny(text, "app info", "force stop", "clear data", "storage", "uninstall", "remove"))
+  }
+
   private fun isLiveStreamingApp(packageName: String, normalizedText: String): Boolean {
     val text = "$packageName $normalizedText"
     return containsAny(
@@ -713,7 +842,9 @@ class BehaviorAccessibilityService : AccessibilityService() {
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     val repository = PolicyRepository(applicationContext)
-    if (!repository.isBehaviorProtectionEnabled()) return
+    val protectionSurfaceMonitoringActive =
+      repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
+    if (!repository.isBehaviorProtectionEnabled() && !protectionSurfaceMonitoringActive) return
 
     if (event != null) {
       checkForIncognito(event, repository)

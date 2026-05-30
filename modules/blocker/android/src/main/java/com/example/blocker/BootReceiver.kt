@@ -23,6 +23,7 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     val repository = PolicyRepository(context)
+    val previousSafeModeBoot = repository.wasSafeModeBoot()
     val isSafeMode = detectSafeMode(context)
     repository.setSafeModeBoot(isSafeMode)
 
@@ -48,7 +49,30 @@ class BootReceiver : BroadcastReceiver() {
       )
     }
 
+    if (!isSafeMode && previousSafeModeBoot) {
+      repository.recordAuditEvent(
+        eventType = "SAFE_MODE_PREVIOUS_BOOT",
+        severity = "critical",
+        category = "tamper",
+        subject = trigger,
+        action = "warning_on_normal_boot"
+      )
+      GuardianNotifier.notify(
+        context = context,
+        eventType = "SAFE_MODE_PREVIOUS_BOOT",
+        severity = "critical",
+        subject = trigger,
+        action = "warning_on_normal_boot"
+      )
+      BlockOverlayService.show(
+        context,
+        "Safe Mode was used",
+        "Protection may have been disabled during the previous boot. Guardian review is recommended."
+      )
+    }
+
     if (repository.isProtectionRequested()) {
+      ManagedPrivateDnsBackup.configureIfPossible(context, repository)
       if (VpnService.prepare(context) == null) {
         repository.setVpnActive(false)
         repository.setTampered(false)
@@ -84,6 +108,8 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     VpnRestartJobService.schedulePeriodic(context)
+    BlocklistUpdateWorker.scheduleWeekly(context)
+    NightModeWorker.schedule(context)
     ManagedEnforcer(context, repository).applyPackageSuspension()
     UninstallLockManager(context, repository).reconcile()
     TamperDetector(context, repository).evaluateAndRecord(FilterVpnService.isRunning && repository.isVpnActive())

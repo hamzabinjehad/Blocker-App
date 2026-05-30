@@ -36,6 +36,9 @@ export function SafeSearchCard({ settings }: SafeSearchCardProps) {
         <LockedSearchRow label="YouTube Restricted Mode" enabled={enforced.youtubeRestrictedMode} />
         <LockedSearchRow label="Unknown Search Engines" enabled={enforced.blockUnknownSearchEngines} />
       </View>
+      <Text style={styles.note}>
+        These cannot be turned off individually. Disable DNS filtering to remove them.
+      </Text>
     </Card>
   );
 }
@@ -45,7 +48,7 @@ function LockedSearchRow({ label, enabled }: { label: string; enabled: boolean }
     <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
       <Chip compact icon={enabled ? 'lock-check-outline' : 'lock-alert-outline'} style={styles.statusChip}>
-        {enabled ? 'On' : 'Locked'}
+        {enabled ? 'Enforced' : 'Locked'}
       </Chip>
     </View>
   );
@@ -72,6 +75,11 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.text.primary,
     flex: 1,
+  },
+  note: {
+    ...typography.caption,
+    color: colors.text.muted,
+    lineHeight: 18,
   },
   statusChip: {
     backgroundColor: colors.green[50],
