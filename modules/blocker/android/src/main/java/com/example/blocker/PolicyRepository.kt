@@ -327,7 +327,7 @@ class PolicyRepository(context: Context) {
     "blockSideloadedApps" to isBlockSideloadedAppsEnabled()
   )
 
-  fun isFullTunnelVpnEnabled(): Boolean = preferences.getBoolean(KEY_FULL_TUNNEL_VPN_ENABLED, true)
+  fun isFullTunnelVpnEnabled(): Boolean = preferences.getBoolean(KEY_FULL_TUNNEL_VPN_ENABLED, false)
 
   fun isPerAppVpnFilteringEnabled(): Boolean = preferences.getBoolean(KEY_PER_APP_VPN_FILTERING_ENABLED, true)
 

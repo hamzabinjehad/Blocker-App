@@ -57,7 +57,9 @@ object VpnPolicyManager {
       }
     }
 
-    val fullTunnel = repository.isFullTunnelVpnEnabled() && (shouldUseAllowedMode || !repository.isPerAppVpnFilteringEnabled())
+    // The current VPN service is a DNS filter, not a packet-forwarding VPN.
+    // Routing full app traffic here drops normal TCP/UDP packets and breaks internet access.
+    val fullTunnel = false
     return VpnAppliedPolicy(
       effectiveTunnelMode = if (fullTunnel) MODE_FULL_TUNNEL else MODE_DNS_ONLY,
       routesAllIpv4Traffic = fullTunnel,
@@ -78,8 +80,8 @@ object VpnPolicyManager {
       emptySet()
     }
     val excluded = excludedPackages(context, repository)
-    val fullTunnelEffective = repository.isFullTunnelVpnEnabled() &&
-      (allowed.isNotEmpty() || !repository.isPerAppVpnFilteringEnabled())
+    // Keep the reported effective mode aligned with the DNS-only implementation.
+    val fullTunnelEffective = false
 
     return mapOf(
       "fullTunnelVpnEnabled" to repository.isFullTunnelVpnEnabled(),

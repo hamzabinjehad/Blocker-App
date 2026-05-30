@@ -144,7 +144,7 @@ const initialPrivateDnsStatus: PrivateDnsStatus = {
 };
 
 const initialVpnPolicyStatus: VpnPolicyStatus = {
-  fullTunnelVpnEnabled: true,
+  fullTunnelVpnEnabled: false,
   effectiveTunnelMode: 'dns_only',
   routesAllIpv4Traffic: false,
   routesAllIpv6Traffic: false,

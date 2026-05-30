@@ -55,11 +55,14 @@ class FilterVpnService : VpnService() {
       builder.addRoute(VPN_DNS_ADDRESS, 32)
     }
 
-    // Always route IPv6 through VPN to prevent DNS leak on dual-stack devices
     try {
       builder.addAddress("fd00::2", 128)
-      builder.addRoute("::", 0)
       builder.addDnsServer("fd00::1")
+      if (appliedPolicy.routesAllIpv6Traffic) {
+        builder.addRoute("::", 0)
+      } else {
+        builder.addRoute("fd00::1", 128)
+      }
     } catch (_: Exception) {
       // IPv6 not supported on this device
     }
