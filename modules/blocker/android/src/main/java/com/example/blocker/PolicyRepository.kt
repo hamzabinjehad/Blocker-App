@@ -56,11 +56,22 @@ class PolicyRepository(context: Context) {
     return readyAt > 0L && System.currentTimeMillis() < readyAt
   }
 
+  fun panicUnlockDelaySeconds(): Int =
+    preferences.getInt(KEY_PANIC_UNLOCK_DELAY_SECONDS, DEFAULT_PANIC_UNLOCK_DELAY_SECONDS)
+      .coerceIn(MIN_PANIC_UNLOCK_DELAY_SECONDS, MAX_PANIC_UNLOCK_DELAY_SECONDS)
+
+  fun setPanicUnlockDelaySeconds(seconds: Int, pin: String? = null) {
+    assertCanChangePolicy(pin)
+    preferences.edit()
+      .putInt(KEY_PANIC_UNLOCK_DELAY_SECONDS, seconds.coerceIn(MIN_PANIC_UNLOCK_DELAY_SECONDS, MAX_PANIC_UNLOCK_DELAY_SECONDS))
+      .apply()
+  }
+
   fun startPanicUnlockCountdown(): Long {
     val now = System.currentTimeMillis()
     val existingReadyAt = panicUnlockReadyAt()
     if (existingReadyAt > now) return existingReadyAt
-    val readyAt = now + PANIC_UNLOCK_DELAY_MS
+    val readyAt = now + panicUnlockDelaySeconds() * 1000L
     preferences.edit()
       .putLong(KEY_PANIC_UNLOCK_STARTED_AT, now)
       .putLong(KEY_PANIC_UNLOCK_READY_AT, readyAt)
@@ -347,6 +358,17 @@ class PolicyRepository(context: Context) {
   fun cloudImageFallbackEndpoint(): String =
     preferences.getString(KEY_CLOUD_IMAGE_FALLBACK_ENDPOINT, "")?.trim().orEmpty()
 
+  fun isImageScanningEnabled(): Boolean = preferences.getBoolean(KEY_IMAGE_SCANNING_ENABLED, true)
+
+  fun imageScanThreshold(): Float = preferences.getFloat(KEY_IMAGE_SCAN_THRESHOLD, DEFAULT_IMAGE_SCAN_THRESHOLD)
+
+  fun setImageScanConfig(enabled: Boolean, threshold: Float) {
+    preferences.edit()
+      .putBoolean(KEY_IMAGE_SCANNING_ENABLED, enabled)
+      .putFloat(KEY_IMAGE_SCAN_THRESHOLD, threshold.coerceIn(0f, 1f))
+      .apply()
+  }
+
   fun isScreenshotAuditEnabled(): Boolean = preferences.getBoolean(KEY_SCREENSHOT_AUDIT_ENABLED, false)
 
   fun screenshotAuditIntervalMinutes(): Int =
@@ -368,6 +390,23 @@ class PolicyRepository(context: Context) {
       "Remote partner review requires a sync or webhook backend; this build queues local guardian alerts."
     )
   )
+
+  fun galleryScanLastAt(): Long = preferences.getLong(KEY_GALLERY_SCAN_LAST_AT, 0L)
+
+  fun galleryScanLastScannedCount(): Int = preferences.getInt(KEY_GALLERY_SCAN_LAST_SCANNED_COUNT, 0)
+
+  fun galleryScanFlaggedCount(): Int = preferences.getInt(KEY_GALLERY_SCAN_FLAGGED_COUNT, 0)
+
+  fun galleryScanLastFlaggedAt(): Long = preferences.getLong(KEY_GALLERY_SCAN_LAST_FLAGGED_AT, 0L)
+
+  fun setGalleryScanSnapshot(scannedCount: Int, flaggedCount: Int, lastFlaggedAt: Long) {
+    preferences.edit()
+      .putLong(KEY_GALLERY_SCAN_LAST_AT, System.currentTimeMillis())
+      .putInt(KEY_GALLERY_SCAN_LAST_SCANNED_COUNT, scannedCount.coerceAtLeast(0))
+      .putInt(KEY_GALLERY_SCAN_FLAGGED_COUNT, flaggedCount.coerceAtLeast(0))
+      .putLong(KEY_GALLERY_SCAN_LAST_FLAGGED_AT, lastFlaggedAt)
+      .apply()
+  }
 
   fun updateVpnPolicy(policy: Map<String, Any?>): Map<String, Any?> {
     val suppliedPin = (policy["adminPin"] ?: policy["currentPin"]) as? String ?: ""
@@ -529,12 +568,9 @@ class PolicyRepository(context: Context) {
   }
 
   fun updatePolicy(policy: Map<String, Any?>) {
+    // Safe search keys are intentionally excluded — they are always-on and cannot be disabled.
     val sensitivePolicyKeys = setOf(
       KEY_ADULT_FILTERING,
-      KEY_GOOGLE_SAFESEARCH,
-      KEY_BING_SAFESEARCH,
-      KEY_DUCKDUCKGO_SAFESEARCH,
-      KEY_YOUTUBE_RESTRICTED,
       KEY_BLOCK_UNKNOWN_SEARCH,
       KEY_BLOCK_VPN_APPS,
       KEY_BLOCK_PRIVATE_BROWSERS,
@@ -546,6 +582,7 @@ class PolicyRepository(context: Context) {
       KEY_HTTPS_INSPECTION_ENABLED,
       KEY_CLOUD_IMAGE_FALLBACK_ENABLED,
       KEY_CLOUD_IMAGE_FALLBACK_ENDPOINT,
+      KEY_IMAGE_SCANNING_ENABLED,
       KEY_SCREENSHOT_AUDIT_ENABLED,
       KEY_SCREENSHOT_AUDIT_INTERVAL_MINUTES,
       KEY_STRICT_MODE_ENABLED,
@@ -613,11 +650,8 @@ class PolicyRepository(context: Context) {
 
     val editor = preferences.edit()
     policy.booleanOrNull(KEY_ADULT_FILTERING)?.let { editor.putBoolean(KEY_ADULT_FILTERING, it) }
-    policy.booleanOrNull(KEY_GOOGLE_SAFESEARCH)?.let { editor.putBoolean(KEY_GOOGLE_SAFESEARCH, it) }
-    policy.booleanOrNull(KEY_BING_SAFESEARCH)?.let { editor.putBoolean(KEY_BING_SAFESEARCH, it) }
-    policy.booleanOrNull(KEY_DUCKDUCKGO_SAFESEARCH)?.let { editor.putBoolean(KEY_DUCKDUCKGO_SAFESEARCH, it) }
-    policy.booleanOrNull(KEY_YOUTUBE_RESTRICTED)?.let { editor.putBoolean(KEY_YOUTUBE_RESTRICTED, it) }
     policy.booleanOrNull(KEY_BLOCK_UNKNOWN_SEARCH)?.let { editor.putBoolean(KEY_BLOCK_UNKNOWN_SEARCH, it) }
+    // Safe search settings are always enforced; ignore any caller-supplied values.
     policy.booleanOrNull(KEY_BLOCK_VPN_APPS)?.let { editor.putBoolean(KEY_BLOCK_VPN_APPS, it) }
     policy.booleanOrNull(KEY_BLOCK_PRIVATE_BROWSERS)?.let { editor.putBoolean(KEY_BLOCK_PRIVATE_BROWSERS, it) }
     policy.booleanOrNull(KEY_BLOCK_BYPASS_TOOLS)?.let { editor.putBoolean(KEY_BLOCK_BYPASS_TOOLS, it) }
@@ -627,6 +661,7 @@ class PolicyRepository(context: Context) {
     policy.booleanOrNull(KEY_IPV6_LEAK_PREVENTION_ENABLED)?.let { editor.putBoolean(KEY_IPV6_LEAK_PREVENTION_ENABLED, it) }
     policy.booleanOrNull(KEY_STRICT_MODE_ENABLED)?.let { editor.putBoolean(KEY_STRICT_MODE_ENABLED, it) }
     policy.booleanOrNull(KEY_CLOUD_IMAGE_FALLBACK_ENABLED)?.let { editor.putBoolean(KEY_CLOUD_IMAGE_FALLBACK_ENABLED, it) }
+    policy.booleanOrNull(KEY_IMAGE_SCANNING_ENABLED)?.let { editor.putBoolean(KEY_IMAGE_SCANNING_ENABLED, it) }
     policy.booleanOrNull(KEY_SCREENSHOT_AUDIT_ENABLED)?.let { editor.putBoolean(KEY_SCREENSHOT_AUDIT_ENABLED, it) }
     policy.intOrNull(KEY_SCREENSHOT_AUDIT_INTERVAL_MINUTES)?.let {
       editor.putInt(
@@ -1501,8 +1536,15 @@ class PolicyRepository(context: Context) {
     private const val KEY_HTTPS_INSPECTION_PRIVACY_ACKNOWLEDGED = "httpsInspectionPrivacyAcknowledged"
     private const val KEY_CLOUD_IMAGE_FALLBACK_ENABLED = "cloudImageFallbackEnabled"
     private const val KEY_CLOUD_IMAGE_FALLBACK_ENDPOINT = "cloudImageFallbackEndpoint"
+    private const val KEY_IMAGE_SCANNING_ENABLED = "imageScanningEnabled"
+    private const val KEY_IMAGE_SCAN_THRESHOLD = "imageScanThreshold"
+    private const val DEFAULT_IMAGE_SCAN_THRESHOLD = 0.80f
     private const val KEY_SCREENSHOT_AUDIT_ENABLED = "screenshotAuditEnabled"
     private const val KEY_SCREENSHOT_AUDIT_INTERVAL_MINUTES = "screenshotAuditIntervalMinutes"
+    private const val KEY_GALLERY_SCAN_LAST_AT = "galleryScanLastAt"
+    private const val KEY_GALLERY_SCAN_LAST_SCANNED_COUNT = "galleryScanLastScannedCount"
+    private const val KEY_GALLERY_SCAN_FLAGGED_COUNT = "galleryScanFlaggedCount"
+    private const val KEY_GALLERY_SCAN_LAST_FLAGGED_AT = "galleryScanLastFlaggedAt"
     private const val KEY_STRICT_MODE_ENABLED = "strictModeEnabled"
     private const val KEY_FOCUS_MODE_ENABLED = "focusModeEnabled"
     private const val KEY_NIGHT_MODE_ENABLED = "nightModeEnabled"
@@ -1592,7 +1634,10 @@ class PolicyRepository(context: Context) {
     private const val DEFAULT_WAKE_MINUTES = 6 * 60
     private const val MAX_USAGE_LIMIT_MINUTES = MINUTES_PER_DAY
     private const val DOMAIN_EVENT_RATE_LIMIT_MS = 30_000L
-    private const val PANIC_UNLOCK_DELAY_MS = 30_000L
+    const val MIN_PANIC_UNLOCK_DELAY_SECONDS = 10
+    const val MAX_PANIC_UNLOCK_DELAY_SECONDS = 600
+    const val DEFAULT_PANIC_UNLOCK_DELAY_SECONDS = 60
+    private const val KEY_PANIC_UNLOCK_DELAY_SECONDS = "panicUnlockDelaySeconds"
     private const val UNINSTALL_LOCK_DAY_MS = 24L * 60L * 60L * 1000L
     private const val MIN_UNINSTALL_LOCK_DAYS = 1
     private const val MAX_UNINSTALL_LOCK_DAYS = 365

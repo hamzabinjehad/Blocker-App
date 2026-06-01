@@ -104,6 +104,30 @@ class ImageContentScannerTest {
   }
 
   @Test
+  fun `status only activates scanning while protection is active`() {
+    val inactive = ImageContentScanner.status(
+      supported = true,
+      enabled = true,
+      protectionActive = false,
+      accessibilityServiceEnabled = true,
+      cloudFallbackEnabled = false,
+      cloudFallbackConfigured = false
+    )
+    val active = ImageContentScanner.status(
+      supported = true,
+      enabled = true,
+      protectionActive = true,
+      accessibilityServiceEnabled = true,
+      cloudFallbackEnabled = false,
+      cloudFallbackConfigured = false
+    )
+
+    assertFalse(inactive["imageScanningActive"] as Boolean)
+    assertTrue(active["imageScanningActive"] as Boolean)
+    assertTrue(active["videoThumbnailBlockingActive"] as Boolean)
+  }
+
+  @Test
   fun `scan throttle prevents rapid rescanning`() {
     val pkg = "com.test.throttle"
     assertTrue("First scan should be allowed", ImageContentScanner.shouldScan(pkg))

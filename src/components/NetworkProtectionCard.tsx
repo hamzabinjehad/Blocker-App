@@ -63,7 +63,7 @@ export function NetworkProtectionCard({
       <View style={styles.statusPanel}>
         <StatusRow
           label="Traffic route"
-          value={fullTunnelActive ? 'Selected app traffic routes through the local VPN.' : 'DNS filtering is active.'}
+          value={fullTunnelActive ? 'All app traffic routes through the local VPN (full protection).' : 'DNS filtering only — apps can bypass via direct IPs.'}
         />
         <StatusRow
           label="System bypass"
@@ -93,7 +93,7 @@ export function NetworkProtectionCard({
 
       <View style={styles.actions}>
         <Button
-          disabled
+          disabled={fullTunnelActive}
           icon="lan-connect"
           loading={pendingAction === 'enable-full-tunnel'}
           onPress={() =>
@@ -107,7 +107,7 @@ export function NetworkProtectionCard({
             )
           }
         >
-          Full-Tunnel App Filtering Unavailable
+          Enable Full-Tunnel Filtering
         </Button>
         <Button
           disabled={!fullTunnelActive}

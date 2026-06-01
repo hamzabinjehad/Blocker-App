@@ -93,13 +93,7 @@ class DomainClassifier(
   }
 
   private fun shouldEnforceSafeSearch(domain: String): Boolean {
-    return when {
-      domain.contains("google") -> repository.isGoogleSafeSearchEnabled()
-      domain.contains("bing") -> repository.isBingSafeSearchEnabled()
-      domain.contains("youtube") || domain.contains("googlevideo") -> repository.isYoutubeRestrictedEnabled()
-      domain.contains("duckduckgo") -> repository.isDuckDuckGoSafeSearchEnabled()
-      else -> false
-    }
+    return isSafeSearchDomain(domain)
   }
 
   private fun matchingRewriteTarget(domain: String): String? {

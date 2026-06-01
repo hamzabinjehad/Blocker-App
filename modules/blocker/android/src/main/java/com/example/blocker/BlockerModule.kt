@@ -53,6 +53,26 @@ class BlockerModule : Module() {
       getStatus()
     }
 
+    AsyncFunction("getSafeSearchStatus") {
+      safeSearchStatus()
+    }
+
+    AsyncFunction("setImageScanningEnabled") { enabled: Boolean, sensitivity: String ->
+      setImageScanningEnabled(enabled, sensitivity)
+    }
+
+    AsyncFunction("getImageScanStats") {
+      mapOf("detections" to BlockerConfig.imageScanDetectionCount)
+    }
+
+    AsyncFunction("requestGalleryScanPermission") {
+      requestGalleryScanPermission()
+    }
+
+    AsyncFunction("scanGalleryForExplicitContent") { limit: Int? ->
+      GalleryContentScanner.scanRecent(reactContext(), repository(), limit)
+    }
+
     AsyncFunction("addBlockedDomain") { domain: String, pin: String? ->
       repository().addBlockedDomain(domain, pin)
     }
@@ -352,7 +372,7 @@ class BlockerModule : Module() {
           category = "protection",
           subject = "vpn_protection",
           action = "countdown_started",
-          metadata = mapOf("delaySeconds" to 30)
+          metadata = mapOf("delaySeconds" to repo.panicUnlockDelaySeconds())
         )
         GuardianNotifier.notify(
           context = context,
@@ -360,7 +380,7 @@ class BlockerModule : Module() {
           severity = "critical",
           subject = "vpn_protection",
           action = "countdown_started",
-          metadata = mapOf("readyAt" to readyAt, "delaySeconds" to 30)
+          metadata = mapOf("readyAt" to readyAt, "delaySeconds" to 3)
         )
       }
       return mapOf(
@@ -422,6 +442,7 @@ class BlockerModule : Module() {
       "lastBlocklistUpdate" to repo.lastBlocklistUpdate(),
       "bypassDomainCount" to repo.bypassDomainCount(),
       "safeSearchSettings" to repo.safeSearchPolicySnapshot(),
+      "safeSearchStatus" to safeSearchStatus(),
       "riskySettings" to repo.riskyPolicySnapshot(),
       "accessibilityServiceEnabled" to accessibilityServiceEnabled,
       "overlayPermissionGranted" to BlockOverlayService.canDrawOverlays(context),
@@ -435,12 +456,15 @@ class BlockerModule : Module() {
       "usageLimitPolicy" to repo.usageLimitPolicySnapshot(context),
       "vpnPolicyStatus" to VpnPolicyManager.status(context, repo),
       "httpsInspectionStatus" to repo.httpsInspectionStatus(),
-      "mediaScanningStatus" to ImageContentScanner.status(
-        supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
-        enabled = repo.isScreenshotAuditEnabled(),
-        accessibilityServiceEnabled = accessibilityServiceEnabled,
-        cloudFallbackEnabled = repo.isCloudImageFallbackEnabled(),
-        cloudFallbackConfigured = repo.cloudImageFallbackEndpoint().isNotBlank()
+      "mediaScanningStatus" to (
+        ImageContentScanner.status(
+          supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
+          enabled = repo.isImageScanningEnabled(),
+          protectionActive = repo.isProtectionRequested(),
+          accessibilityServiceEnabled = accessibilityServiceEnabled,
+          cloudFallbackEnabled = repo.isCloudImageFallbackEnabled(),
+          cloudFallbackConfigured = repo.cloudImageFallbackEndpoint().isNotBlank()
+        ) + GalleryContentScanner.status(context, repo)
       ),
       "screenshotAuditPolicy" to repo.screenshotAuditPolicySnapshot(),
       "anomalyDetectionStatus" to AnomalyDetector(repo).status(),
@@ -454,6 +478,46 @@ class BlockerModule : Module() {
       "safeModeBoot" to repo.wasSafeModeBoot(),
       "notificationFilterStatus" to repo.notificationFilterStatus(),
       "workProfileStatus" to WorkProfileManager(context, repo).status()
+    )
+  }
+
+  private fun requestGalleryScanPermission(): Map<String, Any?> {
+    val context = reactContext()
+    val permissions = GalleryContentScanner.permissionNames()
+    val alreadyGranted = GalleryContentScanner.hasPermission(context)
+    if (!alreadyGranted && permissions.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      val activity = appContext.currentActivity
+        ?: throw IllegalStateException("An activity is required to request gallery scan permission")
+      activity.requestPermissions(permissions, GALLERY_SCAN_PERMISSION_REQUEST_CODE)
+    }
+
+    return mapOf(
+      "requested" to (!alreadyGranted && permissions.isNotEmpty()),
+      "alreadyGranted" to alreadyGranted,
+      "mediaScanningStatus" to GalleryContentScanner.status(context, repository())
+    )
+  }
+
+  private fun safeSearchStatus(): Map<String, Boolean> = mapOf(
+    "google" to true,
+    "bing" to true,
+    "duckduckgo" to true,
+    "youtube" to true
+  )
+
+  private fun setImageScanningEnabled(enabled: Boolean, sensitivity: String): Map<String, Any?> {
+    val threshold = when (sensitivity) {
+      "conservative" -> 0.92f
+      "strict" -> 0.65f
+      else -> 0.80f
+    }
+    BlockerConfig.imageScanThreshold = threshold
+    BlockerConfig.imageScanningEnabled = enabled
+    BlockerConfig.saveToRepository(reactContext())
+    return mapOf(
+      "enabled" to enabled,
+      "sensitivity" to sensitivity,
+      "threshold" to threshold
     )
   }
 
@@ -905,6 +969,7 @@ class BlockerModule : Module() {
 
   companion object {
     private const val VPN_PERMISSION_REQUEST_CODE = 41320
+    private const val GALLERY_SCAN_PERMISSION_REQUEST_CODE = 41321
     private const val ACTION_PRIVATE_DNS_SETTINGS = "android.settings.PRIVATE_DNS_SETTINGS"
     private const val PRIVATE_DNS_MODE_SETTING = "private_dns_mode"
     private const val PRIVATE_DNS_SPECIFIER_SETTING = "private_dns_specifier"

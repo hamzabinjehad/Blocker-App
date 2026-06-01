@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import BlockerModule from '@/native/BlockerModule';
@@ -12,6 +12,7 @@ import type {
   FocusPolicy,
   FocusPolicyUpdate,
   FocusState,
+  GalleryScanResult,
   GuardianAlert,
   HttpsInspectionStatus,
   InstalledApp,
@@ -24,6 +25,7 @@ import type {
   ProtectionStatus,
   RiskySettings,
   SafeSearchSettings,
+  SafeSearchStatus,
   ScreenshotAuditPolicy,
   TamperSignal,
   UsageLimitAppSnapshot,
@@ -40,6 +42,13 @@ const initialSafeSearchSettings: SafeSearchSettings = {
   duckDuckGoSafeSearch: true,
   youtubeRestrictedMode: true,
   blockUnknownSearchEngines: true,
+};
+
+const initialSafeSearchStatus: SafeSearchStatus = {
+  google: true,
+  bing: true,
+  duckduckgo: true,
+  youtube: true,
 };
 
 const initialRiskySettings: RiskySettings = {
@@ -186,6 +195,14 @@ const initialMediaScanningStatus: MediaScanningStatus = {
   blockThreshold: 0.72,
   ambiguityThreshold: 0.38,
   scanTargetPackageCount: 0,
+  galleryScanSupported: false,
+  galleryScanPermissionGranted: false,
+  galleryScanLastAt: 0,
+  galleryScanLastScannedCount: 0,
+  galleryScanFlaggedCount: 0,
+  galleryScanLastFlaggedAt: 0,
+  galleryScanMode: 'mediastore_thumbnail_on_device',
+  galleryScanRetainsImages: false,
   limitations: [],
 };
 
@@ -276,10 +293,12 @@ const initialUsageLimitPolicy: UsageLimitPolicy = {
 };
 
 const bundledSampleCount = 5;
+const galleryAutoScanIntervalMs = 24 * 60 * 60 * 1000;
 const deviceOwnerEnrollmentCommand =
   'adb shell dpm set-device-owner com.example.parentblocker/com.example.blocker.BlockerDeviceAdminReceiver';
 
 export function useProtectionState() {
+  const galleryAutoScanAttempted = useRef(false);
   const [status, setStatus] = useState<ProtectionStatus>('inactive');
   const [vpnActive, setVpnActive] = useState(false);
   const [vpnPermissionGranted, setVpnPermissionGranted] = useState(false);
@@ -292,7 +311,11 @@ export function useProtectionState() {
   const [blockedDomainCount, setBlockedDomainCount] = useState(bundledSampleCount);
   const [lastBlocklistUpdate, setLastBlocklistUpdate] = useState('Bundled development sample');
   const [safeSearchSettings, setSafeSearchSettings] = useState(initialSafeSearchSettings);
+  const [safeSearchStatus, setSafeSearchStatus] = useState(initialSafeSearchStatus);
   const [riskySettings, setRiskySettings] = useState(initialRiskySettings);
+  const [imageScanningEnabled, setImageScanningEnabledState] = useState(true);
+  const [galleryScanEnabled] = useState(true);
+  const [scanSensitivity, setScanSensitivityState] = useState<'conservative' | 'standard' | 'strict'>('standard');
   const [behaviorPolicy, setBehaviorPolicy] = useState<BehaviorPolicy>(initialBehaviorPolicy);
   const [accessibilityServiceEnabled, setAccessibilityServiceEnabled] = useState(false);
   const [usageAccessStatus, setUsageAccessStatus] = useState<UsageAccessStatus>(initialUsageAccessStatus);
@@ -348,6 +371,9 @@ export function useProtectionState() {
       setLastBlocklistUpdate(result.lastBlocklistUpdate ?? 'Bundled development sample');
       if (result.safeSearchSettings) {
         setSafeSearchSettings(normalizeSafeSearchSettings(result.safeSearchSettings));
+      }
+      if (result.safeSearchStatus) {
+        setSafeSearchStatus(result.safeSearchStatus as SafeSearchStatus);
       }
       if (result.riskySettings) {
         setRiskySettings(normalizeRiskySettings(result.riskySettings));
@@ -441,6 +467,31 @@ export function useProtectionState() {
   }, [refreshStatus]);
 
   useEffect(() => {
+    if (galleryAutoScanAttempted.current) return;
+    if (status !== 'active') return;
+    if (!mediaScanningStatus.enabled) return;
+    if (!mediaScanningStatus.galleryScanSupported || !mediaScanningStatus.galleryScanPermissionGranted) return;
+    if (Date.now() - mediaScanningStatus.galleryScanLastAt < galleryAutoScanIntervalMs) return;
+
+    galleryAutoScanAttempted.current = true;
+    void BlockerModule.scanGalleryForExplicitContent(24)
+      .then(async (result) => {
+        setMediaScanningStatus((current) => normalizeMediaScanningStatus({ ...current, ...result }));
+        await refreshStatus(false);
+      })
+      .catch(() => {
+        // Keep the open-flow quiet; manual scans surface errors through the normal app state.
+      });
+  }, [
+    mediaScanningStatus.enabled,
+    mediaScanningStatus.galleryScanLastAt,
+    mediaScanningStatus.galleryScanPermissionGranted,
+    mediaScanningStatus.galleryScanSupported,
+    refreshStatus,
+    status,
+  ]);
+
+  useEffect(() => {
     const subscription = BlockerModule.addListener?.('onBlockEvent', (event) => {
       const blockEvent = normalizeBlockEvent(event);
       setActiveBlockEvent(blockEvent);
@@ -497,41 +548,45 @@ export function useProtectionState() {
       setVpnActive(result.status === 'active');
       setTampered(result.status === 'tampered');
       setError(undefined);
+      if (result.status === 'active') {
+        BlockerModule.setImageScanningEnabled(imageScanningEnabled, scanSensitivity).catch(() => {});
+      }
       await refreshStatus(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to start protection.');
     } finally {
       setLoading(false);
     }
-  }, [managedDeviceStatus.deviceAdminActive, refreshStatus]);
+  }, [imageScanningEnabled, managedDeviceStatus.deviceAdminActive, refreshStatus, scanSensitivity]);
 
   const stopProtection = useCallback(
-    async (pin: string) => {
+    async (pin: string): Promise<string> => {
       setLoading(true);
       try {
         const result = await BlockerModule.stopProtection(pin);
         if (result.status === 'time_locked') {
           setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
           await refreshStatus(false);
-          return;
+          return result.status;
         }
         if (result.status === 'pin_required') {
-          setError('Parent PIN is required or incorrect.');
-          return;
+          return result.status;
         }
         if (result.status === 'unlock_countdown_active') {
           const seconds = Math.ceil(Number(result.remainingMs ?? 0) / 1000);
           setError(`Protection can be turned off in ${Math.max(1, seconds)} seconds.`);
           await refreshStatus(false);
-          return;
+          return result.status;
         }
         setStatus(result.status);
         setVpnActive(false);
         setTampered(false);
         setError(undefined);
         await refreshStatus(false);
+        return result.status;
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Unable to stop protection.');
+        return 'error';
       } finally {
         setLoading(false);
       }
@@ -698,6 +753,34 @@ export function useProtectionState() {
     },
     [updatePolicy],
   );
+
+  const requestGalleryScanPermission = useCallback(async () => {
+    try {
+      const result = await BlockerModule.requestGalleryScanPermission();
+      if (result.mediaScanningStatus) {
+        setMediaScanningStatus((current) => normalizeMediaScanningStatus({ ...current, ...result.mediaScanningStatus }));
+      }
+      setError(undefined);
+      await refreshStatus(false);
+      return result;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to request gallery scan permission.');
+      return null;
+    }
+  }, [refreshStatus]);
+
+  const scanGalleryForExplicitContent = useCallback(async (limit = 24): Promise<GalleryScanResult | null> => {
+    try {
+      const result = await BlockerModule.scanGalleryForExplicitContent(limit);
+      setMediaScanningStatus((current) => normalizeMediaScanningStatus({ ...current, ...result }));
+      setError(undefined);
+      await refreshStatus(false);
+      return result;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to scan gallery.');
+      return null;
+    }
+  }, [refreshStatus]);
 
   const refreshGuardianAlerts = useCallback(async () => {
     try {
@@ -1063,6 +1146,26 @@ export function useProtectionState() {
     }
   }, [refreshStatus]);
 
+  const setImageScanningEnabled = useCallback(async (enabled: boolean) => {
+    try {
+      await BlockerModule.setImageScanningEnabled(enabled, scanSensitivity);
+      setImageScanningEnabledState(enabled);
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update image scanning.');
+    }
+  }, [scanSensitivity]);
+
+  const setScanSensitivity = useCallback(async (sensitivity: 'conservative' | 'standard' | 'strict') => {
+    try {
+      await BlockerModule.setImageScanningEnabled(imageScanningEnabled, sensitivity);
+      setScanSensitivityState(sensitivity);
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update scan sensitivity.');
+    }
+  }, [imageScanningEnabled]);
+
   return {
     status,
     vpnActive,
@@ -1076,6 +1179,7 @@ export function useProtectionState() {
     blockedDomainCount,
     lastBlocklistUpdate,
     safeSearchSettings,
+    safeSearchStatus,
     riskySettings,
     behaviorPolicy,
     accessibilityServiceEnabled,
@@ -1088,6 +1192,9 @@ export function useProtectionState() {
     vpnPolicyStatus,
     httpsInspectionStatus,
     mediaScanningStatus,
+    imageScanningEnabled,
+    galleryScanEnabled,
+    scanSensitivity,
     screenshotAuditPolicy,
     integrityStatus,
     safeModeBoot,
@@ -1115,6 +1222,8 @@ export function useProtectionState() {
     removeAllowlistedDomain,
     updatePolicy,
     updateScreenshotAuditPolicy,
+    requestGalleryScanPermission,
+    scanGalleryForExplicitContent,
     refreshGuardianAlerts,
     clearGuardianAlert,
     exportAuditEventsToClipboard,
@@ -1144,6 +1253,8 @@ export function useProtectionState() {
     openOverlaySettings,
     applyStrictDeviceOwnerPolicy,
     setStrictModeEnabled,
+    setImageScanningEnabled,
+    setScanSensitivity,
   };
 }
 
@@ -1382,6 +1493,14 @@ function normalizeMediaScanningStatus(status: Partial<MediaScanningStatus>): Med
     blockThreshold: Number(status.blockThreshold ?? initialMediaScanningStatus.blockThreshold),
     ambiguityThreshold: Number(status.ambiguityThreshold ?? initialMediaScanningStatus.ambiguityThreshold),
     scanTargetPackageCount: Number(status.scanTargetPackageCount ?? 0),
+    galleryScanSupported: Boolean(status.galleryScanSupported),
+    galleryScanPermissionGranted: Boolean(status.galleryScanPermissionGranted),
+    galleryScanLastAt: Number(status.galleryScanLastAt ?? 0),
+    galleryScanLastScannedCount: Number(status.galleryScanLastScannedCount ?? 0),
+    galleryScanFlaggedCount: Number(status.galleryScanFlaggedCount ?? 0),
+    galleryScanLastFlaggedAt: Number(status.galleryScanLastFlaggedAt ?? 0),
+    galleryScanMode: String(status.galleryScanMode || initialMediaScanningStatus.galleryScanMode),
+    galleryScanRetainsImages: Boolean(status.galleryScanRetainsImages),
     limitations: Array.isArray(status.limitations) ? status.limitations.map(String) : [],
   };
 }

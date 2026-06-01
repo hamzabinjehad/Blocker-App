@@ -57,6 +57,18 @@ class ProtectedSettingsSurfaceTest {
   }
 
   @Test
+  fun `blocks own accessibility service detail page while protected`() {
+    val feature = match(
+      packageName = "com.android.settings",
+      screenText = "Behavior Protection Use Behavior Protection Accessibility service Shortcut"
+    )
+
+    assertNotNull(feature)
+    assertEquals("protectedAccessibilityService", feature!!.key)
+    assertEquals("Accessibility service", feature.screen)
+  }
+
+  @Test
   fun `blocks vpn and device admin settings`() {
     val vpnFeature = match(
       packageName = "com.android.settings",
@@ -70,7 +82,19 @@ class ProtectedSettingsSurfaceTest {
     assertNotNull(vpnFeature)
     assertNotNull(adminFeature)
     assertEquals("protectedSystemSettings", vpnFeature!!.key)
-    assertEquals("protectedSystemSettings", adminFeature!!.key)
+    assertEquals("protectedDeviceAdmin", adminFeature!!.key)
+  }
+
+  @Test
+  fun `blocks own device admin detail page while protected`() {
+    val feature = match(
+      packageName = "com.android.settings",
+      screenText = "Blocker Device Admin Deactivate this device admin app Uninstall protection"
+    )
+
+    assertNotNull(feature)
+    assertEquals("protectedDeviceAdmin", feature!!.key)
+    assertEquals("Device Admin", feature.screen)
   }
 
   @Test

@@ -53,6 +53,7 @@ export interface Milestone {
 }
 
 export interface GamificationState {
+  hydrated: boolean;
   xp: number;
   level: number;
   currentStreak: number;
@@ -192,6 +193,7 @@ function getMonth(dateStr: string): string {
 }
 
 const defaultState: GamificationState = {
+  hydrated: false,
   xp: 0,
   level: 1,
   currentStreak: 0,
@@ -242,6 +244,7 @@ export function useGamification() {
         setSharedState((current) => ({
           ...current,
           ...parsed,
+          hydrated: true,
           dayHistory: (parsed.dayHistory ?? []).map(normalizeDayRecord),
           badges: RECOVERY_BADGE_DEFS.map((def) => {
             const saved = (parsed.badges ?? []).find((b: Badge) => b.id === def.id);
@@ -262,9 +265,11 @@ export function useGamification() {
             };
           }),
         }));
+      } else {
+        setSharedState((current) => ({ ...current, hydrated: true }));
       }
     } catch {
-      // First launch
+      setSharedState((current) => ({ ...current, hydrated: true }));
     }
   };
 

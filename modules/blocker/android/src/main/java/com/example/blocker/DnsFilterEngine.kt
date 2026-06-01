@@ -1,15 +1,17 @@
 package com.example.blocker
 
 import android.net.VpnService
-import java.net.HttpURLConnection
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.InetAddress
-import java.net.URL
+import java.net.InetSocketAddress
 import kotlin.math.min
 
 class DnsFilterEngine(
   private val vpnService: VpnService,
   private val repository: PolicyRepository,
-  private val dohResolvers: List<String> = FAMILY_SAFE_DOH_RESOLVERS
+  private val upstreamResolvers: List<InetSocketAddress> = FAMILY_SAFE_DNS_RESOLVERS,
+  private val safeSearchOverrides: Map<String, String> = emptyMap()
 ) {
   private val classifier = DomainClassifier(vpnService.applicationContext, repository)
 
@@ -41,6 +43,12 @@ class DnsFilterEngine(
       6 -> parseDnsQueryIpv6(packet, length)
       else -> null
     } ?: return null
+    val safeSearchTarget = safeSearchOverrides[query.domain.lowercase()]
+    if (safeSearchTarget != null) {
+      repository.recordDomainEvent(query.domain, DomainClassifier.CATEGORY_SEARCH, "safe_search")
+      return wrapDnsResponse(query, buildSafeSearchResponse(packet, query, safeSearchTarget))
+    }
+
     val classification = classifier.classify(query.domain)
     recordPlainDnsBypassIfNeeded(query, originalResolverIp)
 
@@ -385,28 +393,18 @@ class DnsFilterEngine(
   }
 
   private fun forwardDns(query: ByteArray): ByteArray? {
-    for (resolver in dohResolvers) {
+    for (resolver in upstreamResolvers) {
       val response = try {
-        val connection = (URL(resolver).openConnection() as HttpURLConnection).apply {
-          requestMethod = "POST"
-          connectTimeout = DOH_CONNECT_TIMEOUT_MS
-          readTimeout = DOH_READ_TIMEOUT_MS
-          doOutput = true
-          setRequestProperty("accept", DNS_MESSAGE_MIME_TYPE)
-          setRequestProperty("content-type", DNS_MESSAGE_MIME_TYPE)
-          setFixedLengthStreamingMode(query.size)
-        }
-        try {
-          connection.outputStream.use { output ->
-            output.write(query)
-          }
-          if (connection.responseCode in 200..299) {
-            connection.inputStream.use { input -> input.readBytes() }.takeIf { it.isNotEmpty() }
-          } else {
-            null
-          }
-        } finally {
-          connection.disconnect()
+        DatagramSocket().use { socket ->
+          if (!vpnService.protect(socket)) return@use null
+          socket.soTimeout = DNS_READ_TIMEOUT_MS
+          socket.connect(resolver)
+          socket.send(DatagramPacket(query, query.size))
+
+          val buffer = ByteArray(MAX_DNS_RESPONSE_SIZE)
+          val packet = DatagramPacket(buffer, buffer.size)
+          socket.receive(packet)
+          buffer.copyOf(packet.length).takeIf { it.isNotEmpty() }
         }
       } catch (_: Exception) {
         null
@@ -516,9 +514,8 @@ class DnsFilterEngine(
     private const val DNS_TYPE_HTTPS = 65
     private const val DNS_TYPE_AAAA = 28
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
-    private const val DNS_MESSAGE_MIME_TYPE = "application/dns-message"
-    private const val DOH_CONNECT_TIMEOUT_MS = 2500
-    private const val DOH_READ_TIMEOUT_MS = 2500
+    private const val DNS_READ_TIMEOUT_MS = 2500
+    private const val MAX_DNS_RESPONSE_SIZE = 4096
     private const val ACTION_PLAIN_DNS_BYPASS_INTERCEPTED = "plain_dns_bypass_intercepted"
     private const val ACTION_ECH_HINT_STRIPPED = "ech_hint_stripped"
 
@@ -528,10 +525,13 @@ class DnsFilterEngine(
 
     private val ECH_ADVERTISING_DNS_TYPES = setOf(DNS_TYPE_SVCB, DNS_TYPE_HTTPS)
 
-    private val FAMILY_SAFE_DOH_RESOLVERS = listOf(
-      "https://family.cloudflare-dns.com/dns-query",
-      "https://doh.cleanbrowsing.org/doh/family-filter/",
-      "https://doh.familyshield.opendns.com/dns-query"
+    private val FAMILY_SAFE_DNS_RESOLVERS = listOf(
+      InetSocketAddress("1.1.1.3", DNS_PORT),
+      InetSocketAddress("1.0.0.3", DNS_PORT),
+      InetSocketAddress("185.228.168.168", DNS_PORT),
+      InetSocketAddress("185.228.169.168", DNS_PORT),
+      InetSocketAddress("208.67.222.123", DNS_PORT),
+      InetSocketAddress("208.67.220.123", DNS_PORT)
     )
 
     private val PUBLIC_DNS_RESOLVER_IPV4 = setOf(

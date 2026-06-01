@@ -161,7 +161,29 @@ export type MediaScanningStatus = {
   blockThreshold: number;
   ambiguityThreshold: number;
   scanTargetPackageCount: number;
+  galleryScanSupported: boolean;
+  galleryScanPermissionGranted: boolean;
+  galleryScanLastAt: number;
+  galleryScanLastScannedCount: number;
+  galleryScanFlaggedCount: number;
+  galleryScanLastFlaggedAt: number;
+  galleryScanMode: string;
+  galleryScanRetainsImages: boolean;
   limitations: string[];
+};
+
+export type GalleryScanResult = {
+  scannedCount: number;
+  flaggedCount: number;
+  reason: string;
+  galleryScanSupported: boolean;
+  galleryScanPermissionGranted: boolean;
+  galleryScanLastAt: number;
+  galleryScanLastScannedCount: number;
+  galleryScanFlaggedCount: number;
+  galleryScanLastFlaggedAt: number;
+  galleryScanMode: string;
+  galleryScanRetainsImages: boolean;
 };
 
 export type ScreenshotAuditPolicy = {
@@ -316,6 +338,7 @@ export type ProtectionStatusResult = {
   screenshotAuditPolicy?: ScreenshotAuditPolicy;
   anomalyDetectionStatus?: AnomalyDetectionStatus;
   safeSearchSettings?: SafeSearchSettings;
+  safeSearchStatus?: SafeSearchStatus;
   riskySettings?: RiskySettings;
   privateDnsStatus?: PrivateDnsStatus;
   managedDeviceStatus?: ManagedDeviceStatus;
@@ -385,6 +408,13 @@ export type SafeSearchSettings = {
   blockUnknownSearchEngines: boolean;
 };
 
+export type SafeSearchStatus = {
+  google: boolean;
+  bing: boolean;
+  duckduckgo: boolean;
+  youtube: boolean;
+};
+
 export type RiskySettings = {
   blockVpnApps: boolean;
   blockPrivateBrowsers: boolean;
@@ -402,6 +432,7 @@ export type PolicyUpdate = Partial<SafeSearchSettings & RiskySettings & FeatureB
   behaviorBlockDurationSeconds?: number;
   behaviorBlockRequiresPin?: boolean;
   behaviorDisableCooldownDays?: number;
+  imageScanningEnabled?: boolean;
   cloudImageFallbackEnabled?: boolean;
   cloudImageFallbackEndpoint?: string;
   screenshotAuditEnabled?: boolean;
@@ -534,6 +565,12 @@ export type BlockerNativeModule = {
   startProtection(durationDays?: number): Promise<NativeStartStopResult>;
   stopProtection(pin: string): Promise<NativeStartStopResult>;
   getStatus(): Promise<ProtectionStatusResult>;
+  getSafeSearchStatus(): Promise<SafeSearchStatus>;
+  setImageScanningEnabled(
+    enabled: boolean,
+    sensitivity: 'conservative' | 'standard' | 'strict' | string,
+  ): Promise<{ enabled: boolean; sensitivity: string; threshold: number }>;
+  getImageScanStats(): Promise<{ detections: number }>;
   canDrawOverlays(): Promise<{ granted: boolean }>;
   openOverlaySettings(): Promise<void>;
   showBlockOverlayForTest(reason: string): Promise<void>;
@@ -545,6 +582,12 @@ export type BlockerNativeModule = {
   addAllowlistedDomain(domain: string, pin?: string): Promise<void>;
   removeAllowlistedDomain(domain: string, pin?: string): Promise<void>;
   updatePolicy(policy: PolicyUpdate): Promise<void>;
+  requestGalleryScanPermission(): Promise<{
+    requested: boolean;
+    alreadyGranted: boolean;
+    mediaScanningStatus: Partial<MediaScanningStatus>;
+  }>;
+  scanGalleryForExplicitContent(limit?: number): Promise<GalleryScanResult>;
   updateFocusPolicy(policy: FocusPolicyUpdate): Promise<FocusPolicyUpdateResult>;
   updateUsageLimitPolicy(policy: UsageLimitPolicyUpdate): Promise<UsageLimitPolicy>;
   getUsageLimitPolicy(): Promise<UsageLimitPolicy>;

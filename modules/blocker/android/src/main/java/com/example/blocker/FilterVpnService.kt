@@ -21,6 +21,7 @@ class FilterVpnService : VpnService() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     NotificationHelper.ensureChannel(this)
     startForeground(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this))
+    BlockerConfig.loadFromRepository(this)
 
     when (intent?.action) {
       ACTION_STOP -> {
@@ -235,7 +236,7 @@ class FilterVpnService : VpnService() {
     val descriptor = vpnInterface ?: return
     val input = FileInputStream(descriptor.fileDescriptor)
     val output = FileOutputStream(descriptor.fileDescriptor)
-    val engine = DnsFilterEngine(this, repository)
+    val engine = DnsFilterEngine(this, repository, safeSearchOverrides = safeSearchMap)
     val buffer = ByteArray(32767)
 
     try {
@@ -436,6 +437,26 @@ class FilterVpnService : VpnService() {
       "2a07:a8c0::", "2a07:a8c1::",
       "2606:1a40::", "2606:1a40:1::"
     ).map { (InetAddress.getByName(it).hostAddress ?: "").lowercase() }.toSet()
+
+    private val safeSearchMap = mapOf(
+      "google.com" to "forcesafesearch.google.com",
+      "www.google.com" to "forcesafesearch.google.com",
+      "google.com.sa" to "forcesafesearch.google.com",
+      "google.ae" to "forcesafesearch.google.com",
+      "google.com.eg" to "forcesafesearch.google.com",
+      "google.co.uk" to "forcesafesearch.google.com",
+      "google.fr" to "forcesafesearch.google.com",
+      "google.de" to "forcesafesearch.google.com",
+      "images.google.com" to "forcesafesearch.google.com",
+      "bing.com" to "strict.bing.com",
+      "www.bing.com" to "strict.bing.com",
+      "duckduckgo.com" to "safe.duckduckgo.com",
+      "www.duckduckgo.com" to "safe.duckduckgo.com",
+      "youtube.com" to "restrict.youtube.com",
+      "www.youtube.com" to "restrict.youtube.com",
+      "m.youtube.com" to "restrictmoderate.youtube.com",
+      "youtu.be" to "restrict.youtube.com"
+    )
 
     @Volatile
     var isRunning: Boolean = false

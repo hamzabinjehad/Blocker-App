@@ -241,6 +241,14 @@ class BehaviorEngine(
       packageManager.getApplicationLabel(appInfo).toString()
     }.getOrNull()
 
-    return listOfNotNull(label, "Control Yourself", "Parent Blocker", "Guardian")
+    return listOfNotNull(
+      label,
+      "Control Yourself",
+      "Parent Blocker",
+      "Guardian",
+      "Behavior Protection",
+      "Parent Blocker Behavior Engine",
+      "Blocker Device Admin"
+    )
   }
 }

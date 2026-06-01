@@ -79,258 +79,32 @@ object ScreenContextDetector {
       return BlockedFeature("googleSearch", "Google", "Google Search", "Google Search")
     }
 
-    if (isInstagram(app)) {
-      if (featureBlocks["instagramDm"] == true && containsAny(text, "direct", "direct message", "messages", "inbox", "dm")) {
-        return BlockedFeature("instagramDm", "Instagram", "Instagram DM", "Instagram DM")
-      }
-      if (featureBlocks["instagramStories"] == true && containsAny(text, "story", "stories")) {
-        return BlockedFeature("instagramStories", "Instagram", "Instagram Stories", "Instagram Stories")
-      }
-      if (featureBlocks["instagramSearch"] == true && text.contains("search")) {
-        return BlockedFeature("instagramSearch", "Instagram", "Instagram Search", "Instagram Search")
-      }
-      if (featureBlocks["instagramExplore"] == true && text.contains("explore")) {
-        return BlockedFeature("instagramExplore", "Instagram", "Instagram Explore", "Instagram Explore")
-      }
-      if (featureBlocks["instagramReels"] == true && text.contains("reels")) {
-        return BlockedFeature("instagramReels", "Instagram", "Instagram Reels", "Instagram Reels")
-      }
-    }
-
-    if (isTikTok(app)) {
-      if (featureBlocks["tiktokSearch"] == true && text.contains("search")) {
-        return BlockedFeature("tiktokSearch", "TikTok", "TikTok Search", "TikTok Search")
-      }
-      if (featureBlocks["tiktokShorts"] == true && (text.contains("shorts") || text.contains("for you"))) {
-        return BlockedFeature("tiktokShorts", "TikTok", "TikTok short-form feed", "TikTok feed")
-      }
-    }
-
-    if (isTelegram(app)) {
-      if (featureBlocks["telegramSearch"] == true && text.contains("search")) {
-        return BlockedFeature("telegramSearch", "Telegram", "Telegram Search", "Telegram Search")
-      }
-      if (featureBlocks["telegramSearchHistory"] == true && containsAny(
-          text,
-          "recent searches",
-          "search history",
-          "clear search",
-          "clear history",
-          "recently searched"
-        )
-      ) {
-        return BlockedFeature("telegramSearchHistory", "Telegram", "Telegram Search history", "Telegram Search history")
-      }
-      if (featureBlocks["telegramChannels"] == true && text.contains("channel")) {
-        return BlockedFeature("telegramChannels", "Telegram", "Telegram Channels", "Telegram Channels")
-      }
-      if (featureBlocks["telegramGroups"] == true && containsAny(text, "group", "groups", "public group")) {
-        return BlockedFeature("telegramGroups", "Telegram", "Telegram Groups", "Telegram Groups")
-      }
-      if (featureBlocks["telegramBlockedAccounts"] == true && containsAny(
-          text,
-          "blocked users",
-          "blocked accounts",
-          "block users",
-          "blocked contacts"
-        )
-      ) {
-        return BlockedFeature("telegramBlockedAccounts", "Telegram", "Telegram Blocked accounts", "Telegram Blocked accounts")
-      }
-    }
+    matchInstagramFeature(app, text, featureBlocks)?.let { return it }
+    matchTikTokFeature(app, text, featureBlocks)?.let { return it }
+    matchTelegramFeature(app, text, featureBlocks)?.let { return it }
 
     if (featureBlocks["pictureInPicture"] == true && isPictureInPictureSurface(app, text)) {
       return BlockedFeature("pictureInPicture", "Picture-in-picture", "Picture-in-picture mode", "Picture-in-picture")
     }
 
-    if (isYoutube(app)) {
-      if (featureBlocks["youtubeSearch"] == true && isYoutubeSearchSurface(text)) {
-        return BlockedFeature("youtubeSearch", "YouTube", "YouTube Search", "YouTube Search")
-      }
-      if (featureBlocks["youtubeShorts"] == true && isYoutubeShortsSurface(text)) {
-        return BlockedFeature("youtubeShorts", "YouTube", "YouTube Shorts", "YouTube Shorts")
-      }
-      if (featureBlocks["youtubeComments"] == true && isYoutubeCommentsSurface(text)) {
-        return BlockedFeature("youtubeComments", "YouTube", "YouTube Comments", "YouTube Comments")
-      }
-    }
-
-    if (isSnapchat(app)) {
-      if (featureBlocks["snapchatQuickAdd"] == true && text.contains("quick add")) {
-        return BlockedFeature("snapchatQuickAdd", "Snapchat", "Snapchat Quick Add", "Snapchat Quick Add")
-      }
-      if (featureBlocks["snapchatSearch"] == true && text.contains("search")) {
-        return BlockedFeature("snapchatSearch", "Snapchat", "Snapchat Search", "Snapchat Search")
-      }
-      if (featureBlocks["snapchatDiscover"] == true && text.contains("discover")) {
-        return BlockedFeature("snapchatDiscover", "Snapchat", "Snapchat Discover", "Snapchat Discover")
-      }
-      if (featureBlocks["snapchatStories"] == true && containsAny(text, "story", "stories")) {
-        return BlockedFeature("snapchatStories", "Snapchat", "Snapchat Stories", "Snapchat Stories")
-      }
-      if (featureBlocks["snapchatSpotlight"] == true && text.contains("spotlight")) {
-        return BlockedFeature("snapchatSpotlight", "Snapchat", "Snapchat Spotlight", "Snapchat Spotlight")
-      }
-      if (featureBlocks["snapchatMaps"] == true && containsAny(text, "snap map", "maps", "map")) {
-        return BlockedFeature("snapchatMaps", "Snapchat", "Snapchat Maps", "Snapchat Maps")
-      }
-    }
-
-    if (featureBlocks["twitterEraseAll"] == true && (isTwitter(app) || isTwitterSurface(text))) {
-      return BlockedFeature("twitterEraseAll", "X/Twitter", "X/Twitter full block", "X/Twitter")
-    }
-
-    if (isTwitter(app)) {
-      if (featureBlocks["twitterBlockApp"] == true) {
-        return BlockedFeature("twitterBlockApp", "X/Twitter", "X/Twitter app", "X/Twitter")
-      }
-      if (featureBlocks["twitterSearchMediaTrends"] == true && containsAny(
-          text,
-          "search",
-          "explore",
-          "trend",
-          "trending",
-          "video",
-          "videos",
-          "clip",
-          "clips",
-          "media",
-          "photo",
-          "photos",
-          "image",
-          "images"
-        )
-      ) {
-        return BlockedFeature("twitterSearchMediaTrends", "X/Twitter", "X Search, media, and trends", "X Search and media")
-      }
-      if (featureBlocks["twitterForYou"] == true && text.contains("for you")) {
-        return BlockedFeature("twitterForYou", "X/Twitter", "X For You", "X For You")
-      }
-    }
+    matchYoutubeFeature(app, text, featureBlocks)?.let { return it }
+    matchSnapchatFeature(app, text, featureBlocks)?.let { return it }
+    matchTwitterFeature(app, text, featureBlocks)?.let { return it }
 
     if (featureBlocks["discordBlockApp"] == true && isDiscord(app)) {
       return BlockedFeature("discordBlockApp", "Discord", "Discord app", "Discord")
     }
 
-    if (isFacebook(app)) {
-      if (featureBlocks["facebookBlockApp"] == true) {
-        return BlockedFeature("facebookBlockApp", "Facebook", "Facebook app", "Facebook")
-      }
-      if (featureBlocks["facebookReels"] == true && text.contains("reels")) {
-        return BlockedFeature("facebookReels", "Facebook", "Facebook Reels", "Facebook Reels")
-      }
-      if (featureBlocks["facebookStories"] == true && containsAny(text, "story", "stories")) {
-        return BlockedFeature("facebookStories", "Facebook", "Facebook Stories", "Facebook Stories")
-      }
-      if (featureBlocks["facebookSearch"] == true && text.contains("search")) {
-        return BlockedFeature("facebookSearch", "Facebook", "Facebook Search", "Facebook Search")
-      }
-      if (featureBlocks["facebookGroups"] == true && containsAny(text, "group", "groups")) {
-        return BlockedFeature("facebookGroups", "Facebook", "Facebook Groups", "Facebook Groups")
-      }
-    }
+    matchFacebookFeature(app, text, featureBlocks)?.let { return it }
 
     if (featureBlocks["liveStreamingApps"] == true && isLiveStreamingApp(app, text)) {
       return BlockedFeature("liveStreamingApps", "Live streaming", "Live-streaming app", "Live-streaming app")
     }
 
-    if (isReddit(app)) {
-      if (featureBlocks["redditSearch"] == true && text.contains("search")) {
-        return BlockedFeature("redditSearch", "Reddit", "Reddit Search", "Reddit Search")
-      }
-      if (featureBlocks["redditSubreddits"] == true && containsAny(text, "subreddit", "community", "communities", "popular")) {
-        return BlockedFeature("redditSubreddits", "Reddit", "Reddit communities", "Reddit communities")
-      }
-    }
-
-    if (isPinterest(app) && featureBlocks["pinterestSearch"] == true && containsAny(text, "search", "explore", "pins")) {
-      return BlockedFeature("pinterestSearch", "Pinterest", "Pinterest Search", "Pinterest Search")
-    }
-
-    if (featureBlocks["browserUnsafeModes"] == true && isBrowser(app)) {
-      if (containsAny(
-          text,
-          "incognito",
-          "private browsing",
-          "private tab",
-          "private window",
-          "new private tab",
-          "inprivate",
-          "secret mode",
-          "secret tab",
-          "guest mode",
-          "fire button"
-        )
-      ) {
-        return BlockedFeature("browserUnsafeModes", "Browser", "Private or unsafe browsing mode", "Browser unsafe mode")
-      }
-    }
-
-    if (featureBlocks["androidTamperSettings"] == true && isAndroidSettings(app) && containsAny(
-        text,
-        "accessibility",
-        "vpn",
-        "private dns",
-        "device admin",
-        "device administrator",
-        "usage access",
-        "draw over other apps",
-        "display over other apps",
-        "install unknown apps",
-        "unknown sources",
-        "developer options",
-        "usb debugging",
-        "battery optimization",
-        "app info",
-        "uninstall",
-        "force stop",
-        "storage",
-        "clear data"
-      )
-    ) {
-      return BlockedFeature("androidTamperSettings", "Android Settings", "Protection settings", "Android protection settings")
-    }
-
-    if (featureBlocks["playStoreUninstallControls"] == true && isPlayStore(app) && containsAny(
-        text,
-        "uninstall",
-        "remove",
-        "manage apps",
-        "installed",
-        "parent blocker",
-        "com.example.parentblocker"
-      )
-    ) {
-      return BlockedFeature("playStoreUninstallControls", "Google Play", "Play Store uninstall controls", "Play Store uninstall")
-    }
-
-    if (featureBlocks["playStoreAdultInstallControls"] == true && isPlayStore(app) && isAdultPlayStoreInstallSurface(text)) {
-      return BlockedFeature(
-        "playStoreAdultInstallControls",
-        "Google Play",
-        "Adult-rated app install",
-        "Play Store app rating"
-      )
-    }
-
-    if (featureBlocks["packageInstallerControls"] == true && isPackageInstaller(app) && containsAny(
-        text,
-        "install",
-        "package installer",
-        "apk",
-        "unknown app",
-        "unknown source",
-        "install unknown apps",
-        "browser",
-        "private browser",
-        "vpn",
-        "proxy",
-        "tor",
-        "enable"
-      )
-    ) {
-      return BlockedFeature("packageInstallerControls", "Package installer", "APK install prompt", "Package install")
-    }
+    matchRedditFeature(app, text, featureBlocks)?.let { return it }
+    matchPinterestFeature(app, text, featureBlocks)?.let { return it }
+    matchBrowserFeature(app, text, featureBlocks)?.let { return it }
+    matchSystemFeature(app, text, featureBlocks)?.let { return it }
 
     return null
   }
@@ -367,6 +141,24 @@ object ScreenContextDetector {
     }
 
     if (isAndroidSettings(app)) {
+      if (isOwnAccessibilityServiceSurface(text)) {
+        return BlockedFeature(
+          "protectedAccessibilityService",
+          "Android Settings",
+          "Behavior Protection",
+          "Accessibility service"
+        )
+      }
+
+      if (isOwnDeviceAdminSurface(text, ownPackage, labels)) {
+        return BlockedFeature(
+          "protectedDeviceAdmin",
+          "Android Settings",
+          "Device Admin",
+          "Device Admin"
+        )
+      }
+
       if (isDnsSettingsSurface(text)) {
         return BlockedFeature("protectedDnsSettings", "Android Settings", "DNS settings", "DNS settings")
       }
@@ -442,6 +234,338 @@ object ScreenContextDetector {
 
     if (isPinterest(app) && containsAny(text, "search", "explore", "pins", "images")) {
       return BlockedFeature("strictPinterest", "Pinterest", "Pinterest search/image surface", "Pinterest")
+    }
+
+    return null
+  }
+
+  private fun matchInstagramFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isInstagram(app)) return null
+
+    val dmSurface = isInstagramDmSurface(text)
+    val accountSurface = isAccountOrSettingsSurface(text)
+    val detailSurface = isInstagramDetailSurface(text)
+
+    if (featureBlocks["instagramDm"] == true && dmSurface) {
+      return BlockedFeature("instagramDm", "Instagram", "Instagram DM", "Instagram DM")
+    }
+    if (featureBlocks["instagramStories"] == true && isInstagramStoriesSurface(text) && !accountSurface) {
+      return BlockedFeature("instagramStories", "Instagram", "Instagram Stories", "Instagram Stories")
+    }
+    if (featureBlocks["instagramSearch"] == true && isInstagramSearchSurface(text) && !accountSurface) {
+      return BlockedFeature("instagramSearch", "Instagram", "Instagram Search", "Instagram Search")
+    }
+    if (featureBlocks["instagramExplore"] == true && isInstagramExploreSurface(text) && !dmSurface && !accountSurface) {
+      return BlockedFeature("instagramExplore", "Instagram", "Instagram Explore", "Instagram Explore")
+    }
+    if (featureBlocks["instagramReels"] == true && isInstagramReelsFeedSurface(text) && !dmSurface && !detailSurface) {
+      return BlockedFeature("instagramReels", "Instagram", "Instagram Reels", "Instagram Reels")
+    }
+
+    return null
+  }
+
+  private fun matchTikTokFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isTikTok(app)) return null
+
+    val searchSurface = isTikTokSearchSurface(text)
+    if (featureBlocks["tiktokSearch"] == true && searchSurface) {
+      return BlockedFeature("tiktokSearch", "TikTok", "TikTok Search", "TikTok Search")
+    }
+    if (featureBlocks["tiktokShorts"] == true &&
+      isTikTokFeedSurface(text) &&
+      !searchSurface &&
+      !isSocialProfileSurface(text) &&
+      !isAccountOrSettingsSurface(text)
+    ) {
+      return BlockedFeature("tiktokShorts", "TikTok", "TikTok short-form feed", "TikTok feed")
+    }
+
+    return null
+  }
+
+  private fun matchTelegramFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isTelegram(app)) return null
+
+    if (featureBlocks["telegramSearchHistory"] == true && containsAny(
+        text,
+        "recent searches",
+        "search history",
+        "clear search",
+        "clear history",
+        "recently searched"
+      )
+    ) {
+      return BlockedFeature("telegramSearchHistory", "Telegram", "Telegram Search history", "Telegram Search history")
+    }
+    if (featureBlocks["telegramSearch"] == true && isTelegramSearchSurface(text)) {
+      return BlockedFeature("telegramSearch", "Telegram", "Telegram Search", "Telegram Search")
+    }
+    if (featureBlocks["telegramChannels"] == true && isTelegramChannelSurface(text)) {
+      return BlockedFeature("telegramChannels", "Telegram", "Telegram Channels", "Telegram Channels")
+    }
+    if (featureBlocks["telegramGroups"] == true && isTelegramGroupSurface(text)) {
+      return BlockedFeature("telegramGroups", "Telegram", "Telegram Groups", "Telegram Groups")
+    }
+    if (featureBlocks["telegramBlockedAccounts"] == true && containsAny(
+        text,
+        "blocked users",
+        "blocked accounts",
+        "block users",
+        "blocked contacts"
+      )
+    ) {
+      return BlockedFeature("telegramBlockedAccounts", "Telegram", "Telegram Blocked accounts", "Telegram Blocked accounts")
+    }
+
+    return null
+  }
+
+  private fun matchYoutubeFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isYoutube(app)) return null
+
+    val searchSurface = isYoutubeSearchSurface(text)
+    if (featureBlocks["youtubeSearch"] == true && searchSurface) {
+      return BlockedFeature("youtubeSearch", "YouTube", "YouTube Search", "YouTube Search")
+    }
+    if (featureBlocks["youtubeShorts"] == true && isYoutubeShortsSurface(text) && !searchSurface) {
+      return BlockedFeature("youtubeShorts", "YouTube", "YouTube Shorts", "YouTube Shorts")
+    }
+    if (featureBlocks["youtubeComments"] == true && isYoutubeCommentsSurface(text) && !isYoutubeCommentsClosedSurface(text)) {
+      return BlockedFeature("youtubeComments", "YouTube", "YouTube Comments", "YouTube Comments")
+    }
+
+    return null
+  }
+
+  private fun matchSnapchatFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isSnapchat(app)) return null
+
+    if (featureBlocks["snapchatQuickAdd"] == true && containsAny(text, "quick add", "quickadd")) {
+      return BlockedFeature("snapchatQuickAdd", "Snapchat", "Snapchat Quick Add", "Snapchat Quick Add")
+    }
+    if (featureBlocks["snapchatSearch"] == true && containsAny(text, "search", "find friends", "find friend")) {
+      return BlockedFeature("snapchatSearch", "Snapchat", "Snapchat Search", "Snapchat Search")
+    }
+    if (featureBlocks["snapchatDiscover"] == true && containsAny(text, "discover", "for you", "publisher stories")) {
+      return BlockedFeature("snapchatDiscover", "Snapchat", "Snapchat Discover", "Snapchat Discover")
+    }
+    if (featureBlocks["snapchatStories"] == true && containsAny(text, "story", "stories", "public story")) {
+      return BlockedFeature("snapchatStories", "Snapchat", "Snapchat Stories", "Snapchat Stories")
+    }
+    if (featureBlocks["snapchatSpotlight"] == true && containsAny(text, "spotlight", "spotlight feed")) {
+      return BlockedFeature("snapchatSpotlight", "Snapchat", "Snapchat Spotlight", "Snapchat Spotlight")
+    }
+    if (featureBlocks["snapchatMaps"] == true && containsAny(text, "snap map", "maps", "map")) {
+      return BlockedFeature("snapchatMaps", "Snapchat", "Snapchat Maps", "Snapchat Maps")
+    }
+
+    return null
+  }
+
+  private fun matchTwitterFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    val twitterSurface = isTwitter(app) || isTwitterSurface(text)
+    if (!twitterSurface) return null
+
+    if (featureBlocks["twitterEraseAll"] == true) {
+      return BlockedFeature("twitterEraseAll", "X/Twitter", "X/Twitter full block", "X/Twitter")
+    }
+    if (isTwitter(app) && featureBlocks["twitterBlockApp"] == true) {
+      return BlockedFeature("twitterBlockApp", "X/Twitter", "X/Twitter app", "X/Twitter")
+    }
+    if (featureBlocks["twitterSearchMediaTrends"] == true &&
+      isTwitterSearchMediaSurface(text) &&
+      !isTwitterProfileSurface(text) &&
+      !isAccountOrSettingsSurface(text)
+    ) {
+      return BlockedFeature("twitterSearchMediaTrends", "X/Twitter", "X Search, media, and trends", "X Search and media")
+    }
+    if (featureBlocks["twitterForYou"] == true && containsAny(text, "for you", "for-you") && !isTwitterProfileSurface(text)) {
+      return BlockedFeature("twitterForYou", "X/Twitter", "X For You", "X For You")
+    }
+
+    return null
+  }
+
+  private fun matchFacebookFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isFacebook(app)) return null
+
+    if (featureBlocks["facebookBlockApp"] == true) {
+      return BlockedFeature("facebookBlockApp", "Facebook", "Facebook app", "Facebook")
+    }
+    if (featureBlocks["facebookReels"] == true && isFacebookReelsSurface(text) && !isMessengerOrProfileSurface(text)) {
+      return BlockedFeature("facebookReels", "Facebook", "Facebook Reels", "Facebook Reels")
+    }
+    if (featureBlocks["facebookStories"] == true && containsAny(text, "story", "stories") && !isAccountOrSettingsSurface(text)) {
+      return BlockedFeature("facebookStories", "Facebook", "Facebook Stories", "Facebook Stories")
+    }
+    if (featureBlocks["facebookSearch"] == true && containsAny(text, "search", "search facebook") && !isAccountOrSettingsSurface(text)) {
+      return BlockedFeature("facebookSearch", "Facebook", "Facebook Search", "Facebook Search")
+    }
+    if (featureBlocks["facebookGroups"] == true && containsAny(text, "group", "groups", "your groups", "discover groups")) {
+      return BlockedFeature("facebookGroups", "Facebook", "Facebook Groups", "Facebook Groups")
+    }
+
+    return null
+  }
+
+  private fun matchRedditFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isReddit(app)) return null
+
+    if (featureBlocks["redditSearch"] == true && isRedditSearchSurface(text)) {
+      return BlockedFeature("redditSearch", "Reddit", "Reddit Search", "Reddit Search")
+    }
+    if (featureBlocks["redditSubreddits"] == true && isRedditCommunitySurface(text) && !isRedditPostSurface(text)) {
+      return BlockedFeature("redditSubreddits", "Reddit", "Reddit communities", "Reddit communities")
+    }
+
+    return null
+  }
+
+  private fun matchPinterestFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (!isPinterest(app)) return null
+    if (featureBlocks["pinterestSearch"] != true) return null
+    if (isAccountOrSettingsSurface(text)) return null
+
+    return if (containsAny(text, "search", "explore", "search ideas", "visual search", "ideas for you")) {
+      BlockedFeature("pinterestSearch", "Pinterest", "Pinterest Search", "Pinterest Search")
+    } else {
+      null
+    }
+  }
+
+  private fun matchBrowserFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (featureBlocks["browserUnsafeModes"] != true || !isBrowser(app)) return null
+
+    return if (containsAny(
+        text,
+        "incognito",
+        "private browsing",
+        "private tab",
+        "private window",
+        "new private tab",
+        "inprivate",
+        "secret mode",
+        "secret tab",
+        "guest mode",
+        "fire button"
+      )
+    ) {
+      BlockedFeature("browserUnsafeModes", "Browser", "Private or unsafe browsing mode", "Browser unsafe mode")
+    } else {
+      null
+    }
+  }
+
+  private fun matchSystemFeature(
+    app: String,
+    text: String,
+    featureBlocks: Map<String, Boolean>
+  ): BlockedFeature? {
+    if (featureBlocks["androidTamperSettings"] == true && isAndroidSettings(app) && containsAny(
+        text,
+        "accessibility",
+        "vpn",
+        "private dns",
+        "device admin",
+        "device administrator",
+        "usage access",
+        "draw over other apps",
+        "display over other apps",
+        "install unknown apps",
+        "unknown sources",
+        "developer options",
+        "usb debugging",
+        "battery optimization",
+        "app info",
+        "uninstall",
+        "force stop",
+        "storage",
+        "clear data"
+      )
+    ) {
+      return BlockedFeature("androidTamperSettings", "Android Settings", "Protection settings", "Android protection settings")
+    }
+
+    if (featureBlocks["playStoreUninstallControls"] == true && isPlayStore(app) && containsAny(
+        text,
+        "uninstall",
+        "remove",
+        "manage apps",
+        "installed",
+        "parent blocker",
+        "com.example.parentblocker"
+      )
+    ) {
+      return BlockedFeature("playStoreUninstallControls", "Google Play", "Play Store uninstall controls", "Play Store uninstall")
+    }
+
+    if (featureBlocks["playStoreAdultInstallControls"] == true && isPlayStore(app) && isAdultPlayStoreInstallSurface(text)) {
+      return BlockedFeature(
+        "playStoreAdultInstallControls",
+        "Google Play",
+        "Adult-rated app install",
+        "Play Store app rating"
+      )
+    }
+
+    if (featureBlocks["packageInstallerControls"] == true && isPackageInstaller(app) && containsAny(
+        text,
+        "install",
+        "package installer",
+        "apk",
+        "unknown app",
+        "unknown source",
+        "install unknown apps",
+        "browser",
+        "private browser",
+        "vpn",
+        "proxy",
+        "tor",
+        "enable"
+      )
+    ) {
+      return BlockedFeature("packageInstallerControls", "Package installer", "APK install prompt", "Package install")
     }
 
     return null
@@ -584,6 +708,92 @@ object ScreenContextDetector {
   private fun containsAny(text: String, vararg values: String): Boolean =
     values.any { text.contains(it) }
 
+  private fun isAccountOrSettingsSurface(text: String): Boolean =
+    containsAny(
+      text,
+      "settings",
+      "account settings",
+      "your account",
+      "accounts center",
+      "privacy",
+      "notifications",
+      "edit profile",
+      "profile settings",
+      "security",
+      "password",
+      "login",
+      "help",
+      "about"
+    )
+
+  private fun isSocialProfileSurface(text: String): Boolean =
+    containsAny(
+      text,
+      "profile",
+      "edit profile",
+      "view profile",
+      "followers",
+      "following list",
+      "saved",
+      "archive"
+    )
+
+  private fun isInstagramDmSurface(text: String): Boolean =
+    containsAny(text, "direct", "direct message", "messages", "inbox", "dm", "chat", "conversation")
+
+  private fun isInstagramStoriesSurface(text: String): Boolean =
+    containsAny(text, "story", "stories", "your story", "close friends", "story viewer")
+
+  private fun isInstagramSearchSurface(text: String): Boolean =
+    containsAny(text, "search", "recent searches", "search instagram", "accounts tags places", "audio tags places")
+
+  private fun isInstagramExploreSurface(text: String): Boolean =
+    containsAny(text, "explore", "explore people", "suggested for you", "suggested reels")
+
+  private fun isInstagramReelsFeedSurface(text: String): Boolean =
+    text.contains("reels") || containsAny(text, "reels tab", "reels selected", "selected reels", "reels feed", "/reels")
+
+  private fun isInstagramDetailSurface(text: String): Boolean =
+    isInstagramDmSurface(text) ||
+      isSocialProfileSurface(text) ||
+      containsAny(
+        text,
+        "sent you a reel",
+        "shared a reel",
+        "reel by",
+        "post details",
+        "liked by",
+        "view comments",
+        "add a comment",
+        "view profile"
+      )
+
+  private fun isTikTokSearchSurface(text: String): Boolean =
+    containsAny(text, "search tiktok", "search results", "recent searches", "clear search", "sounds users videos") ||
+      (text.contains("search") && containsAny(text, "users", "videos", "sounds", "hashtags", "live"))
+
+  private fun isTikTokFeedSurface(text: String): Boolean =
+    containsAny(
+      text,
+      "for you",
+      "following",
+      "friends",
+      "tiktok feed",
+      "feed",
+      "swipe up",
+      "recommendations",
+      "short-form"
+    )
+
+  private fun isTelegramSearchSurface(text: String): Boolean =
+    containsAny(text, "search", "global search", "search messages", "search chats", "search telegram")
+
+  private fun isTelegramChannelSurface(text: String): Boolean =
+    containsAny(text, "channel", "channels", "public channel", "join channel", "find channels")
+
+  private fun isTelegramGroupSurface(text: String): Boolean =
+    containsAny(text, "group", "groups", "public group", "join group", "find groups")
+
   private fun isYoutubeSearchSurface(text: String): Boolean =
     containsAny(
       text,
@@ -604,10 +814,12 @@ object ScreenContextDetector {
       "shorts selected",
       "selected shorts",
       "#shorts",
+      "shorts tab",
       "shorts feed",
       "shorts player",
       "shorts remix",
-      "create a short"
+      "create a short",
+      "shorts for you"
     )
 
   private fun isYoutubeCommentsSurface(text: String): Boolean =
@@ -624,6 +836,9 @@ object ScreenContextDetector {
     ) ||
       (text.contains("comments") && containsAny(text, "reply", "replies", "sort by", "add a comment"))
 
+  private fun isYoutubeCommentsClosedSurface(text: String): Boolean =
+    containsAny(text, "comments are turned off", "comments off", "comments disabled", "comments closed")
+
   private fun isPictureInPictureSurface(packageName: String, text: String): Boolean {
     val surfaceText = "$packageName $text"
     return containsAny(
@@ -638,6 +853,53 @@ object ScreenContextDetector {
       "miniplayer"
     )
   }
+
+  private fun isTwitterSearchMediaSurface(text: String): Boolean =
+    containsAny(
+      text,
+      "search x",
+      "search twitter",
+      "search results",
+      "explore",
+      "trend",
+      "trending",
+      "what's happening",
+      "whats happening",
+      "videos for you",
+      "media search",
+      "photos and videos",
+      "image search"
+    ) ||
+      (text.contains("search") && containsAny(text, "posts", "people", "photos", "videos", "media", "trending"))
+
+  private fun isTwitterProfileSurface(text: String): Boolean =
+    containsAny(text, "edit profile", "followers") ||
+      (containsAny(text, "profile", "posts", "replies", "highlights") && containsAny(text, "media", "likes", "photos"))
+
+  private fun isFacebookReelsSurface(text: String): Boolean =
+    containsAny(text, "reels", "watch reels", "reels and short videos", "short videos")
+
+  private fun isMessengerOrProfileSurface(text: String): Boolean =
+    containsAny(text, "messenger", "messages", "inbox", "chat") || isSocialProfileSurface(text) || isAccountOrSettingsSurface(text)
+
+  private fun isRedditSearchSurface(text: String): Boolean =
+    containsAny(text, "search reddit", "search posts", "search communities", "recent searches", "search results") ||
+      (text.contains("search") && containsAny(text, "posts", "communities", "subreddits", "reddit"))
+
+  private fun isRedditCommunitySurface(text: String): Boolean =
+    containsAny(
+      text,
+      "subreddit",
+      "subreddits",
+      "communities",
+      "popular",
+      "r/all",
+      "browse communities",
+      "discover communities"
+    )
+
+  private fun isRedditPostSurface(text: String): Boolean =
+    containsAny(text, "comments", "reply", "upvote", "downvote", "share", "award", "post insights")
 
   private fun isAdultPlayStoreInstallSurface(text: String): Boolean {
     val installSurface = containsAny(
@@ -787,6 +1049,60 @@ object ScreenContextDetector {
     ) || (namesOwnApp && containsAny(text, "app info", "force stop", "clear data", "storage", "uninstall", "remove"))
   }
 
+  private fun isOwnAccessibilityServiceSurface(text: String): Boolean {
+    val namesOwnService = containsAny(
+      text,
+      "behavior protection",
+      "parent blocker behavior engine",
+      "blocker behavior engine"
+    )
+    if (!namesOwnService) return false
+
+    return containsAny(
+      text,
+      "accessibility",
+      "accessibility service",
+      "installed apps",
+      "downloaded apps",
+      "use behavior protection",
+      "use parent blocker behavior engine",
+      "allow behavior protection",
+      "turn off",
+      "turn on",
+      "disable",
+      "stop",
+      "shortcut"
+    )
+  }
+
+  private fun isOwnDeviceAdminSurface(
+    text: String,
+    ownPackageName: String,
+    appLabels: List<String>
+  ): Boolean {
+    val namesOwnAdmin = text.contains(ownPackageName) ||
+      appLabels.any { label -> text.contains(label) } ||
+      containsAny(
+        text,
+        "blocker device admin",
+        "parent blocker device admin",
+        "control yourself device admin"
+      )
+    val deviceAdminSurface = containsAny(
+      text,
+      "device admin",
+      "device administrator",
+      "device admin apps",
+      "device admin app",
+      "activate this device admin app",
+      "deactivate this device admin app",
+      "deactivate this admin app",
+      "uninstall protection"
+    )
+
+    return namesOwnAdmin && deviceAdminSurface
+  }
+
   private fun isLiveStreamingApp(packageName: String, normalizedText: String): Boolean {
     val text = "$packageName $normalizedText"
     return containsAny(
@@ -874,12 +1190,19 @@ class BehaviorAccessibilityService : AccessibilityService() {
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return
 
     val repository = PolicyRepository(applicationContext)
-    if (!repository.isScreenshotAuditEnabled()) return
+    val realtimeScanActive =
+      repository.isProtectionRequested() &&
+        repository.isImageScanningEnabled() &&
+        com.example.blocker.BlockerConfig.imageScanningEnabled
+    val auditScanActive = repository.isScreenshotAuditEnabled()
+    if (!realtimeScanActive && !auditScanActive) return
 
     val pkg = event.packageName?.toString() ?: return
     if (pkg !in SCAN_TARGET_PACKAGES) return
-    if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-    if (!captureThrottle.shouldCapture(pkg, repository.screenshotAuditIntervalMs())) return
+    if (event.eventType !in SCAN_EVENT_TYPES) return
+
+    val intervalMs = if (realtimeScanActive) REALTIME_SCAN_INTERVAL_MS else repository.screenshotAuditIntervalMs()
+    if (!captureThrottle.shouldCapture(pkg, intervalMs)) return
 
     takeScreenshot(
       android.view.Display.DEFAULT_DISPLAY,
@@ -896,13 +1219,15 @@ class BehaviorAccessibilityService : AccessibilityService() {
           bitmap.recycle()
           if (softBitmap == null) return
 
-          PolicyRepository(applicationContext).recordAuditEvent(
-            eventType = "SCREENSHOT_AUDIT_CAPTURED",
-            severity = "medium",
-            category = "media_audit",
-            subject = pkg,
-            action = "captured_for_local_ai_review"
-          )
+          if (auditScanActive && !realtimeScanActive) {
+            PolicyRepository(applicationContext).recordAuditEvent(
+              eventType = "SCREENSHOT_AUDIT_CAPTURED",
+              severity = "medium",
+              category = "media_audit",
+              subject = pkg,
+              action = "captured_for_local_ai_review"
+            )
+          }
           com.example.blocker.ImageContentScanner.scanBitmap(
             softBitmap,
             onComplete = { softBitmap.recycle() },
@@ -945,10 +1270,13 @@ class BehaviorAccessibilityService : AccessibilityService() {
               severity = "critical",
               category = "media_scan",
               subject = pkg,
-              action = "image_or_thumbnail_blocked",
-              metadata = mapOf("score" to decision.score)
+              action = if (realtimeScanActive) "screen_content_blocked" else "image_or_thumbnail_blocked",
+              metadata = mapOf(
+                "score" to decision.score,
+                "mode" to if (realtimeScanActive) "realtime_screen_scan" else "screenshot_audit"
+              )
             )
-            blockAdultImage(pkg, "Adult image or video thumbnail detected.")
+            blockAdultImage(pkg, "Explicit content detected. This content is blocked. You are doing well.")
           }
         }
 
@@ -993,23 +1321,31 @@ class BehaviorAccessibilityService : AccessibilityService() {
       packageName,
       reason
     )
-    com.example.blocker.GuardianNotifier.notify(
-      context = applicationContext,
-      eventType = "NSFW_IMAGE_DETECTED",
-      severity = "critical",
-      subject = packageName,
-      action = "image_or_thumbnail_blocked"
-    )
+    val homeIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+      addCategory(android.content.Intent.CATEGORY_HOME)
+      flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+    }
+    runCatching { startActivity(homeIntent) }
   }
 
   companion object {
+    private const val REALTIME_SCAN_INTERVAL_MS = 1500L
+    private val SCAN_EVENT_TYPES = setOf(
+      AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+      AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+      AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    )
+
     private val SCAN_TARGET_PACKAGES = setOf(
       "com.android.chrome", "org.mozilla.firefox", "com.brave.browser",
       "com.whatsapp", "org.telegram.messenger", "com.instagram.android",
       "com.google.android.youtube", "com.snapchat.android",
       "com.sec.android.app.sbrowser", "com.opera.browser", "com.microsoft.emmx",
       "com.duckduckgo.mobile.android", "org.torproject.torbrowser",
-      "org.mozilla.focus", "com.vivaldi.browser", "com.kiwibrowser.browser"
+      "org.mozilla.focus", "com.vivaldi.browser", "com.kiwibrowser.browser",
+      "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+      "com.twitter.android", "com.x.android", "com.reddit.frontpage",
+      "com.pinterest", "com.discord", "com.discord.beta"
     )
 
     private val COMMON_INCOGNITO_SIGNATURES = listOf(

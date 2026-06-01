@@ -5,7 +5,7 @@ import { Chip, Switch, Text } from 'react-native-paper';
 import { Card } from '@/components/Card';
 import { Button, Field } from '@/components/controls';
 import { colors, radius, spacing, typography } from '@/theme';
-import type { AnomalyDetectionStatus, BehaviorPolicy, MediaScanningStatus, PolicyUpdate } from '@/types/blocker';
+import type { AnomalyDetectionStatus, BehaviorPolicy, GalleryScanResult, MediaScanningStatus, PolicyUpdate } from '@/types/blocker';
 
 type AIProtectionCardProps = {
   behaviorPolicy: BehaviorPolicy;
@@ -13,6 +13,8 @@ type AIProtectionCardProps = {
   anomalyDetection: AnomalyDetectionStatus;
   pinConfigured: boolean;
   onUpdatePolicy: (policy: PolicyUpdate) => Promise<void>;
+  onRequestGalleryScanPermission?: () => Promise<unknown>;
+  onScanGalleryForExplicitContent?: (limit?: number) => Promise<GalleryScanResult | null>;
 };
 
 export function AIProtectionCard({
@@ -21,14 +23,20 @@ export function AIProtectionCard({
   anomalyDetection,
   pinConfigured,
   onUpdatePolicy,
+  onRequestGalleryScanPermission,
+  onScanGalleryForExplicitContent,
 }: AIProtectionCardProps) {
   const [pin, setPin] = useState('');
   const [endpoint, setEndpoint] = useState('');
+  const [imageScanningEnabled, setImageScanningEnabled] = useState(mediaScanning.enabled);
   const [fallbackEnabled, setFallbackEnabled] = useState(mediaScanning.cloudFallbackEnabled);
+  const [galleryAction, setGalleryAction] = useState<string | null>(null);
+  const [galleryFeedback, setGalleryFeedback] = useState<string | null>(null);
 
   useEffect(() => {
+    setImageScanningEnabled(mediaScanning.enabled);
     setFallbackEnabled(mediaScanning.cloudFallbackEnabled);
-  }, [mediaScanning.cloudFallbackEnabled]);
+  }, [mediaScanning.cloudFallbackEnabled, mediaScanning.enabled]);
 
   const update = (next: PolicyUpdate) => {
     void onUpdatePolicy(pinConfigured ? { ...next, adminPin: pin } : next);
@@ -55,9 +63,24 @@ export function AIProtectionCard({
 
       <View style={styles.metrics}>
         <Metric label="Image classifier" value={mediaScanning.imageScanningActive ? 'Active' : 'Waiting'} />
+        <Metric label="Gallery scan" value={galleryScanLabel(mediaScanning)} />
         <Metric label="Ambiguous fallback" value={fallbackStatus(mediaScanning)} />
         <Metric label="Text context engine" value={behaviorPolicy.textContextEngine.mode.replace(/_/g, ' ')} />
         <Metric label="Anomaly window" value={`${anomalyDetection.windowHours}h / ${anomalyDetection.detectedCount} signals`} />
+      </View>
+
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.label}>Real-time image scanning</Text>
+          <Text style={styles.caption}>On-device only while Protection is on.</Text>
+        </View>
+        <Switch
+          onValueChange={(enabled) => {
+            setImageScanningEnabled(enabled);
+            update({ imageScanningEnabled: enabled });
+          }}
+          value={imageScanningEnabled}
+        />
       </View>
 
       <View style={styles.row}>
@@ -91,6 +114,51 @@ export function AIProtectionCard({
         Save Endpoint
       </Button>
 
+      <View style={styles.galleryPanel}>
+        <Text style={styles.label}>Gallery media scan</Text>
+        <Text style={styles.caption}>
+          On-device thumbnail review. Flagged count only; images are not stored or shown.
+        </Text>
+        <View style={styles.galleryActions}>
+          <Button
+            disabled={mediaScanning.galleryScanPermissionGranted || !onRequestGalleryScanPermission}
+            icon="image-lock-outline"
+            loading={galleryAction === 'permission'}
+            tone="neutral"
+            onPress={() => {
+              if (!onRequestGalleryScanPermission) return;
+              setGalleryAction('permission');
+              setGalleryFeedback(null);
+              void onRequestGalleryScanPermission()
+                .then(() => setGalleryFeedback('Gallery permission requested.'))
+                .finally(() => setGalleryAction(null));
+            }}
+          >
+            Allow Gallery Scan
+          </Button>
+          <Button
+            disabled={!mediaScanning.galleryScanPermissionGranted || !onScanGalleryForExplicitContent}
+            icon="image-search-outline"
+            loading={galleryAction === 'scan'}
+            tone="neutral"
+            onPress={() => {
+              if (!onScanGalleryForExplicitContent) return;
+              setGalleryAction('scan');
+              setGalleryFeedback(null);
+              void onScanGalleryForExplicitContent(24)
+                .then((result) => {
+                  if (!result) return;
+                  setGalleryFeedback(`Scanned ${result.scannedCount}; flagged ${result.flaggedCount}.`);
+                })
+                .finally(() => setGalleryAction(null));
+            }}
+          >
+            Scan Recent Gallery
+          </Button>
+        </View>
+        {galleryFeedback ? <Text style={styles.caption}>{galleryFeedback}</Text> : null}
+      </View>
+
       {detectedSignals.length > 0 ? (
         <View style={styles.signalList}>
           {detectedSignals.slice(0, 3).map((signal) => (
@@ -121,6 +189,13 @@ function Metric({ label, value }: { label: string; value: string }) {
 function fallbackStatus(status: MediaScanningStatus) {
   if (!status.cloudFallbackEnabled) return 'Off';
   return status.cloudFallbackConfigured ? 'Configured' : 'Needs endpoint';
+}
+
+function galleryScanLabel(status: MediaScanningStatus) {
+  if (!status.galleryScanSupported) return 'Unsupported';
+  if (!status.galleryScanPermissionGranted) return 'Needs permission';
+  if (status.galleryScanLastAt <= 0) return 'Ready';
+  return `${status.galleryScanFlaggedCount} flagged`;
 }
 
 function riskLabel(riskLevel: string) {
@@ -157,6 +232,18 @@ const styles = StyleSheet.create({
   },
   metrics: {
     marginBottom: spacing.md,
+  },
+  galleryActions: {
+    gap: spacing.sm,
+  },
+  galleryPanel: {
+    backgroundColor: colors.bg.tertiary,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    marginVertical: spacing.md,
+    padding: spacing.md,
   },
   row: {
     alignItems: 'center',

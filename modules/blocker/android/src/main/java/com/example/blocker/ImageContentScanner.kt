@@ -61,7 +61,6 @@ object ImageContentScanner {
     "animal", "pet", "dog", "cat", "plant", "vehicle"
   )
 
-  private const val BLOCK_THRESHOLD = 0.72
   private const val AMBIGUOUS_THRESHOLD = 0.38
 
   private val scanThrottle = ConcurrentHashMap<String, Long>()
@@ -109,30 +108,34 @@ object ImageContentScanner {
         }
       }
       .addOnFailureListener { /* ML Kit unavailable or model not loaded */ }
-      .addOnCompleteListener { onComplete() }
+      .addOnCompleteListener {
+        if (scaled !== bitmap) scaled.recycle()
+        onComplete()
+      }
   }
 
   fun status(
     supported: Boolean,
     enabled: Boolean,
+    protectionActive: Boolean,
     accessibilityServiceEnabled: Boolean,
     cloudFallbackEnabled: Boolean,
     cloudFallbackConfigured: Boolean
   ): Map<String, Any?> = mapOf(
     "supported" to supported,
     "enabled" to enabled,
-    "imageScanningActive" to (supported && enabled && accessibilityServiceEnabled),
-    "videoThumbnailBlockingActive" to (supported && enabled && accessibilityServiceEnabled),
+    "imageScanningActive" to (supported && enabled && protectionActive && accessibilityServiceEnabled),
+    "videoThumbnailBlockingActive" to (supported && enabled && protectionActive && accessibilityServiceEnabled),
     "scanner" to "google_mlkit_image_labeling",
     "classifierMode" to "on_device_weighted_labels",
     "cloudFallbackEnabled" to cloudFallbackEnabled,
     "cloudFallbackConfigured" to cloudFallbackConfigured,
     "cloudFallbackMode" to "ambiguous_label_metadata_only",
-    "blockThreshold" to BLOCK_THRESHOLD,
+    "blockThreshold" to BlockerConfig.imageScanThreshold,
     "ambiguityThreshold" to AMBIGUOUS_THRESHOLD,
     "scanTargetPackageCount" to SCAN_TARGET_PACKAGE_COUNT,
     "limitations" to listOf(
-      "Uses accessibility screenshots and a visible blocking overlay; it cannot decrypt browser traffic or rewrite pixels inside another app.",
+      "Uses in-memory accessibility screenshots and a visible blocking overlay; it cannot decrypt HTTPS browser traffic or rewrite pixels inside another app.",
       "Cloud fallback only sends local label metadata for ambiguous cases when an HTTPS review endpoint is configured.",
       "Android may deny screenshots for secure windows or protected media surfaces."
     )
@@ -157,9 +160,12 @@ object ImageContentScanner {
       .sumOf { it.confidence * 0.4 }
     val score = (weightedScore + humanContextBoost - safeContextPenalty).coerceIn(0.0, 1.0)
     val action = when {
-      score >= BLOCK_THRESHOLD -> "block"
+      score >= BlockerConfig.imageScanThreshold -> "block"
       score >= AMBIGUOUS_THRESHOLD -> "ambiguous"
       else -> "allow"
+    }
+    if (action == "block") {
+      BlockerConfig.recordImageDetection()
     }
     return ImageScanDecision(
       score = score,
@@ -170,5 +176,5 @@ object ImageContentScanner {
     )
   }
 
-  private const val SCAN_TARGET_PACKAGE_COUNT = 16
+  private const val SCAN_TARGET_PACKAGE_COUNT = 24
 }

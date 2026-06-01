@@ -21,10 +21,11 @@ const permissions = [
   'android.permission.PACKAGE_USAGE_STATS',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.READ_MEDIA_IMAGES',
+  'android.permission.READ_MEDIA_VIDEO',
 ];
 
 const blockedPermissions = [
-  'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.WRITE_EXTERNAL_STORAGE',
   'android.permission.VIBRATE',
 ];
@@ -35,6 +36,11 @@ const withBlockerAndroid: ConfigPlugin = (config) => {
 
   return withAndroidManifest(config, (manifestConfig) => {
     const androidManifest = manifestConfig.modResults;
+    androidManifest.manifest['uses-permission'] = upsertUsesPermission(
+      androidManifest.manifest['uses-permission'] ?? [],
+      'android.permission.READ_EXTERNAL_STORAGE',
+      { 'android:maxSdkVersion': '32' },
+    );
     const mainApplication = AndroidConfig.Manifest.getMainApplicationOrThrow(androidManifest);
     mainApplication.$['android:allowBackup'] = 'false';
     mainApplication.$['android:fullBackupContent'] = 'false';
@@ -202,6 +208,21 @@ function upsertByName<T extends { $: { 'android:name': string } }>(items: T[], n
   }
   const clone = [...items];
   clone[index] = next;
+  return clone;
+}
+
+function upsertUsesPermission(
+  items: Array<{ $: { 'android:name': string } & Record<string, string> }>,
+  name: string,
+  attributes: Record<string, string> = {},
+): Array<{ $: { 'android:name': string } & Record<string, string> }> {
+  const next = { $: { 'android:name': name, ...attributes } };
+  const index = items.findIndex((item) => item.$['android:name'] === name);
+  if (index === -1) {
+    return [...items, next];
+  }
+  const clone = [...items];
+  clone[index] = { $: { ...clone[index]!.$, ...next.$ } };
   return clone;
 }
 

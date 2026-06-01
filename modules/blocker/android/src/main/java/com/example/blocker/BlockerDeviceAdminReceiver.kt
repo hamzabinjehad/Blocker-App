@@ -17,23 +17,31 @@ class BlockerDeviceAdminReceiver : DeviceAdminReceiver() {
 
   override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
     val repository = PolicyRepository(context)
-    repository.setTampered(true)
+    val protectionActive = repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
+    if (protectionActive) repository.setTampered(true)
     repository.recordAuditEvent(
       eventType = "DEVICE_ADMIN_DISABLE_REQUESTED",
-      severity = "critical",
+      severity = if (protectionActive) "critical" else "high",
       category = "tamper",
       subject = context.packageName,
       action = "disable_requested"
     )
-    GuardianNotifier.notify(
-      context = context,
-      eventType = "DEVICE_ADMIN_DISABLE_REQUESTED",
-      severity = "critical",
-      subject = context.packageName,
-      action = "disable_requested"
-    )
-    BlockOverlayService.show(context, "Device Admin", "Attempt to disable uninstall protection")
-    return "Disabling Device Admin weakens parental-control protection and will be reported."
+    if (protectionActive) {
+      GuardianNotifier.notify(
+        context = context,
+        eventType = "DEVICE_ADMIN_DISABLE_REQUESTED",
+        severity = "critical",
+        subject = context.packageName,
+        action = "disable_requested"
+      )
+      BlockOverlayService.show(
+        context,
+        "Device Admin",
+        "Protection is on. Device Admin cannot be changed until protection ends."
+      )
+      return "Protection is on. Device Admin cannot be changed until protection ends."
+    }
+    return "Disabling Device Admin weakens uninstall protection."
   }
 
   override fun onDisabled(context: Context, intent: Intent) {

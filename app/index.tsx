@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/AppIcon';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { StreakPopup } from '@/components/streak/StreakPopup';
+import { useDailyStreakPopup } from '@/components/streak/useDailyStreakPopup';
 import { XpPopup } from '@/components/XpPopup';
 import { getTodaysMood, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
@@ -20,15 +22,23 @@ const moodOptions: Array<{ value: MoodCheckIn; icon: string }> = [
 ];
 
 const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
+const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
 
 export default function HomeScreen() {
   const { colors } = useTheme();
   const protection = useProtectionState();
   const gamification = useGamification();
+  const streakPopup = useDailyStreakPopup({
+    currentStreak: gamification.currentStreak,
+    dayHistory: gamification.dayHistory,
+    hydrated: gamification.hydrated,
+  });
   const [showXp, setShowXp] = useState(false);
   const [mood, setMood] = useState<MoodCheckIn | null>(null);
   const [disableSheetVisible, setDisableSheetVisible] = useState(false);
-  const [disableCountdown, setDisableCountdown] = useState(30);
+  const [disableCountdown, setDisableCountdown] = useState(DISABLE_PROTECTION_COUNTDOWN_SECONDS);
+  const [disablePin, setDisablePin] = useState('');
+  const [disablePinError, setDisablePinError] = useState(false);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [lastRecordedBlockId, setLastRecordedBlockId] = useState<string | null>(null);
@@ -44,7 +54,9 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (!disableSheetVisible) return;
-    setDisableCountdown(30);
+    setDisableCountdown(DISABLE_PROTECTION_COUNTDOWN_SECONDS);
+    setDisablePin('');
+    setDisablePinError(false);
   }, [disableSheetVisible]);
 
   useEffect(() => {
@@ -105,11 +117,17 @@ export default function HomeScreen() {
 
   const confirmDisable = () => {
     if (disableCountdown > 0 || protection.managedDeviceStatus.uninstallLockActive) return;
-    if (!protection.pinConfigured) {
-      void protection.stopProtection('');
-      void AsyncStorage.removeItem(PROTECTION_SESSION_KEY);
-    }
-    setDisableSheetVisible(false);
+    setDisablePinError(false);
+    void protection.stopProtection(disablePin).then((status) => {
+      if (status === 'pin_required') {
+        setDisablePinError(true);
+        return;
+      }
+      if (status === 'inactive') {
+        void AsyncStorage.removeItem(PROTECTION_SESSION_KEY);
+        setDisableSheetVisible(false);
+      }
+    });
   };
 
   const handleMoodChange = (nextMood: MoodCheckIn) => {
@@ -125,6 +143,15 @@ export default function HomeScreen() {
       floatingContent={
         <>
           <XpPopup amount={25} visible={showXp} />
+          <StreakPopup
+            currentStreak={gamification.currentStreak}
+            dayHistory={gamification.dayHistory}
+            longestStreak={gamification.longestStreak}
+            previousStreak={streakPopup.previousStreak}
+            state={streakPopup.state}
+            visible={streakPopup.visible}
+            onContinue={streakPopup.dismiss}
+          />
           <BlockScreenOverlay
             durationSeconds={protection.behaviorPolicy.behaviorBlockDurationSeconds}
             event={protection.activeBlockEvent}
@@ -134,10 +161,13 @@ export default function HomeScreen() {
           <DisableProtectionSheet
             countdown={disableCountdown}
             locked={protection.managedDeviceStatus.uninstallLockActive}
+            pin={disablePin}
             pinConfigured={protection.pinConfigured}
+            pinError={disablePinError}
             visible={disableSheetVisible}
             onCancel={() => setDisableSheetVisible(false)}
             onConfirm={confirmDisable}
+            onPinChange={setDisablePin}
           />
         </>
       }
@@ -238,19 +268,28 @@ export default function HomeScreen() {
 function DisableProtectionSheet({
   countdown,
   locked,
+  pin,
   pinConfigured,
+  pinError,
   visible,
   onCancel,
   onConfirm,
+  onPinChange,
 }: {
   countdown: number;
   locked: boolean;
+  pin: string;
   pinConfigured: boolean;
+  pinError: boolean;
   visible: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  onPinChange: (pin: string) => void;
 }) {
   const { colors } = useTheme();
+  const pinInputRef = useRef<TextInput>(null);
+  const canConfirm = !locked && (!pinConfigured || pin.length >= 4) && countdown <= 0;
+
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onCancel}>
       <Pressable style={s.sheetBackdrop} onPress={onCancel}>
@@ -261,22 +300,48 @@ function DisableProtectionSheet({
             {locked
               ? 'Protection is time-locked right now.'
               : pinConfigured
-                ? 'A parent PIN is required before protection can be turned off.'
-                : 'Wait 30 seconds, then confirm only if this is intentional. A guardian alert has been queued.'}
+                ? 'Enter your parent PIN to turn protection off.'
+                : 'Wait 3 seconds, then confirm only if this is intentional.'}
           </Text>
+          {pinConfigured && !locked ? (
+            <TextInput
+              ref={pinInputRef}
+              accessibilityLabel="Parent PIN"
+              autoFocus
+              keyboardType="number-pad"
+              maxLength={12}
+              placeholder="Enter PIN"
+              placeholderTextColor={colors.text.muted}
+              secureTextEntry
+              style={[
+                s.pinInput,
+                {
+                  backgroundColor: colors.bg.tertiary,
+                  borderColor: pinError ? colors.red[500] : colors.border.subtle,
+                  color: colors.text.primary,
+                },
+              ]}
+              value={pin}
+              onChangeText={onPinChange}
+              onSubmitEditing={onConfirm}
+            />
+          ) : null}
+          {pinError ? (
+            <Text style={[s.pinError, { color: colors.red[500] }]}>Incorrect PIN. Try again.</Text>
+          ) : null}
           <Pressable accessibilityRole="button" onPress={onCancel} style={[s.sheetButton, { backgroundColor: colors.green[500] }]}>
             <Text style={[s.sheetButtonText, { color: colors.text.inverse }]}>Stay protected</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            disabled={locked || pinConfigured || countdown > 0}
+            disabled={!canConfirm}
             onPress={onConfirm}
             style={s.sheetTextButton}
           >
             <Text
               style={[
                 s.sheetTextButtonLabel,
-                { color: locked || pinConfigured || countdown > 0 ? colors.text.muted : colors.red[500] },
+                { color: canConfirm ? colors.red[500] : colors.text.muted },
               ]}
             >
               {countdown > 0 && !locked && !pinConfigured ? `Confirm in ${countdown}s` : 'Turn off protection'}
@@ -408,6 +473,20 @@ const s = StyleSheet.create({
     borderRadius: radius.full,
     height: 4,
     width: 32,
+  },
+  pinInput: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    fontSize: 18,
+    letterSpacing: 4,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    textAlign: 'center',
+  },
+  pinError: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
   },
   sheetTextButton: {
     alignItems: 'center',

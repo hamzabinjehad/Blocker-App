@@ -7,6 +7,7 @@ import { Card } from '@/components/Card';
 import { PolicyCard } from '@/components/PolicyCard';
 import { SafeSearchCard } from '@/components/SafeSearchCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { AIProtectionCard } from '@/components/behavior/AIProtectionCard';
 import { AppFeatureBlockingSettings } from '@/components/behavior/AppFeatureBlockingSettings';
 import { CustomKeywordManager } from '@/components/behavior/CustomKeywordManager';
 import { useProtectionState } from '@/store/useProtectionState';
@@ -137,10 +138,30 @@ export default function RulesScreen() {
               pinConfigured={protection.pinConfigured}
               onUpdatePolicy={protection.updatePolicy}
             />
+            <AIProtectionCard
+              anomalyDetection={protection.anomalyDetectionStatus}
+              behaviorPolicy={protection.behaviorPolicy}
+              mediaScanning={protection.mediaScanningStatus}
+              onRequestGalleryScanPermission={protection.requestGalleryScanPermission}
+              onScanGalleryForExplicitContent={protection.scanGalleryForExplicitContent}
+              onUpdatePolicy={protection.updatePolicy}
+              pinConfigured={protection.pinConfigured}
+            />
           </View>
         ) : null}
 
-        {activeSection === 'safe-search' ? <SafeSearchCard settings={protection.safeSearchSettings} /> : null}
+        {activeSection === 'safe-search' ? (
+          <View style={s.panelStack}>
+            <SafeSearchCard settings={protection.safeSearchSettings} />
+            <ImageScanningCard
+              enabled={protection.imageScanningEnabled}
+              sensitivity={protection.scanSensitivity}
+              active={protection.mediaScanningStatus.imageScanningActive}
+              flaggedCount={protection.mediaScanningStatus.galleryScanFlaggedCount}
+              onSetSensitivity={protection.setScanSensitivity}
+            />
+          </View>
+        ) : null}
 
         {activeSection === 'lists' ? (
           <CustomKeywordManager
@@ -246,6 +267,77 @@ function StatusChip({ label, tone }: { label: string; tone: StatusTone }) {
   );
 }
 
+function ImageScanningCard({
+  enabled,
+  sensitivity,
+  active,
+  flaggedCount,
+  onSetSensitivity,
+}: {
+  enabled: boolean;
+  sensitivity: 'conservative' | 'standard' | 'strict';
+  active: boolean;
+  flaggedCount: number;
+  onSetSensitivity: (s: 'conservative' | 'standard' | 'strict') => Promise<void>;
+}) {
+  const { colors } = useTheme();
+  const sensitivities: Array<{ key: 'conservative' | 'standard' | 'strict'; label: string }> = [
+    { key: 'conservative', label: 'Conservative' },
+    { key: 'standard', label: 'Standard' },
+    { key: 'strict', label: 'Strict' },
+  ];
+  return (
+    <Card title="Image Scanning" subtitle="On-device screen and gallery content detection.">
+      <View style={[s.scanBanner, { backgroundColor: active ? colors.green[50] : colors.bg.tertiary, borderColor: active ? colors.border.green : colors.border.subtle }]}>
+        <Feather name={active ? 'eye' : 'eye-off'} size={16} color={active ? colors.green[600] : colors.text.muted} />
+        <Text style={[s.scanBannerText, { color: active ? colors.green[700] : colors.text.secondary }]}>
+          {active
+            ? 'Scanning screen content on-device in real time'
+            : enabled ? 'Requires protection to be active' : 'Image scanning is disabled'}
+        </Text>
+      </View>
+      <View style={s.sensitivitySection}>
+        <Text style={[s.sensitivityLabel, { color: colors.text.secondary }]}>Sensitivity</Text>
+        <View style={s.sensitivityRow}>
+          {sensitivities.map(({ key, label }) => {
+            const selected = sensitivity === key;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={key}
+                onPress={() => { void onSetSensitivity(key); }}
+                style={[
+                  s.sensitivityPill,
+                  {
+                    backgroundColor: selected ? colors.green[50] : colors.bg.elevated,
+                    borderColor: selected ? colors.green[500] : colors.border.subtle,
+                  },
+                ]}
+              >
+                <Text style={[s.sensitivityPillText, { color: selected ? colors.green[600] : colors.text.secondary }]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      {flaggedCount > 0 ? (
+        <View style={[s.scanAlert, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}>
+          <Feather name="alert-triangle" size={14} color={colors.amber[700]} />
+          <Text style={[s.scanAlertText, { color: colors.amber[700] }]}>
+            {flaggedCount} item{flaggedCount !== 1 ? 's' : ''} flagged in gallery scan
+          </Text>
+        </View>
+      ) : null}
+      <Text style={[s.scanNote, { color: colors.text.muted }]}>
+        All scanning runs on-device. No screenshots or images are saved or transmitted.
+      </Text>
+    </Card>
+  );
+}
+
 const s = StyleSheet.create({
   detailCopy: {
     flex: 1,
@@ -348,5 +440,53 @@ const s = StyleSheet.create({
   },
   statusPillText: {
     ...typography.captionMd,
+  },
+  scanAlert: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    padding: spacing.sm,
+  },
+  scanAlertText: {
+    ...typography.caption,
+    flex: 1,
+  },
+  scanBanner: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  scanBannerText: {
+    ...typography.body,
+    flex: 1,
+  },
+  scanNote: {
+    ...typography.caption,
+    lineHeight: 18,
+  },
+  sensitivityLabel: {
+    ...typography.caption,
+  },
+  sensitivityPill: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    paddingVertical: spacing.sm,
+  },
+  sensitivityPillText: {
+    ...typography.captionMd,
+  },
+  sensitivityRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  sensitivitySection: {
+    gap: spacing.xs,
   },
 });
