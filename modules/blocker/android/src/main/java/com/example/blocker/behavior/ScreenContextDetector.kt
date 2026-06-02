@@ -1155,6 +1155,16 @@ object ScreenContextDetector {
 
 class BehaviorAccessibilityService : AccessibilityService() {
   private val captureThrottle = com.example.blocker.CaptureThrottle()
+  private var lastForegroundPackage: String? = null
+  private var clipboardManager: android.content.ClipboardManager? = null
+  private val clipboardListener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
+    val pkg = lastForegroundPackage ?: return@OnPrimaryClipChangedListener
+    if (pkg !in SCAN_TARGET_PACKAGES && !isBrowserPackageName(pkg)) return@OnPrimaryClipChangedListener
+    val clip = clipboardManager?.primaryClip ?: return@OnPrimaryClipChangedListener
+    if (clip.itemCount == 0) return@OnPrimaryClipChangedListener
+    val text = clip.getItemAt(0)?.text?.toString() ?: return@OnPrimaryClipChangedListener
+    checkClipboardForBlockedUrl(text, pkg)
+  }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     val repository = PolicyRepository(applicationContext)
@@ -1163,6 +1173,10 @@ class BehaviorAccessibilityService : AccessibilityService() {
     if (!repository.isBehaviorProtectionEnabled() && !protectionSurfaceMonitoringActive) return
 
     if (event != null) {
+      val pkg = event.packageName?.toString()
+      if (pkg != null && pkg != applicationContext.packageName) {
+        lastForegroundPackage = pkg
+      }
       checkForIncognito(event, repository)
       maybeCapture(event)
     }
@@ -1178,13 +1192,61 @@ class BehaviorAccessibilityService : AccessibilityService() {
     val repository = PolicyRepository(applicationContext)
     repository.setAccessibilityServiceEnabledSnapshot(true)
     com.example.blocker.TamperMonitor(repository, applicationContext).startAccessibilityPolling()
+    clipboardManager = applicationContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+      as? android.content.ClipboardManager
+    clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
   }
 
   override fun onDestroy() {
+    clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
+    clipboardManager = null
     super.onDestroy()
     val repository = PolicyRepository(applicationContext)
     com.example.blocker.TamperMonitor(repository, applicationContext).stopAccessibilityPolling()
   }
+
+  private fun checkClipboardForBlockedUrl(text: String, sourcePackage: String) {
+    val url = CLIPBOARD_URL_REGEX.find(text)?.value ?: return
+    val domain = extractDomainFromUrl(url) ?: return
+    val repository = PolicyRepository(applicationContext)
+    if (!repository.isProtectionRequested() || !repository.isAdultFilteringEnabled()) return
+    val classification = com.example.blocker.DomainClassifier(applicationContext, repository).classify(domain)
+    if (classification.action != com.example.blocker.DomainClassification.Action.BLOCK) return
+
+    repository.recordAuditEvent(
+      eventType = "CLIPBOARD_BLOCKED_URL",
+      severity = "critical",
+      category = "clipboard",
+      subject = domain,
+      action = "clipboard_url_blocked",
+      metadata = mapOf("sourcePackage" to sourcePackage)
+    )
+    com.example.blocker.GuardianNotifier.notify(
+      context = applicationContext,
+      eventType = "CLIPBOARD_BLOCKED_URL",
+      severity = "high",
+      subject = domain,
+      action = "clipboard_url_blocked"
+    )
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+      clipboardManager?.clearPrimaryClip()
+    }
+    com.example.blocker.BlockOverlayService.show(
+      applicationContext,
+      sourcePackage,
+      "A blocked link was detected in your clipboard and removed."
+    )
+  }
+
+  private fun extractDomainFromUrl(url: String): String? {
+    return runCatching {
+      val withScheme = if (url.startsWith("http")) url else "https://$url"
+      java.net.URI(withScheme).host?.lowercase()?.trimStart('.')
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+  }
+
+  private fun isBrowserPackageName(pkg: String): Boolean =
+    ScreenContextDetector.isBrowserPackageName(pkg)
 
   private fun maybeCapture(event: AccessibilityEvent) {
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return
@@ -1337,29 +1399,39 @@ class BehaviorAccessibilityService : AccessibilityService() {
     )
 
     private val SCAN_TARGET_PACKAGES = setOf(
+      // Browsers
       "com.android.chrome", "org.mozilla.firefox", "com.brave.browser",
-      "com.whatsapp", "org.telegram.messenger", "com.instagram.android",
-      "com.google.android.youtube", "com.snapchat.android",
-      "com.sec.android.app.sbrowser", "com.opera.browser", "com.microsoft.emmx",
+      "com.sec.android.app.sbrowser", "com.opera.browser", "com.opera.mini.native",
+      "com.opera.mini.native.beta", "com.microsoft.emmx",
       "com.duckduckgo.mobile.android", "org.torproject.torbrowser",
       "org.mozilla.focus", "com.vivaldi.browser", "com.kiwibrowser.browser",
+      "com.yandex.browser", "com.UCMobile.intl", "com.ucmobile",
+      "com.uc.browser.en", "com.mi.globalbrowser", "com.huawei.browser",
+      "com.ecosia.android", "com.google.android.apps.searchlite",
+      // Messaging & social — where image content is shared
+      "com.whatsapp", "com.whatsapp.w4b",
+      "org.telegram.messenger", "org.telegram.messenger.web",
+      "org.thunderdog.challegram",
+      "com.instagram.android",
+      "com.snapchat.android",
+      "com.discord", "com.discord.beta",
+      "com.reddit.frontpage",
+      "com.pinterest",
+      "com.facebook.katana", "com.facebook.orca",
+      "com.linkedin.android",
+      "com.tumblr",
+      "com.vkontakte.android",
       "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
-      "com.twitter.android", "com.x.android", "com.reddit.frontpage",
-      "com.pinterest", "com.discord", "com.discord.beta"
+      "com.twitter.android", "com.x.android",
+      "com.google.android.youtube"
     )
 
     private val COMMON_INCOGNITO_SIGNATURES = listOf(
-      "incognito",
-      "new incognito tab",
-      "private browsing",
-      "private tab",
-      "new private tab",
-      "private mode",
-      "inprivate",
-      "secret mode",
-      "secret tab",
-      "guest mode",
-      "fire button"
+      "incognito", "new incognito tab",
+      "private browsing", "private tab", "new private tab", "private mode",
+      "inprivate", "secret mode", "secret tab",
+      "guest mode", "fire button",
+      "anonymous browsing", "private window", "open private tab"
     )
 
     private val BROWSER_INCOGNITO_SIGNATURES = mapOf(
@@ -1368,8 +1440,20 @@ class BehaviorAccessibilityService : AccessibilityService() {
       "org.mozilla.focus"            to listOf("Private", "Firefox Focus"),
       "com.brave.browser"            to listOf("Private", "New private tab", "Private window"),
       "com.opera.browser"            to listOf("Private mode", "Private tab"),
+      "com.opera.mini.native"        to listOf("Private mode", "Private tab"),
       "com.sec.android.app.sbrowser" to listOf("Secret mode", "Secret tab"),
       "com.microsoft.emmx"           to listOf("InPrivate", "New InPrivate tab"),
+      "com.yandex.browser"           to listOf("Incognito", "New incognito tab", "Turbo"),
+      "com.UCMobile.intl"            to listOf("Incognito", "Private mode"),
+      "com.ucmobile"                 to listOf("Incognito", "Private mode"),
+      "com.vivaldi.browser"          to listOf("Private tab", "New private tab"),
+      "com.kiwibrowser.browser"      to listOf("incognito", "new incognito"),
+      "com.ecosia.android"           to listOf("Private", "Private browsing"),
+    )
+
+    private val CLIPBOARD_URL_REGEX = Regex(
+      """(?:https?://|www\.)[^\s"'<>]{4,}""",
+      RegexOption.IGNORE_CASE
     )
 
     private fun incognitoSignaturesFor(packageName: String): List<String> {

@@ -348,6 +348,13 @@ class BlockerModule : Module() {
       )
     }
 
+    if (repo.isPinLockedOut()) {
+      return mapOf(
+        "status" to "pin_locked_out",
+        "remainingMs" to repo.pinLockoutRemainingMs()
+      )
+    }
+
     if (repo.isNightModeActive() && (!repo.isPinConfigured() || !repo.verifyPin(pin))) {
       recordFailedPinIfNeeded(repo)
       return mapOf("status" to "pin_required")
@@ -380,7 +387,7 @@ class BlockerModule : Module() {
           severity = "critical",
           subject = "vpn_protection",
           action = "countdown_started",
-          metadata = mapOf("readyAt" to readyAt, "delaySeconds" to 3)
+          metadata = mapOf("readyAt" to readyAt, "delaySeconds" to repo.panicUnlockDelaySeconds())
         )
       }
       return mapOf(
@@ -436,6 +443,8 @@ class BlockerModule : Module() {
       "tampered" to tampered,
       "vpnPermissionGranted" to vpnPermissionGranted,
       "pinConfigured" to repo.isPinConfigured(),
+      "pinLockedOut" to repo.isPinLockedOut(),
+      "pinLockoutRemainingMs" to repo.pinLockoutRemainingMs(),
       "blockedDomainCount" to repo.blockedDomainCount(),
       "blockedDomains" to repo.blockedDomains().toList().sorted(),
       "allowlistedDomains" to repo.allowlistedDomains().toList().sorted(),

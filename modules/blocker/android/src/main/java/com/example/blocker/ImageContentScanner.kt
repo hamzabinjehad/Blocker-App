@@ -42,17 +42,31 @@ object ImageContentScanner {
   }
 
   private val adultLabelWeights = mapOf(
+    // Real-photo adult signals
     "skin" to 0.28,
     "human body" to 0.30,
     "undergarment" to 0.72,
-    "swimwear" to 0.44,
+    "swimwear" to 0.40,
     "bikini" to 0.58,
     "lingerie" to 0.82,
     "nudity" to 1.0,
-    "brassiere" to 0.74
+    "brassiere" to 0.74,
+    // Animated / illustrated adult signals — lower base weight but boosted by animated context
+    "anime" to 0.35,
+    "manga" to 0.30,
+    "comics" to 0.15,
+    "cartoon" to 0.12,
+    "illustration" to 0.10,
+    "drawing" to 0.08,
+    "animation" to 0.08
   )
 
   private val humanContextLabels = setOf("person", "people", "face", "selfie", "portrait")
+
+  private val animatedContextLabels = setOf(
+    "anime", "manga", "cartoon", "comics", "illustration",
+    "drawing", "animation", "fictional character", "figurine"
+  )
 
   private val safeContextLabels = setOf(
     "sports", "athlete", "swimming", "gym", "fitness",
@@ -155,10 +169,20 @@ object ImageContentScanner {
     } else {
       0.0
     }
+    // Animated content (anime/manga/cartoon) often escapes photo-based classifiers;
+    // boost the score when animated context labels co-occur with adult signals.
+    val animatedContextBoost = if (
+      weightedScore >= 0.12 &&
+      signals.any { it.text.lowercase() in animatedContextLabels && it.confidence >= 0.55 }
+    ) {
+      0.18
+    } else {
+      0.0
+    }
     val safeContextPenalty = signals
       .filter { it.text.lowercase() in safeContextLabels && it.confidence >= 0.60 }
       .sumOf { it.confidence * 0.4 }
-    val score = (weightedScore + humanContextBoost - safeContextPenalty).coerceIn(0.0, 1.0)
+    val score = (weightedScore + humanContextBoost + animatedContextBoost - safeContextPenalty).coerceIn(0.0, 1.0)
     val action = when {
       score >= BlockerConfig.imageScanThreshold -> "block"
       score >= AMBIGUOUS_THRESHOLD -> "ambiguous"

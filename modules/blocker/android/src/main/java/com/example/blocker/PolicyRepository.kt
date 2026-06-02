@@ -521,6 +521,8 @@ class PolicyRepository(context: Context) {
 
   fun verifyPin(pin: String): Boolean {
     if (!isPinConfigured()) return true
+    // Reject immediately while locked out — no hash work done, no timing oracle
+    if (isPinLockedOut()) return false
     val salt = preferences.getString(KEY_PIN_SALT, null) ?: return false
     val expected = preferences.getString(KEY_PIN_HASH, null) ?: return false
     val algorithm = preferences.getString(KEY_PIN_ALGORITHM, PIN_ALGORITHM_LEGACY_SHA256)
@@ -543,22 +545,40 @@ class PolicyRepository(context: Context) {
     return verified
   }
 
+  fun isPinLockedOut(): Boolean {
+    val lockoutUntil = preferences.getLong(KEY_PIN_LOCKOUT_UNTIL, 0L)
+    return System.currentTimeMillis() < lockoutUntil
+  }
+
+  fun pinLockoutRemainingMs(): Long {
+    val lockoutUntil = preferences.getLong(KEY_PIN_LOCKOUT_UNTIL, 0L)
+    return (lockoutUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+  }
+
   fun recordFailedPinAttempt(): Int {
     val attempts = preferences.getInt(KEY_FAILED_PIN_ATTEMPTS, 0) + 1
-    preferences.edit().putInt(KEY_FAILED_PIN_ATTEMPTS, attempts).apply()
+    val editor = preferences.edit().putInt(KEY_FAILED_PIN_ATTEMPTS, attempts)
+    if (attempts >= PIN_LOCKOUT_THRESHOLD) {
+      val lockoutUntil = System.currentTimeMillis() + PIN_LOCKOUT_DURATION_MS
+      editor.putLong(KEY_PIN_LOCKOUT_UNTIL, lockoutUntil)
+    }
+    editor.apply()
     recordAuditEvent(
       eventType = "PIN_ATTEMPT_FAILED",
-      severity = if (attempts >= 5) "critical" else "high",
+      severity = if (attempts >= PIN_LOCKOUT_THRESHOLD) "critical" else if (attempts >= 5) "critical" else "high",
       category = "pin",
       subject = "guardian_pin",
-      action = "failed",
-      metadata = mapOf("attempts" to attempts)
+      action = if (attempts >= PIN_LOCKOUT_THRESHOLD) "locked_out" else "failed",
+      metadata = mapOf("attempts" to attempts, "lockedOut" to (attempts >= PIN_LOCKOUT_THRESHOLD))
     )
     return attempts
   }
 
   fun clearFailedPinAttempts() {
-    preferences.edit().remove(KEY_FAILED_PIN_ATTEMPTS).apply()
+    preferences.edit()
+      .remove(KEY_FAILED_PIN_ATTEMPTS)
+      .remove(KEY_PIN_LOCKOUT_UNTIL)
+      .apply()
   }
 
   fun assertCanChangePolicy(pin: String?) {
@@ -1518,6 +1538,9 @@ class PolicyRepository(context: Context) {
     private const val KEY_PIN_ALGORITHM = "pinAlgorithm"
     private const val KEY_PIN_ITERATIONS = "pinIterations"
     private const val KEY_FAILED_PIN_ATTEMPTS = "failedPinAttempts"
+    private const val KEY_PIN_LOCKOUT_UNTIL = "pinLockoutUntil"
+    private const val PIN_LOCKOUT_THRESHOLD = 10
+    private const val PIN_LOCKOUT_DURATION_MS = 30 * 60 * 1000L // 30 minutes
     private const val KEY_GOOGLE_SAFESEARCH = "googleSafeSearch"
     private const val KEY_BING_SAFESEARCH = "bingSafeSearch"
     private const val KEY_DUCKDUCKGO_SAFESEARCH = "duckDuckGoSafeSearch"

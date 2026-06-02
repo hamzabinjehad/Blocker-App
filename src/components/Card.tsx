@@ -23,7 +23,7 @@ export function Card({
   style,
   children,
 }: CardProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const accentColors: Record<string, string> = {
     teal: colors.green[500],
@@ -41,6 +41,11 @@ export function Card({
           backgroundColor: colors.bg.elevated,
           borderColor: colors.border.subtle,
           padding,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: isDark ? 0 : 0.05,
+          shadowRadius: 3,
+          elevation: isDark ? 0 : 1,
         },
         style,
       ]}

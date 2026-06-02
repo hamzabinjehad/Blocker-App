@@ -564,6 +564,12 @@ export function useProtectionState() {
       setLoading(true);
       try {
         const result = await BlockerModule.stopProtection(pin);
+        if (result.status === 'pin_locked_out') {
+          const minutes = Math.ceil(Number(result.remainingMs ?? 0) / 60000);
+          setError(`Too many wrong PIN attempts. Try again in ${Math.max(1, minutes)} minute${minutes === 1 ? '' : 's'}.`);
+          await refreshStatus(false);
+          return result.status;
+        }
         if (result.status === 'time_locked') {
           setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
           await refreshStatus(false);

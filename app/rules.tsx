@@ -5,7 +5,6 @@ import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
 import { PolicyCard } from '@/components/PolicyCard';
-import { SafeSearchCard } from '@/components/SafeSearchCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { AIProtectionCard } from '@/components/behavior/AIProtectionCard';
 import { AppFeatureBlockingSettings } from '@/components/behavior/AppFeatureBlockingSettings';
@@ -13,13 +12,13 @@ import { CustomKeywordManager } from '@/components/behavior/CustomKeywordManager
 import { useProtectionState } from '@/store/useProtectionState';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
-type ControlSection = 'filtering' | 'safe-search' | 'lists' | 'apps';
+type ControlSection = 'filtering' | 'lists' | 'apps';
 type StatusTone = 'success' | 'warning' | 'neutral';
 
 const sections: Array<{
   id: ControlSection;
   label: string;
-  icon: 'shield' | 'search' | 'list' | 'apps';
+  icon: 'shield' | 'list' | 'apps';
   summary: string;
   detail: string;
 }> = [
@@ -27,15 +26,8 @@ const sections: Array<{
     id: 'filtering',
     label: 'Filtering',
     icon: 'shield',
-    summary: 'Adult content and bypass protection',
-    detail: 'Blocks unsafe sites and common bypass tools.',
-  },
-  {
-    id: 'safe-search',
-    label: 'Safe Search',
-    icon: 'search',
-    summary: 'Search and video safety',
-    detail: 'Keeps supported search engines in family-safe mode.',
+    summary: 'Adult content, bypass, and image scanning',
+    detail: 'Blocks unsafe sites, bypass tools, and scans images for explicit content.',
   },
   {
     id: 'lists',
@@ -81,12 +73,12 @@ export default function RulesScreen() {
         </View>
         <View style={s.metricRow}>
           <Metric label="Domains" value={protection.blockedDomainCount.toLocaleString()} />
-          <Metric label="Safe search" value={statuses['safe-search'].label} />
-          <Metric label="App rules" value={statuses.apps.label} />
+          <Metric label="Safe search" value="All on" tone="success" />
+          <Metric label="App rules" value={`${statuses.apps.label}`} />
         </View>
       </View>
 
-      <View style={s.sectionGrid}>
+      <View style={s.sectionList}>
         {sections.map((section) => {
           const selected = section.id === activeSection;
           const status = statuses[section.id];
@@ -104,7 +96,9 @@ export default function RulesScreen() {
                 },
               ]}
             >
-              <AppIcon name={section.icon} size={18} color={selected ? colors.green[600] : colors.text.secondary} />
+              <View style={[s.sectionIconWrap, { backgroundColor: selected ? colors.green[100] : colors.bg.tertiary }]}>
+                <AppIcon name={section.icon} size={16} color={selected ? colors.green[600] : colors.text.secondary} />
+              </View>
               <View style={s.sectionText}>
                 <Text style={[s.sectionLabel, { color: selected ? colors.green[600] : colors.text.primary }]}>
                   {section.label}
@@ -147,12 +141,6 @@ export default function RulesScreen() {
               onUpdatePolicy={protection.updatePolicy}
               pinConfigured={protection.pinConfigured}
             />
-          </View>
-        ) : null}
-
-        {activeSection === 'safe-search' ? (
-          <View style={s.panelStack}>
-            <SafeSearchCard settings={protection.safeSearchSettings} />
             <ImageScanningCard
               enabled={protection.imageScanningEnabled}
               sensitivity={protection.scanSensitivity}
@@ -196,8 +184,6 @@ export default function RulesScreen() {
 
 function getSectionStatuses(protection: ReturnType<typeof useProtectionState>): Record<ControlSection, { label: string; tone: StatusTone }> {
   const filteringActive = protection.adultFilteringEnabled || Object.values(protection.riskySettings).some(Boolean);
-  const safeSearchCount = Object.values(protection.safeSearchSettings).filter(Boolean).length;
-  const safeSearchTotal = Object.keys(protection.safeSearchSettings).length;
   const customEntryCount =
     protection.behaviorPolicy.customKeywords.length +
     protection.blockedDomains.length +
@@ -208,11 +194,6 @@ function getSectionStatuses(protection: ReturnType<typeof useProtectionState>): 
     filtering: filteringActive
       ? { label: 'Active', tone: 'success' }
       : { label: 'Off', tone: 'warning' },
-    'safe-search': safeSearchCount === safeSearchTotal
-      ? { label: 'All on', tone: 'success' }
-      : safeSearchCount > 0
-        ? { label: `${safeSearchCount}/${safeSearchTotal}`, tone: 'warning' }
-        : { label: 'Off', tone: 'warning' },
     lists: {
       label: `${customEntryCount} entries`,
       tone: 'neutral',
@@ -229,8 +210,8 @@ function getOverview(protection: ReturnType<typeof useProtectionState>): { title
   const issueCount = Object.values(statuses).filter((status) => status.tone === 'warning').length;
   if (issueCount === 0) {
     return {
-      title: 'Core protection is configured',
-      subtitle: 'Filtering, safe search, custom rules, and app safeguards are ready to review.',
+      title: 'Protection is fully configured',
+      subtitle: 'Filtering, safe search, and app safeguards are all active.',
       label: 'Healthy',
       tone: 'success',
     };
@@ -243,11 +224,12 @@ function getOverview(protection: ReturnType<typeof useProtectionState>): { title
   };
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: StatusTone }) {
   const { colors } = useTheme();
+  const valueColor = tone === 'success' ? colors.green[600] : colors.text.primary;
   return (
     <View style={[s.metric, { backgroundColor: colors.bg.tertiary }]}>
-      <Text style={[s.metricValue, { color: colors.text.primary }]} numberOfLines={1}>{value}</Text>
+      <Text style={[s.metricValue, { color: valueColor }]} numberOfLines={1}>{value}</Text>
       <Text style={[s.metricLabel, { color: colors.text.muted }]}>{label}</Text>
     </View>
   );
@@ -406,21 +388,25 @@ const s = StyleSheet.create({
   panelStack: {
     gap: spacing.lg,
   },
+  sectionList: {
+    gap: spacing.sm,
+  },
   sectionButton: {
     alignItems: 'center',
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.sm,
-    minHeight: 92,
+    minHeight: 64,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    width: '48%',
   },
-  sectionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+  sectionIconWrap: {
+    alignItems: 'center',
+    borderRadius: radius.sm,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
   },
   sectionLabel: {
     ...typography.bodyMd,

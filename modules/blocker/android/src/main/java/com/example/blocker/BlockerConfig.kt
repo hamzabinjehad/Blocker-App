@@ -1,6 +1,7 @@
 package com.example.blocker
 
 import android.content.Context
+import java.util.concurrent.atomic.AtomicInteger
 
 object BlockerConfig {
   @Volatile
@@ -9,12 +10,11 @@ object BlockerConfig {
   @Volatile
   var imageScanThreshold: Float = 0.80f
 
-  @Volatile
-  var imageScanDetectionCount: Int = 0
-    private set
+  private val _imageScanDetectionCount = AtomicInteger(0)
+  val imageScanDetectionCount: Int get() = _imageScanDetectionCount.get()
 
   fun recordImageDetection() {
-    imageScanDetectionCount += 1
+    _imageScanDetectionCount.incrementAndGet()
   }
 
   fun loadFromRepository(context: Context) {

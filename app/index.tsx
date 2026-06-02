@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
+import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { StreakPopup } from '@/components/streak/StreakPopup';
 import { useDailyStreakPopup } from '@/components/streak/useDailyStreakPopup';
+import { usePressScale } from '@/components/usePressScale';
 import { XpPopup } from '@/components/XpPopup';
 import { getTodaysMood, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
@@ -26,6 +30,7 @@ const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const protection = useProtectionState();
   const gamification = useGamification();
   const streakPopup = useDailyStreakPopup({
@@ -47,6 +52,42 @@ export default function HomeScreen() {
     isProtected && sessionStartedAt ? Math.max(0, Math.floor((now - sessionStartedAt) / 60000)) : 0;
   const cleanMinutes = gamification.todayCleanHours * 60 + liveSessionMinutes;
   const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
+
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(0)).current;
+  const xpBarWidth = useRef(new Animated.Value(0)).current;
+  const { animatedStyle: shieldAnimStyle, onPressIn: shieldPressIn, onPressOut: shieldPressOut } = usePressScale(0.94);
+
+  useEffect(() => {
+    if (!isProtected) {
+      pulseScale.setValue(1);
+      pulseOpacity.setValue(0);
+      return;
+    }
+    pulseOpacity.setValue(0.4);
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(pulseScale, { toValue: 1.55, duration: 1600, useNativeDriver: true }),
+          Animated.timing(pulseOpacity, { toValue: 0, duration: 1600, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(pulseScale, { toValue: 1, duration: 0, useNativeDriver: true }),
+          Animated.timing(pulseOpacity, { toValue: 0.4, duration: 0, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isProtected, pulseOpacity, pulseScale]);
+
+  useEffect(() => {
+    Animated.timing(xpBarWidth, {
+      toValue: progressRatio,
+      duration: 900,
+      useNativeDriver: false,
+    }).start();
+  }, [progressRatio, xpBarWidth]);
 
   useEffect(() => {
     void getTodaysMood().then((storedMood) => setMood(storedMood));
@@ -119,8 +160,9 @@ export default function HomeScreen() {
     if (disableCountdown > 0 || protection.managedDeviceStatus.uninstallLockActive) return;
     setDisablePinError(false);
     void protection.stopProtection(disablePin).then((status) => {
-      if (status === 'pin_required') {
+      if (status === 'pin_locked_out' || status === 'pin_required') {
         setDisablePinError(true);
+        if (status === 'pin_locked_out') setDisableSheetVisible(false);
         return;
       }
       if (status === 'inactive') {
@@ -193,24 +235,47 @@ export default function HomeScreen() {
       contentContainerStyle={s.screenContent}
     >
       <View style={s.hero}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ checked: isProtected }}
-          onPress={handleProtectionPress}
-          style={[
-            s.shield,
-            {
-              borderColor: isProtected ? colors.green[500] : colors.border.default,
-              height: isProtected ? 160 : 136,
-              width: isProtected ? 160 : 136,
-            },
-          ]}
-        >
-          <AppIcon name="shield" size={32} color={isProtected ? colors.green[500] : colors.text.muted} />
-          <Text style={[s.shieldLabel, { color: isProtected ? colors.green[600] : colors.text.muted }]}>
-            {isProtected ? 'PROTECTED' : 'OFF'}
-          </Text>
-        </Pressable>
+        {isProtected ? (
+          <LinearGradient
+            colors={[colors.green[50] as string, 'transparent']}
+            style={StyleSheet.absoluteFillObject}
+          />
+        ) : null}
+        {isProtected ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              s.pulseRing,
+              {
+                borderColor: colors.green[500],
+                opacity: pulseOpacity,
+                transform: [{ scale: pulseScale }],
+              },
+            ]}
+          />
+        ) : null}
+        <Animated.View style={shieldAnimStyle}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ checked: isProtected }}
+            onPress={handleProtectionPress}
+            onPressIn={shieldPressIn}
+            onPressOut={shieldPressOut}
+            style={[
+              s.shield,
+              {
+                borderColor: isProtected ? colors.green[500] : colors.border.default,
+                height: isProtected ? 160 : 136,
+                width: isProtected ? 160 : 136,
+              },
+            ]}
+          >
+            <AppIcon name="shield" size={32} color={isProtected ? colors.green[500] : colors.text.muted} />
+            <Text style={[s.shieldLabel, { color: isProtected ? colors.green[600] : colors.text.muted }]}>
+              {isProtected ? 'PROTECTED' : 'OFF'}
+            </Text>
+          </Pressable>
+        </Animated.View>
         <Text style={[s.statusLine, { color: colors.text.secondary }]}>{statusLine}</Text>
         {!isProtected ? (
           <Text style={[s.startHint, { color: colors.text.muted }]}>Tap the shield to start protection.</Text>
@@ -222,7 +287,7 @@ export default function HomeScreen() {
         <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
           <Text style={[s.statValue, { color: colors.text.primary }]}>Lv {gamification.level}</Text>
           <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
-            <View style={[s.xpFill, { backgroundColor: colors.green[500], width: `${progressRatio * 100}%` }]} />
+            <Animated.View style={[s.xpFill, { backgroundColor: colors.green[500], width: xpBarWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
           </View>
           <Text style={[s.statLabel, { color: colors.text.muted }]}>
             {gamification.xpProgress.current} / {gamification.xpProgress.required} XP
@@ -230,6 +295,32 @@ export default function HomeScreen() {
         </View>
         <Stat label="clean time" value={formatCleanTime(cleanMinutes)} />
       </View>
+
+      {isProtected ? (
+        <>
+          {(!protection.accessibilityServiceEnabled || !protection.overlayPermissionGranted || !protection.managedDeviceStatus.deviceAdminActive) ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/guardian')}
+              style={[s.setupBanner, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
+            >
+              <Feather name="alert-triangle" size={14} color={colors.amber[700]} />
+              <Text style={[s.setupBannerText, { color: colors.amber[700] }]}>
+                Some features need setup to work fully
+              </Text>
+              <Feather name="chevron-right" size={14} color={colors.amber[700]} />
+            </Pressable>
+          ) : null}
+          <View style={s.quickActions}>
+            <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
+            <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
+            <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
+            <QuickAction icon="user" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
+          </View>
+        </>
+      ) : (
+        <SetupChecklist protection={protection} colors={colors} onStart={() => void protection.startProtection(7)} />
+      )}
 
       <View style={[s.moodStrip, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
         {mood ? (
@@ -262,6 +353,176 @@ export default function HomeScreen() {
 
       {protection.error ? <Text style={[s.notice, { color: colors.red[500] }]}>{protection.error}</Text> : null}
     </ScreenScaffold>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+  colors,
+}: {
+  icon: ComponentProps<typeof Feather>['name'];
+  label: string;
+  onPress: () => void;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale(0.93);
+  return (
+    <Animated.View style={[s.quickAction, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }, animatedStyle]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={s.quickActionPressable}
+      >
+        <Feather name={icon} size={18} color={colors.green[500]} />
+        <Text style={[s.quickActionLabel, { color: colors.text.secondary }]}>{label}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function SetupChecklist({
+  protection,
+  colors,
+  onStart,
+}: {
+  protection: ReturnType<typeof useProtectionState>;
+  colors: ReturnType<typeof useTheme>['colors'];
+  onStart: () => void;
+}) {
+  const required: Array<{
+    label: string;
+    sublabel: string;
+    done: boolean;
+    onEnable?: () => Promise<unknown> | void;
+  }> = [
+    {
+      label: 'VPN permission',
+      sublabel: 'Allows DNS-level filtering of adult content',
+      done: protection.vpnPermissionGranted,
+      onEnable: protection.vpnPermissionGranted ? undefined : protection.prepareVpn,
+    },
+    {
+      label: 'Device Admin',
+      sublabel: 'Prevents the app from being uninstalled',
+      done: protection.managedDeviceStatus.deviceAdminActive,
+      onEnable: protection.managedDeviceStatus.deviceAdminActive
+        ? undefined
+        : protection.requestDeviceAdminPermission,
+    },
+  ];
+
+  const recommended: typeof required = [
+    {
+      label: 'Behavior protection',
+      sublabel: 'Screen monitoring and keyword detection',
+      done: protection.accessibilityServiceEnabled,
+      onEnable: protection.accessibilityServiceEnabled
+        ? undefined
+        : protection.openAccessibilitySettings,
+    },
+    {
+      label: 'Block overlay',
+      sublabel: 'Shows block screen over apps when triggered',
+      done: protection.overlayPermissionGranted,
+      onEnable: protection.overlayPermissionGranted
+        ? undefined
+        : protection.openOverlaySettings,
+    },
+    {
+      label: 'Parent PIN',
+      sublabel: 'Locks settings so only you can change them',
+      done: protection.pinConfigured,
+    },
+  ];
+
+  const requiredDone = required.every((item) => item.done);
+  const totalDone = [...required, ...recommended].filter((item) => item.done).length;
+  const total = required.length + recommended.length;
+
+  return (
+    <View style={[s.checklist, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+      <View style={s.checklistHeader}>
+        <View style={s.checklistHeaderText}>
+          <Text style={[s.checklistTitle, { color: colors.text.primary }]}>
+            {requiredDone ? 'Ready to start' : 'Complete setup first'}
+          </Text>
+          <Text style={[s.checklistSubtitle, { color: colors.text.muted }]}>
+            {totalDone} of {total} steps done
+          </Text>
+        </View>
+        {requiredDone ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onStart}
+            style={[s.checklistCta, { backgroundColor: colors.green[500] }]}
+          >
+            <Text style={[s.checklistCtaText, { color: colors.text.inverse }]}>Start now</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <Text style={[s.checklistSection, { color: colors.text.muted }]}>Required</Text>
+      {required.map((item) => (
+        <SetupItem key={item.label} required colors={colors} {...item} />
+      ))}
+
+      <Text style={[s.checklistSection, { color: colors.text.muted }]}>Recommended</Text>
+      {recommended.map((item) => (
+        <SetupItem key={item.label} colors={colors} {...item} />
+      ))}
+    </View>
+  );
+}
+
+function SetupItem({
+  label,
+  sublabel,
+  done,
+  required = false,
+  onEnable,
+  colors,
+}: {
+  label: string;
+  sublabel: string;
+  done: boolean;
+  required?: boolean;
+  onEnable?: () => Promise<unknown> | void;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <View style={s.checklistItem}>
+      <Feather
+        name={done ? 'check-circle' : required ? 'alert-circle' : 'circle'}
+        size={16}
+        color={done ? colors.green[500] : required ? colors.amber[600] : colors.text.muted}
+      />
+      <View style={s.checklistItemBody}>
+        <Text style={[s.checklistItemLabel, { color: done ? colors.text.secondary : colors.text.primary }]}>
+          {label}
+        </Text>
+        <Text style={[s.checklistItemSublabel, { color: colors.text.muted }]} numberOfLines={1}>
+          {sublabel}
+        </Text>
+      </View>
+      {!done && onEnable ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => { void onEnable(); }}
+          style={[
+            s.checklistItemBtn,
+            { borderColor: required ? colors.amber[400] : colors.border.subtle },
+          ]}
+        >
+          <Text style={[s.checklistItemBtnText, { color: required ? colors.amber[700] : colors.text.secondary }]}>
+            Enable
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -301,7 +562,7 @@ function DisableProtectionSheet({
               ? 'Protection is time-locked right now.'
               : pinConfigured
                 ? 'Enter your parent PIN to turn protection off.'
-                : 'Wait 3 seconds, then confirm only if this is intentional.'}
+                : `Wait ${DISABLE_PROTECTION_COUNTDOWN_SECONDS} seconds, then confirm only if this is intentional.`}
           </Text>
           {pinConfigured && !locked ? (
             <TextInput
@@ -377,9 +638,18 @@ function isSameDay(first: number, second: number) {
 const s = StyleSheet.create({
   hero: {
     alignItems: 'center',
+    borderRadius: radius.lg,
     gap: spacing.lg,
     minHeight: 260,
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  pulseRing: {
+    borderRadius: radius.full,
+    borderWidth: 2,
+    height: 180,
+    position: 'absolute',
+    width: 180,
   },
   moodButton: {
     alignItems: 'center',
@@ -549,6 +819,104 @@ const s = StyleSheet.create({
   freezeText: {
     fontSize: 10,
     fontWeight: '500',
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  quickAction: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  quickActionPressable: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 64,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+  },
+  quickActionLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  checklist: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  checklistHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+  },
+  checklistHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  checklistTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  checklistSubtitle: {
+    ...typography.caption,
+  },
+  checklistSection: {
+    ...typography.caption,
+    fontWeight: '500',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  checklistCta: {
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  checklistCtaText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  checklistItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 44,
+  },
+  checklistItemBody: {
+    flex: 1,
+    gap: 2,
+  },
+  checklistItemLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  checklistItemSublabel: {
+    ...typography.caption,
+  },
+  checklistItemBtn: {
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+  },
+  checklistItemBtnText: {
+    ...typography.captionMd,
+  },
+  setupBanner: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+  },
+  setupBannerText: {
+    ...typography.caption,
+    flex: 1,
   },
   xpFill: {
     borderRadius: radius.full,

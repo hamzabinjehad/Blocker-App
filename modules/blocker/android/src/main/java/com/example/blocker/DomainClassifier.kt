@@ -71,11 +71,15 @@ class DomainClassifier(
   }
 
   private fun isSafeSearchDomain(domain: String): Boolean {
-    return domain == "google.com" || domain.endsWith(".google.com") ||
+    if (domain == "google.com" || domain.endsWith(".google.com") ||
       domain == "bing.com" || domain.endsWith(".bing.com") ||
       domain == "youtube.com" || domain.endsWith(".youtube.com") ||
       domain == "googlevideo.com" || domain.endsWith(".googlevideo.com") ||
-      domain == "duckduckgo.com" || domain.endsWith(".duckduckgo.com")
+      domain == "duckduckgo.com" || domain.endsWith(".duckduckgo.com") ||
+      domain == "yandex.com" || domain.endsWith(".yandex.com") ||
+      domain == "yandex.ru" || domain.endsWith(".yandex.ru")) return true
+    return GOOGLE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") } ||
+      YOUTUBE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") }
   }
 
   private fun isSafeSearchTargetDomain(domain: String): Boolean {
@@ -83,7 +87,9 @@ class DomainClassifier(
       domain == "strict.bing.com" ||
       domain == "restrict.youtube.com" ||
       domain == "restrictmoderate.youtube.com" ||
-      domain == "safe.duckduckgo.com"
+      domain == "safe.duckduckgo.com" ||
+      domain == "familysearch.yandex.com" ||
+      domain == "familysearch.yandex.ru"
   }
 
   private fun isUnmanagedSearchDomain(domain: String): Boolean {
@@ -108,6 +114,8 @@ class DomainClassifier(
       domain.contains("bing") -> "strict.bing.com"
       domain.contains("youtube") || domain.contains("googlevideo") -> "restrict.youtube.com"
       domain.contains("duckduckgo") -> "safe.duckduckgo.com"
+      domain.contains("yandex") && domain.endsWith(".ru") -> "familysearch.yandex.ru"
+      domain.contains("yandex") -> "familysearch.yandex.com"
       else -> null
     }
   }
@@ -213,6 +221,31 @@ class DomainClassifier(
     const val CATEGORY_SEARCH = "search"
     const val CATEGORY_UNKNOWN = "unknown"
 
+    private val GOOGLE_COUNTRY_TLDS = setOf(
+      "google.co.uk", "google.fr", "google.de", "google.es", "google.it",
+      "google.com.au", "google.ca", "google.co.in", "google.co.jp",
+      "google.com.br", "google.com.mx", "google.com.ar", "google.com.co",
+      "google.com.sa", "google.ae", "google.com.eg", "google.com.ng",
+      "google.co.id", "google.com.tr", "google.pl", "google.ru",
+      "google.nl", "google.be", "google.ch", "google.at",
+      "google.se", "google.no", "google.dk", "google.fi",
+      "google.pt", "google.gr", "google.hu", "google.ro",
+      "google.co.za", "google.com.pk", "google.com.bd",
+      "google.com.ph", "google.co.th", "google.com.vn",
+      "google.com.tw", "google.co.kr", "google.co.nz",
+      "google.com.hk", "google.com.sg", "google.com.my",
+      "google.iq", "google.dz", "google.tn", "google.ma"
+    )
+
+    private val YOUTUBE_COUNTRY_TLDS = setOf(
+      "youtube.co.uk", "youtube.fr", "youtube.de", "youtube.es", "youtube.it",
+      "youtube.com.au", "youtube.ca", "youtube.co.in", "youtube.co.jp",
+      "youtube.com.br", "youtube.com.mx", "youtube.com.sa", "youtube.ae",
+      "youtube.co.id", "youtube.com.tr", "youtube.pl", "youtube.nl",
+      "youtube.be", "youtube.se", "youtube.no", "youtube.pt",
+      "youtube.co.nz", "youtube.com.hk", "youtube.com.sg"
+    )
+
     private val SEARCH_ENGINE_DOMAINS = setOf(
       "search.yahoo.com",
       "yahoo.com",
@@ -229,105 +262,74 @@ class DomainClassifier(
       "mojeek.com",
       "you.com",
       "ask.com",
-      "aol.com"
+      "aol.com",
+      "kagi.com",
+      "perplexity.ai",
+      "phind.com",
+      "andi.co",
+      "metager.org",
+      "metager.de",
+      "swisscows.com",
+      "gibiru.com",
+      "searx.be",
+      "searxng.org",
+      "whoogle.com",
+      "wolframalpha.com"
     )
 
     private val ADULT_ONLY_TLDS = setOf("adult", "porn", "sex", "xxx")
 
     private val STRONG_ADULT_DOMAIN_MARKERS = setOf(
-      "porn",
-      "porno",
-      "pornography",
-      "xxx",
-      "xvideo",
-      "xvideos",
-      "xnxx",
-      "xhamster",
-      "redtube",
-      "youporn",
-      "hentai",
-      "onlyfans",
-      "fansly",
-      "brazzers",
-      "spankbang",
-      "motherless",
-      "rule34",
-      "e621",
-      "nhentai",
-      "hanime",
-      "r34",
-      "tnaflix",
-      "tube8",
-      "p0rn",
-      "pr0n",
-      "h3ntai"
+      "porn", "porno", "pornography",
+      "xxx", "xvideo", "xvideos", "xnxx", "xhamster",
+      "redtube", "youporn", "hentai",
+      "onlyfans", "fansly", "brazzers", "spankbang",
+      "motherless", "rule34", "e621", "nhentai", "hanime", "r34",
+      "tnaflix", "tube8", "p0rn", "pr0n", "h3ntai",
+      // additional explicit markers
+      "pornstar", "pornstars", "cumshot", "blowjob",
+      "gangbang", "creampie", "anal", "bdsm", "bondage",
+      "shemale", "tranny", "twink", "jerkmate",
+      "naughtyamerica", "bangbros", "mofos", "digitalplayground",
+      "penthouse", "nudevista", "peekvids", "voyeurhit"
     )
 
     private val ADULT_PLATFORM_MARKERS = setOf(
-      "pornhub",
-      "chaturbate",
-      "stripchat",
-      "livejasmin",
-      "manyvids",
-      "camsoda",
-      "cam4",
-      "adultfriendfinder",
-      "bongacams",
-      "myfreecams",
-      "flirt4free",
-      "streamate",
-      "imlive"
+      "pornhub", "chaturbate", "stripchat", "livejasmin",
+      "manyvids", "camsoda", "cam4", "adultfriendfinder",
+      "bongacams", "myfreecams", "flirt4free", "streamate", "imlive",
+      // additional cam/live platforms
+      "cams", "camster", "camplace", "camdolls", "cambb",
+      "jasmin", "jerkmate", "lovense", "sexier", "sexplanet",
+      "xempire", "wicked"
     )
 
     private val CONTEXTUAL_ADULT_DOMAIN_MARKERS = setOf(
-      "adult",
-      "sex",
-      "sexy",
-      "nude",
-      "nudity",
-      "escort",
-      "erotic",
-      "erotica",
-      "fetish",
-      "camgirl",
-      "camgirls",
-      "webcam",
-      "nsfw",
-      "hookup",
-      "milf",
-      "onlyfan",
-      "stripper",
-      "camg",
-      "3rotic"
+      "adult", "sex", "sexy", "nude", "nudity",
+      "escort", "erotic", "erotica", "fetish",
+      "camgirl", "camgirls", "webcam", "nsfw",
+      "hookup", "milf", "onlyfan", "stripper", "camg", "3rotic",
+      // additional contextual markers
+      "amateur", "homemade", "kink", "swingers", "naughty",
+      "uncensored", "explicit", "bdsm", "bondage",
+      "18plus", "18only", "adultchat", "hotgirl", "hotgirls",
+      "lust", "lusty", "hump", "naked", "nakedness"
     )
 
     private val ADULT_INTENT_DOMAIN_MARKERS = setOf(
-      "video",
-      "videos",
-      "tube",
-      "clips",
-      "pics",
-      "photo",
-      "photos",
-      "free",
-      "live",
-      "chat",
-      "cam",
-      "cams",
-      "models",
-      "leak",
-      "leaks",
-      "hd",
-      "xxx",
-      "stream",
-      "download",
-      "watch",
-      "hub",
-      "gallery"
+      "video", "videos", "tube", "clips", "pics",
+      "photo", "photos", "free", "live", "chat",
+      "cam", "cams", "models", "leak", "leaks",
+      "hd", "xxx", "stream", "download", "watch",
+      "hub", "gallery",
+      // additional intent markers
+      "show", "shows", "content", "only", "site",
+      "network", "pass", "vip", "premium", "uncensored"
     )
 
     private val ADULT_REGEX = Regex(
-      "(p[o0]rn|s[e3]x|x+vid|nud[e3]|h[e3]ntai|camg[ir]+l|str[i1]p|esc[o0]rt)",
+      "(p[o0]rn|s[e3]x|x+vid|nud[e3]|h[e3]ntai|camg[ir]+l|str[i1]p|esc[o0]rt" +
+        "|f[u4][c]?k|an[a4]l|bl[o0]wj|b[d]sm|j[e3]rkm|p[o0]rnst[a4]r|c[u]msh[o0]t)",
       RegexOption.IGNORE_CASE
     )
   }
