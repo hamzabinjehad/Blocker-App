@@ -66,7 +66,7 @@ class BehaviorEngine(
   fun analyzeScreenContext(screenContext: ScreenContext): Map<String, Any?>? {
     repository.setCurrentScreenContext(screenContext.packageName, screenContext.screenType)
     val protectionSurfaceMonitoringActive =
-      repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
+      (repository.isProtectionRequested() && repository.isVpnActive()) || repository.isUninstallLockWindowActive()
 
     if (protectionSurfaceMonitoringActive) {
       val protectedSurface = ScreenContextDetector.matchProtectedSettingsSurface(
@@ -204,10 +204,16 @@ class BehaviorEngine(
       }
     }
 
+    val rawFeatureBlocks = repository.featureBlockSettings()
+    val effectiveFeatureBlocks = if (!protectionSurfaceMonitoringActive && rawFeatureBlocks["androidTamperSettings"] == true) {
+      rawFeatureBlocks.toMutableMap().also { it["androidTamperSettings"] = false }
+    } else {
+      rawFeatureBlocks
+    }
     val feature = ScreenContextDetector.matchBlockedFeature(
       packageName = screenContext.packageName,
       screenText = "${screenContext.screenType} ${screenContext.visibleText}",
-      featureBlocks = repository.featureBlockSettings()
+      featureBlocks = effectiveFeatureBlocks
     )
     if (feature != null) {
       return TriggerManager.emit(

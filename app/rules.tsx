@@ -171,6 +171,7 @@ export default function RulesScreen() {
         {activeSection === 'apps' ? (
           <AppFeatureBlockingSettings
             blockedDomains={protection.blockedDomains}
+            installedApps={protection.installedApps}
             keywords={protection.behaviorPolicy.customKeywords}
             onChange={protection.updatePolicy}
             pinConfigured={protection.pinConfigured}

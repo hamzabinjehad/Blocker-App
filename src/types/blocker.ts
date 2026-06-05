@@ -639,6 +639,7 @@ export type BlockerNativeModule = {
   getDailyUsageSummary(): Promise<DailyUsageSummary>;
   getWeeklyUsageSummary(): Promise<WeeklyUsageSummary>;
   getAppUsageDetail(packageName: string): Promise<AppUsageDetail>;
+  getAppIcon(packageName: string): Promise<{ iconBase64: string | null }>;
 };
 
 // ── Remote Management ──────────────────────────────────────────────────

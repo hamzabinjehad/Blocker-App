@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.net.VpnService
@@ -16,6 +18,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import com.example.blocker.behavior.BehaviorBlockEvent
 import com.example.blocker.behavior.BehaviorEngine
 import com.example.blocker.behavior.TriggerManager
@@ -288,6 +292,10 @@ class BlockerModule : Module() {
 
     AsyncFunction("getAppUsageDetail") { packageName: String ->
       UsageStatsTracker(reactContext(), repository()).appUsageDetail(packageName)
+    }
+
+    AsyncFunction("getAppIcon") { packageName: String ->
+      getAppIcon(packageName)
     }
   }
 
@@ -974,6 +982,22 @@ class BlockerModule : Module() {
       }
     }
     return bundle
+  }
+
+  private fun getAppIcon(packageName: String): Map<String, Any?> {
+    return try {
+      val drawable = reactContext().packageManager.getApplicationIcon(packageName)
+      val size = 96
+      val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bitmap)
+      drawable.setBounds(0, 0, size, size)
+      drawable.draw(canvas)
+      val stream = ByteArrayOutputStream()
+      bitmap.compress(Bitmap.CompressFormat.PNG, 85, stream)
+      mapOf("iconBase64" to Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP))
+    } catch (e: Exception) {
+      mapOf("iconBase64" to null)
+    }
   }
 
   companion object {

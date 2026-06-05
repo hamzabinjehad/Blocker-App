@@ -17,7 +17,7 @@ class BlockerDeviceAdminReceiver : DeviceAdminReceiver() {
 
   override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
     val repository = PolicyRepository(context)
-    val protectionActive = repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
+    val protectionActive = (repository.isProtectionRequested() && repository.isVpnActive()) || repository.isUninstallLockWindowActive()
     if (protectionActive) repository.setTampered(true)
     repository.recordAuditEvent(
       eventType = "DEVICE_ADMIN_DISABLE_REQUESTED",

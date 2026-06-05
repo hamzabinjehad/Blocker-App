@@ -119,23 +119,29 @@ class BehaviorAccessibilityService : AccessibilityService() {
 
     Handler(Looper.getMainLooper()).post {
       takeScreenshot(
-        TAKE_SCREENSHOT_NEXT_WINDOW,
+        android.view.Display.DEFAULT_DISPLAY,
         applicationContext.mainExecutor,
         object : TakeScreenshotCallback {
           override fun onSuccess(screenshot: ScreenshotResult) {
-            val hardware = screenshot.hardwareBitmap
-            val bitmap = hardware.copy(Bitmap.Config.ARGB_8888, false)
-            hardware.recycle()
+            val bitmap = android.graphics.Bitmap.wrapHardwareBuffer(
+              screenshot.hardwareBuffer, screenshot.colorSpace
+            )
+            screenshot.hardwareBuffer.close()
+            if (bitmap == null) return
+            val softBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            bitmap.recycle()
+            if (softBitmap == null) return
 
             ImageContentScanner.scanBitmap(
-              bitmap = bitmap,
+              bitmap = softBitmap,
               packageName = packageName,
-              onComplete = { bitmap.recycle() },
+              onComplete = { softBitmap.recycle() },
               onAmbiguous = { decision ->
-                if (repo.isCloudImageFallbackEnabled()) {
-                  com.example.blocker.CloudImageReviewClient.submitAmbiguous(
-                    applicationContext, repo, decision, packageName
-                  )
+                if (repo.isCloudImageFallbackEnabled() && repo.cloudImageFallbackEndpoint().isNotBlank()) {
+                  com.example.blocker.CloudImageReviewClient.review(
+                    endpoint = repo.cloudImageFallbackEndpoint(),
+                    decision = decision
+                  ) { }
                 }
               },
               onNsfw = { decision ->
@@ -165,7 +171,7 @@ class BehaviorAccessibilityService : AccessibilityService() {
                   action = "nsfw_detected",
                   metadata = mapOf("score" to decision.score)
                 )
-                bitmap.recycle()
+                softBitmap.recycle()
               }
             )
           }

@@ -71,12 +71,19 @@ class DomainClassifier(
   }
 
   private fun isSafeSearchDomain(domain: String): Boolean {
-    if (domain == "google.com" || domain.endsWith(".google.com") ||
-      domain == "bing.com" || domain.endsWith(".bing.com") ||
-      domain == "youtube.com" || domain.endsWith(".youtube.com") ||
-      domain == "googlevideo.com" || domain.endsWith(".googlevideo.com") ||
-      domain == "duckduckgo.com" || domain.endsWith(".duckduckgo.com") ||
-      domain == "yandex.com" || domain.endsWith(".yandex.com") ||
+    // Google: only the search entry points, not all *.google.com subdomains.
+    // Broad *.google.com matching broke APIs, accounts, mail, etc. by CNAME-redirecting
+    // them to forcesafesearch.google.com which doesn't serve those services.
+    if (domain == "google.com") return true
+    if (domain.endsWith(".google.com")) {
+      val sub = domain.removeSuffix(".google.com")
+      if (sub in GOOGLE_SEARCH_SUBDOMAINS) return true
+    }
+    if (domain == "bing.com" || domain.endsWith(".bing.com")) return true
+    if (domain == "youtube.com" || domain.endsWith(".youtube.com") ||
+      domain == "googlevideo.com" || domain.endsWith(".googlevideo.com")) return true
+    if (domain == "duckduckgo.com" || domain.endsWith(".duckduckgo.com")) return true
+    if (domain == "yandex.com" || domain.endsWith(".yandex.com") ||
       domain == "yandex.ru" || domain.endsWith(".yandex.ru")) return true
     return GOOGLE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") } ||
       YOUTUBE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") }
@@ -220,6 +227,10 @@ class DomainClassifier(
     const val CATEGORY_BYPASS = "bypass"
     const val CATEGORY_SEARCH = "search"
     const val CATEGORY_UNKNOWN = "unknown"
+
+    private val GOOGLE_SEARCH_SUBDOMAINS = setOf(
+      "www", "images", "news", "video", "web", "scholar", "maps"
+    )
 
     private val GOOGLE_COUNTRY_TLDS = setOf(
       "google.co.uk", "google.fr", "google.de", "google.es", "google.it",

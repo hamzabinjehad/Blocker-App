@@ -10,7 +10,7 @@ import kotlin.math.min
 class DnsFilterEngine(
   private val vpnService: VpnService,
   private val repository: PolicyRepository,
-  private val upstreamResolvers: List<InetSocketAddress> = FAMILY_SAFE_DNS_RESOLVERS,
+  private val upstreamResolvers: List<InetSocketAddress> = DEFAULT_UPSTREAM_RESOLVERS,
   private val safeSearchOverrides: Map<String, String> = emptyMap()
 ) {
   private val classifier = DomainClassifier(vpnService.applicationContext, repository)
@@ -525,13 +525,13 @@ class DnsFilterEngine(
 
     private val ECH_ADVERTISING_DNS_TYPES = setOf(DNS_TYPE_SVCB, DNS_TYPE_HTTPS)
 
-    private val FAMILY_SAFE_DNS_RESOLVERS = listOf(
-      InetSocketAddress("1.1.1.3", DNS_PORT),
-      InetSocketAddress("1.0.0.3", DNS_PORT),
-      InetSocketAddress("185.228.168.168", DNS_PORT),
-      InetSocketAddress("185.228.169.168", DNS_PORT),
-      InetSocketAddress("208.67.222.123", DNS_PORT),
-      InetSocketAddress("208.67.220.123", DNS_PORT)
+    // Standard upstream resolvers — domain blocking is handled by local blocklists only.
+    private val DEFAULT_UPSTREAM_RESOLVERS = listOf(
+      InetSocketAddress("1.1.1.1", DNS_PORT),
+      InetSocketAddress("8.8.8.8", DNS_PORT),
+      InetSocketAddress("9.9.9.9", DNS_PORT),
+      InetSocketAddress("1.0.0.1", DNS_PORT),
+      InetSocketAddress("8.8.4.4", DNS_PORT)
     )
 
     private val PUBLIC_DNS_RESOLVER_IPV4 = setOf(

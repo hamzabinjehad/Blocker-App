@@ -12,18 +12,14 @@ import { StreakPopup } from '@/components/streak/StreakPopup';
 import { useDailyStreakPopup } from '@/components/streak/useDailyStreakPopup';
 import { usePressScale } from '@/components/usePressScale';
 import { XpPopup } from '@/components/XpPopup';
-import { getTodaysMood, saveMood } from '@/services/mood';
+import { MoodDetailView } from '@/components/MoodDetailView';
+import { MoodFace } from '@/components/MoodFace';
+import { MoodPickerView } from '@/components/MoodPickerView';
+import { getTodaysMood, moodOptions, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
 import { useGamification } from '@/store/useGamification';
 import { useProtectionState } from '@/store/useProtectionState';
 import { radius, spacing, typography, useTheme } from '@/theme';
-
-const moodOptions: Array<{ value: MoodCheckIn; icon: string }> = [
-  { value: 'steady', icon: '\u{1F642}' },
-  { value: 'stressed', icon: '\u{1F610}' },
-  { value: 'bored', icon: '\u{1F614}' },
-  { value: 'tempted', icon: '\u{1F62E}' },
-];
 
 const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
 const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
@@ -47,6 +43,9 @@ export default function HomeScreen() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [lastRecordedBlockId, setLastRecordedBlockId] = useState<string | null>(null);
+  const [moodModalStep, setMoodModalStep] = useState<'picker' | 'detail' | null>(null);
+  const [pendingMood, setPendingMood] = useState<MoodCheckIn | null>(null);
+  const [moodNote, setMoodNote] = useState('');
   const isProtected = protection.status === 'active' || protection.vpnActive;
   const liveSessionMinutes =
     isProtected && sessionStartedAt ? Math.max(0, Math.floor((now - sessionStartedAt) / 60000)) : 0;
@@ -172,11 +171,27 @@ export default function HomeScreen() {
     });
   };
 
-  const handleMoodChange = (nextMood: MoodCheckIn) => {
-    setMood(nextMood);
-    void saveMood(nextMood);
+  const openMoodModal = () => {
+    setMoodNote('');
+    setMoodModalStep('picker');
+  };
+
+  const handleMoodSelect = (selected: MoodCheckIn) => {
+    setPendingMood(selected);
+    setMoodModalStep('detail');
+  };
+
+  const handleMoodSave = () => {
+    if (!pendingMood) return;
+    setMood(pendingMood);
+    void saveMood(pendingMood, moodNote || undefined);
     gamification.markMoodCheckedIn();
     void gamification.awardXP(10, 'daily_mood_check_in');
+    setMoodModalStep(null);
+  };
+
+  const closeMoodModal = () => {
+    setMoodModalStep(null);
   };
 
   return (
@@ -184,7 +199,7 @@ export default function HomeScreen() {
       title="Control Yourself"
       floatingContent={
         <>
-          <XpPopup amount={25} visible={showXp} />
+          <XpPopup amount={10} visible={showXp} />
           <StreakPopup
             currentStreak={gamification.currentStreak}
             dayHistory={gamification.dayHistory}
@@ -211,19 +226,24 @@ export default function HomeScreen() {
             onConfirm={confirmDisable}
             onPinChange={setDisablePin}
           />
+          <Modal
+            animationType="slide"
+            visible={moodModalStep !== null}
+            onRequestClose={closeMoodModal}
+          >
+            {moodModalStep === 'picker' ? (
+              <MoodPickerView onSelect={handleMoodSelect} onClose={closeMoodModal} />
+            ) : moodModalStep === 'detail' && pendingMood ? (
+              <MoodDetailView
+                mood={pendingMood}
+                note={moodNote}
+                onNoteChange={setMoodNote}
+                onSave={handleMoodSave}
+                onClose={closeMoodModal}
+              />
+            ) : null}
+          </Modal>
         </>
-      }
-      headerRight={
-        <View style={s.headerPills}>
-          <View style={[s.headerPill, { backgroundColor: colors.bg.tertiary }]}>
-            <Text style={[s.streakText, { color: gamification.currentStreak > 0 ? colors.green[600] : colors.text.muted }]}>
-              Streak {gamification.currentStreak} days
-            </Text>
-          </View>
-          <View style={[s.headerPill, { backgroundColor: colors.bg.tertiary }]}>
-            <Text style={[s.freezeText, { color: colors.text.secondary }]}>Freeze {gamification.remainingStreakFreezes}</Text>
-          </View>
-        </View>
       }
       refreshControl={
         <RefreshControl
@@ -283,17 +303,29 @@ export default function HomeScreen() {
       </View>
 
       <View style={s.statsRow}>
-        <Stat label="blocks today" value={String(gamification.blocksToday)} />
         <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
-          <Text style={[s.statValue, { color: colors.text.primary }]}>Lv {gamification.level}</Text>
-          <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
-            <Animated.View style={[s.xpFill, { backgroundColor: colors.green[500], width: xpBarWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
-          </View>
-          <Text style={[s.statLabel, { color: colors.text.muted }]}>
-            {gamification.xpProgress.current} / {gamification.xpProgress.required} XP
-          </Text>
+          <Text style={[s.statValue, { color: colors.text.primary }]}>{gamification.blocksToday}</Text>
+          <Text style={[s.statLabel, { color: colors.text.muted }]}>blocks today</Text>
         </View>
-        <Stat label="clean time" value={formatCleanTime(cleanMinutes)} />
+        <View style={[s.stat, s.statCenter, { backgroundColor: colors.bg.tertiary }]}>
+          <View style={s.streakRow}>
+            <AppIcon name="streak" size={14} color={gamification.currentStreak > 0 ? colors.green[500] : colors.text.muted} />
+            <Text style={[s.streakNum, { color: gamification.currentStreak > 0 ? colors.green[600] : colors.text.muted }]}>
+              {gamification.currentStreak}
+            </Text>
+          </View>
+          <Text style={[s.statLabel, { color: colors.text.muted }]}>day streak</Text>
+          <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
+            <Animated.View
+              style={[s.xpFill, { backgroundColor: colors.green[500], width: xpBarWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]}
+            />
+          </View>
+          <Text style={[s.xpLabel, { color: colors.text.muted }]}>Lv {gamification.level} · {gamification.xpProgress.current} XP</Text>
+        </View>
+        <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
+          <Text style={[s.statValue, { color: colors.text.primary }]}>{formatCleanTime(cleanMinutes)}</Text>
+          <Text style={[s.statLabel, { color: colors.text.muted }]}>clean time</Text>
+        </View>
       </View>
 
       {isProtected ? (
@@ -322,34 +354,30 @@ export default function HomeScreen() {
         <SetupChecklist protection={protection} colors={colors} onStart={() => void protection.startProtection(7)} />
       )}
 
-      <View style={[s.moodStrip, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
-        {mood ? (
-          <View style={s.completedMood}>
-            <Text style={[s.moodTitle, { color: colors.text.secondary }]}>Today's mood</Text>
-            <View style={[s.moodSummary, { backgroundColor: colors.green[50] }]}>
-              <Text style={[s.moodSummaryText, { color: colors.green[600] }]}>
-                {moodOptions.find((option) => option.value === mood)?.icon ?? '\u{1F642}'}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <>
-            <Text style={[s.moodTitle, { color: colors.text.secondary }]}>How are you?</Text>
-            <View style={s.moodOptions}>
-              {moodOptions.map((option) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.value}
-                  onPress={() => handleMoodChange(option.value)}
-                  style={[s.moodButton, { borderColor: colors.border.subtle }]}
-                >
-                  <Text style={s.moodIcon}>{option.icon}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
-        )}
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={openMoodModal}
+        style={[s.moodStrip, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}
+      >
+        <View style={s.completedMood}>
+          {mood ? (
+            <>
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>Today's mood</Text>
+              <View style={s.completedMoodRight}>
+                <MoodFace mood={mood} size={28} />
+                <Text style={[s.moodLabel, { color: colors.text.primary }]}>
+                  {moodOptions.find((o) => o.value === mood)?.label ?? ''}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>How are you feeling?</Text>
+              <Feather name="chevron-right" size={14} color={colors.text.muted} />
+            </>
+          )}
+        </View>
+      </Pressable>
 
       {protection.error ? <Text style={[s.notice, { color: colors.red[500] }]}>{protection.error}</Text> : null}
     </ScreenScaffold>
@@ -614,16 +642,6 @@ function DisableProtectionSheet({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  const { colors } = useTheme();
-  return (
-    <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
-      <Text style={[s.statValue, { color: colors.text.primary }]}>{value}</Text>
-      <Text style={[s.statLabel, { color: colors.text.muted }]}>{label}</Text>
-    </View>
-  );
-}
-
 function formatCleanTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
@@ -651,20 +669,14 @@ const s = StyleSheet.create({
     position: 'absolute',
     width: 180,
   },
-  moodButton: {
+  completedMoodRight: {
     alignItems: 'center',
-    borderRadius: radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  moodIcon: {
-    fontSize: 20,
-  },
-  moodOptions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
+  },
+  moodLabel: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   moodStrip: {
     alignItems: 'center',
@@ -674,14 +686,6 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 56,
     paddingHorizontal: spacing.lg,
-  },
-  moodSummary: {
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  moodSummaryText: {
-    ...typography.captionMd,
   },
   completedMood: {
     alignItems: 'center',
@@ -787,9 +791,27 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '500',
   },
+  statCenter: {
+    alignItems: 'center',
+    flex: 1.3,
+  },
+  streakRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  streakNum: {
+    fontSize: 22,
+    fontWeight: '600',
+  },
+  xpLabel: {
+    fontSize: 9,
+    fontWeight: '400',
+    marginTop: -2,
+  },
   statsRow: {
     flexDirection: 'row',
-    gap: spacing.lg,
+    gap: spacing.sm,
   },
   statusLine: {
     fontSize: 14,
@@ -800,25 +822,6 @@ const s = StyleSheet.create({
     fontWeight: '400',
     marginTop: -spacing.sm,
     textAlign: 'center',
-  },
-  headerPills: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  headerPill: {
-    alignItems: 'center',
-    borderRadius: radius.full,
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  streakText: {
-    ...typography.captionMd,
-  },
-  freezeText: {
-    fontSize: 10,
-    fontWeight: '500',
   },
   quickActions: {
     flexDirection: 'row',
