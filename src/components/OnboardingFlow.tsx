@@ -39,7 +39,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const heroScale = useRef(new Animated.Value(0.8)).current;
   const heroOpacity = useRef(new Animated.Value(0)).current;
 
-  const totalSteps = 3;
+  const totalSteps = 5;
 
   useEffect(() => {
     Animated.parallel([
@@ -130,24 +130,16 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const canProceed = requiredReady >= requiredTotal - 1;
 
   const renderWelcome = () => (
-    <View style={s.stepContent}>
+    <View style={[s.stepContent, { alignItems: 'center' }]}>
       <Animated.View style={[s.heroContainer, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}>
-        <View
-          style={[
-            s.heroIconWrap,
-            {
-              backgroundColor: isDark ? colors.green[50] : colors.green[50],
-              borderColor: colors.border.subtle,
-            },
-          ]}
-        >
-          <AppIcon name="shield" size={52} color={colors.green[500]} />
+        <View style={[s.heroIconWrap, { backgroundColor: colors.green[500] }]}>
+          <AppIcon name="shield" size={64} color="#FFFFFF" />
         </View>
       </Animated.View>
 
-      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>Welcome to Guardian</Text>
+      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>Your brain{'\n'}deserves better.</Text>
       <Text style={[s.welcomeSubtitle, { color: colors.text.secondary }]}>
-        Set up the protection basics, then start filtering with one tap.
+        Filter harmful content, build healthier habits, and take back your focus.
       </Text>
 
       <View style={s.themeSelector}>
@@ -182,7 +174,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     <View style={s.stepContent}>
       <Text style={[s.stepTitle, { color: colors.text.primary }]}>Enable Permissions</Text>
       <Text style={[s.stepSubtitle, { color: colors.text.secondary }]}>
-        Enable the required permissions. Device admin can be added later from Admin.
+        These let Guardian protect you in the background. Device admin can be added later.
       </Text>
 
       <View style={[s.progressBar, { backgroundColor: colors.bg.tertiary }]}>
@@ -260,8 +252,8 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       <Animated.View
         style={[s.heroContainer, { transform: [{ scale: heroScale }], opacity: heroOpacity }]}
       >
-        <View style={[s.completeCircle, { backgroundColor: isDark ? colors.green[50] : colors.green[50] }]}>
-          <MaterialCommunityIcons name="shield-check" size={72} color={colors.green[500]} />
+        <View style={[s.completeCircle, { backgroundColor: colors.green[500] }]}>
+          <MaterialCommunityIcons name="shield-check" size={72} color="#FFFFFF" />
         </View>
       </Animated.View>
 
@@ -289,7 +281,105 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     </View>
   );
 
-  const steps = [renderWelcome, renderPermissions, renderComplete];
+  const renderFeature1 = () => (
+    <View style={s.featureSlide}>
+      <View style={s.phoneMockWrap}>
+        <View style={s.phoneShell}>
+          <View style={s.phoneSpeakerRow}>
+            <View style={s.phoneSpeaker} />
+          </View>
+          <View style={[s.phoneScreen, { backgroundColor: colors.bg.primary }]}>
+            <View style={[s.mockCard, { backgroundColor: colors.green[500] }]}>
+              <Text style={s.mockProtectedLabel}>● PROTECTED</Text>
+              <View style={s.mockHeroMidRow}>
+                <Text style={s.mockHeroSub}>VPN · DNS filter active</Text>
+                <View>
+                  <Text style={s.mockBlocksNum}>47</Text>
+                  <Text style={s.mockBlocksLabel}>blocks</Text>
+                </View>
+              </View>
+              <View style={[s.mockStatsRow, { borderTopColor: 'rgba(255,255,255,0.15)' }]}>
+                {[['12', 'streak'], ['3h 20m', 'clean'], ['Lv 3', 'Steady']].map(([val, label], i) => (
+                  <View key={i} style={s.mockStat}>
+                    <Text style={s.mockStatVal}>{val}</Text>
+                    <Text style={s.mockStatLabel}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View style={[s.mockMoodCard, { backgroundColor: colors.bg.elevated, borderLeftColor: colors.green[500] }]}>
+              <Text style={[s.mockSmallLabel, { color: colors.text.muted }]}>How are you feeling?</Text>
+              <Text style={s.mockEmojiRow}>😊  😌  😐  😔  😤</Text>
+            </View>
+            <View style={s.mockQARow}>
+              {['Rules', 'Focus', 'Guardian', 'Alerts'].map((label) => (
+                <View key={label} style={[s.mockQABtn, { backgroundColor: colors.bg.elevated }]}>
+                  <View style={[s.mockQAIcon, { backgroundColor: colors.bg.tertiary }]} />
+                  <Text style={[s.mockQALabel, { color: colors.text.secondary }]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </View>
+      <View style={s.featureCaption}>
+        <Text style={[s.featureTitle, { color: colors.text.primary }]}>Blocks the{'\n'}noise instantly.</Text>
+        <Text style={[s.featureSub, { color: colors.text.secondary }]}>
+          Filters harmful sites, bypass tools, and explicit images across every app on your device.
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderFeature2 = () => (
+    <View style={s.featureSlide}>
+      <View style={s.phoneMockWrap}>
+        <View style={s.phoneShell}>
+          <View style={s.phoneSpeakerRow}>
+            <View style={s.phoneSpeaker} />
+          </View>
+          <View style={[s.phoneScreen, { backgroundColor: colors.bg.primary }]}>
+            <View style={[s.mockCard, { backgroundColor: colors.bg.elevated }]}>
+              <Text style={[s.mockSmallLabel, { color: colors.text.muted, letterSpacing: 0.5 }]}>90-DAY JOURNEY</Text>
+              <Text style={[s.mockJourneyPct, { color: colors.text.primary }]}>62%</Text>
+              <View style={[s.mockProgressTrack, { backgroundColor: colors.bg.tertiary }]}>
+                <View style={[s.mockProgressFill, { backgroundColor: colors.green[500], width: '62%' }]} />
+              </View>
+              <Text style={[s.mockSmallLabel, { color: colors.text.muted }]}>Day 56 of 90 · 34 days remaining</Text>
+            </View>
+            <View style={s.mockWeekRow}>
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                <View key={i} style={s.mockDayCol}>
+                  <View style={[s.mockDayDot, { backgroundColor: i < 5 ? colors.green[500] : colors.bg.tertiary }]} />
+                  <Text style={[s.mockSmallLabel, { color: colors.text.muted }]}>{d}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={[s.mockCard, { backgroundColor: colors.bg.elevated, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+              <View style={[s.mockLevelBadge, { backgroundColor: colors.green[50] }]}>
+                <Text style={[s.mockLevelNum, { color: colors.green[600] }]}>3</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.mockLevelName, { color: colors.text.primary }]}>Steady</Text>
+                <View style={[s.mockProgressTrack, { backgroundColor: colors.bg.tertiary, marginTop: 3 }]}>
+                  <View style={[s.mockProgressFill, { backgroundColor: colors.green[400], width: '70%' }]} />
+                </View>
+                <Text style={[s.mockSmallLabel, { color: colors.text.muted, marginTop: 2 }]}>420 / 600 XP</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View style={s.featureCaption}>
+        <Text style={[s.featureTitle, { color: colors.text.primary }]}>Every clean{'\n'}day counts.</Text>
+        <Text style={[s.featureSub, { color: colors.text.secondary }]}>
+          Build your streak, earn XP, and watch your 90-day recovery journey take shape.
+        </Text>
+      </View>
+    </View>
+  );
+
+  const steps = [renderWelcome, renderFeature1, renderFeature2, renderPermissions, renderComplete];
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.bg.primary }]}>
@@ -321,41 +411,23 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       <View style={s.footer}>
         {step > 0 ? (
-          <Pressable onPress={() => animateToStep(step - 1)} style={s.backBtn}>
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text.secondary} />
-            <Text style={[s.backText, { color: colors.text.secondary }]}>Back</Text>
+          <Pressable onPress={() => animateToStep(step - 1)} style={s.backLink}>
+            <Text style={[s.backLinkText, { color: colors.text.secondary }]}>← Back</Text>
           </Pressable>
-        ) : (
-          <View style={s.backBtn} />
-        )}
-
-        {step < totalSteps - 1 ? (
-          <Pressable
-            onPress={() => animateToStep(step + 1)}
-            disabled={step === 1 && !canProceed}
-            style={({ pressed }) => [
-              s.nextBtn,
-              { backgroundColor: colors.green[500] },
-              pressed && { opacity: 0.9 },
-              step === 1 && !canProceed && { opacity: 0.4 },
-            ]}
-          >
-            <Text style={s.nextText}>{step === 0 ? 'Set up' : 'Continue'}</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#FFFFFF" />
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={onComplete}
-            style={({ pressed }) => [
-              s.nextBtn,
-              { backgroundColor: colors.green[500] },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Text style={s.nextText}>Go to Home</Text>
-            <MaterialCommunityIcons name="shield-check" size={20} color="#FFFFFF" />
-          </Pressable>
-        )}
+        ) : null}
+        <Pressable
+          onPress={step < totalSteps - 1 ? () => animateToStep(step + 1) : onComplete}
+          disabled={step === 3 && !canProceed}
+          style={({ pressed }) => [
+            s.primaryBtn,
+            { backgroundColor: step === 3 && !canProceed ? colors.green[200] : colors.green[500] },
+            pressed && { opacity: 0.9 },
+          ]}
+        >
+          <Text style={s.primaryBtnText}>
+            {step === 0 ? 'Get Started' : step < totalSteps - 1 ? 'Continue' : "Let's go"}
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -396,11 +468,10 @@ const s = StyleSheet.create({
   },
   heroIconWrap: {
     alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 104,
+    borderRadius: 70,
+    height: 140,
     justifyContent: 'center',
-    width: 104,
+    width: 140,
   },
   completeCircle: {
     alignItems: 'center',
@@ -410,12 +481,17 @@ const s = StyleSheet.create({
     width: 140,
   },
   welcomeTitle: {
-    ...typography.h1,
+    fontSize: 36,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 42,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
   welcomeSubtitle: {
-    ...typography.body,
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 24,
     textAlign: 'center',
     paddingHorizontal: spacing.md,
   },
@@ -447,11 +523,15 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
   stepTitle: {
-    ...typography.h1,
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    lineHeight: 36,
     marginBottom: spacing.sm,
   },
   stepSubtitle: {
-    ...typography.body,
+    fontSize: 15,
+    fontWeight: '400',
     lineHeight: 22,
     marginBottom: spacing.xl,
   },
@@ -518,35 +598,208 @@ const s = StyleSheet.create({
   featureLabel: {
     ...typography.bodyMd,
   },
-  footer: {
+  featureSlide: {
+    flex: 1,
+    gap: spacing.lg,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+  },
+  featureCaption: {
+    gap: spacing.sm,
+  },
+  featureTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 40,
+  },
+  featureSub: {
+    fontSize: 15,
+    fontWeight: '400',
+    lineHeight: 22,
+  },
+  phoneMockWrap: {
     alignItems: 'center',
+  },
+  phoneShell: {
+    backgroundColor: '#131313',
+    borderRadius: 32,
+    overflow: 'hidden',
+    padding: 5,
+    width: 210,
+  },
+  phoneSpeakerRow: {
+    alignItems: 'center',
+    paddingBottom: 5,
+    paddingTop: 8,
+  },
+  phoneSpeaker: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 2,
+    height: 4,
+    width: 36,
+  },
+  phoneScreen: {
+    borderRadius: 26,
+    gap: 6,
+    minHeight: 288,
+    overflow: 'hidden',
+    padding: 10,
+  },
+  mockCard: {
+    borderRadius: 10,
+    gap: 3,
+    padding: 10,
+  },
+  mockProtectedLabel: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 7,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  mockHeroMidRow: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingBottom: spacing.xl,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    marginTop: 2,
   },
-  backBtn: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 2,
-    minWidth: 80,
+  mockHeroSub: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 7,
   },
-  backText: {
-    ...typography.bodyMd,
-  },
-  nextBtn: {
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  nextText: {
-    ...typography.bodyMd,
+  mockBlocksNum: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  mockBlocksLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 6,
+    textAlign: 'right',
+  },
+  mockStatsRow: {
+    borderTopWidth: 0.5,
+    flexDirection: 'row',
+    marginTop: 6,
+    paddingTop: 6,
+  },
+  mockStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  mockStatVal: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  mockStatLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 6,
+  },
+  mockMoodCard: {
+    borderLeftWidth: 2,
+    borderRadius: 8,
+    gap: 3,
+    padding: 8,
+  },
+  mockSmallLabel: {
+    fontSize: 7,
+    fontWeight: '400',
+  },
+  mockEmojiRow: {
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  mockQARow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  mockQABtn: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flex: 1,
+    gap: 3,
+    padding: 6,
+  },
+  mockQAIcon: {
+    borderRadius: 5,
+    height: 14,
+    width: 14,
+  },
+  mockQALabel: {
+    fontSize: 6,
+    fontWeight: '500',
+  },
+  mockJourneyPct: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  mockProgressTrack: {
+    borderRadius: 3,
+    height: 4,
+    overflow: 'hidden',
+  },
+  mockProgressFill: {
+    borderRadius: 3,
+    height: '100%',
+  },
+  mockWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  mockDayCol: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  mockDayDot: {
+    borderRadius: 8,
+    height: 16,
+    width: 16,
+  },
+  mockLevelBadge: {
+    alignItems: 'center',
+    borderRadius: 20,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  mockLevelNum: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  mockLevelName: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  footer: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing['2xl'],
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    width: '100%',
+  },
+  backLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+  },
+  backLinkText: {
+    ...typography.bodyMd,
+  },
+  primaryBtn: {
+    alignItems: 'center',
+    borderRadius: 28,
+    justifyContent: 'center',
+    minHeight: 58,
+    width: '100%',
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });

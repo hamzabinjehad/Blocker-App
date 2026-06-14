@@ -297,6 +297,10 @@ class BlockerModule : Module() {
     AsyncFunction("getAppIcon") { packageName: String ->
       getAppIcon(packageName)
     }
+
+    AsyncFunction("testDnsFiltering") {
+      testDnsFiltering()
+    }
   }
 
   private fun reactContext(): Context {
@@ -329,9 +333,11 @@ class BlockerModule : Module() {
     repo.setTampered(false)
     repo.clearPanicUnlockCountdown()
     UninstallLockManager(context, repo).enableForActiveProtection(durationDays)
+    DeviceOwnerPolicyManager(context, repo).ensureRestrictionsApplied()
     ManagedPrivateDnsBackup.configureIfPossible(context, repo)
     BlocklistUpdateWorker.scheduleWeekly(context)
     NightModeWorker.schedule(context)
+    VpnRestartJobService.schedulePeriodic(context)
 
     val intent = Intent(context, FilterVpnService::class.java).apply {
       action = FilterVpnService.ACTION_START
@@ -725,6 +731,37 @@ class BlockerModule : Module() {
       "activeHost" to activeHost,
       "recommendedHost" to DEFAULT_PRIVATE_DNS_HOSTNAME
     )
+  }
+
+  private fun testDnsFiltering(): Map<String, Any?> {
+    val vpnActive = FilterVpnService.isRunning && repository().isVpnActive()
+    val safeDomains = listOf("google.com", "cloudflare.com", "apple.com")
+    val adultDomains = listOf("pornhub.com", "xvideos.com", "xnxx.com")
+    val safeResults = safeDomains.map { resolveDomain(it) }
+    val adultResults = adultDomains.map { resolveDomain(it) }
+    return mapOf(
+      "vpnActive" to vpnActive,
+      "safeDomainsReachable" to safeResults.any { !(it["blocked"] as Boolean) },
+      "adultDomainsBlocked" to adultResults.all { it["blocked"] as Boolean },
+      "safeResults" to safeResults,
+      "adultResults" to adultResults,
+      "timestamp" to System.currentTimeMillis()
+    )
+  }
+
+  private fun resolveDomain(domain: String): Map<String, Any?> {
+    return try {
+      val addresses = java.net.InetAddress.getAllByName(domain)
+      val isBlocked = addresses.isEmpty() || addresses.all { addr ->
+        val ip = addr.hostAddress ?: ""
+        ip.isBlank() || ip == "0.0.0.0" || ip == "::"
+      }
+      mapOf("domain" to domain, "blocked" to isBlocked, "addresses" to addresses.map { it.hostAddress ?: "" })
+    } catch (_: java.net.UnknownHostException) {
+      mapOf("domain" to domain, "blocked" to true, "addresses" to emptyList<String>())
+    } catch (e: Exception) {
+      mapOf("domain" to domain, "blocked" to true, "addresses" to emptyList<String>(), "error" to e.message)
+    }
   }
 
   private fun startSettingsActivity(context: Context, intent: Intent): Boolean {

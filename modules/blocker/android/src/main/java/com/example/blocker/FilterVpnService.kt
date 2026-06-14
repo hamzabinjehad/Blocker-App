@@ -12,11 +12,15 @@ import java.net.InetAddress
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class FilterVpnService : VpnService() {
   private var vpnInterface: ParcelFileDescriptor? = null
   private var worker: Thread? = null
   private var localProxy: LocalHttpProxy? = null
+  private var dnsWorkers: ExecutorService? = null
+  private val outputLock = Any()
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     NotificationHelper.ensureChannel(this)
@@ -99,6 +103,7 @@ class FilterVpnService : VpnService() {
     }
 
     isRunning = true
+    dnsWorkers = Executors.newFixedThreadPool(DNS_WORKER_THREADS)
     repository.setVpnActive(true)
     repository.setTampered(false)
     VpnRestartJobService.schedulePeriodic(this)
@@ -238,6 +243,7 @@ class FilterVpnService : VpnService() {
     val output = FileOutputStream(descriptor.fileDescriptor)
     val engine = DnsFilterEngine(this, repository, safeSearchOverrides = safeSearchMap)
     val buffer = ByteArray(32767)
+    val workers = dnsWorkers ?: return
 
     try {
       while (isRunning && !Thread.currentThread().isInterrupted) {
@@ -262,9 +268,17 @@ class FilterVpnService : VpnService() {
           repository.recordDomainEvent(encryptedDnsTarget, DomainClassifier.CATEGORY_BYPASS, ACTION_ENCRYPTED_DNS_BLOCKED)
           continue
         }
-        val response = engine.processPacket(packet, packet.size, plainDnsResolverIp)
-        if (response != null) {
-          output.write(response)
+
+        // Dispatch DNS processing to a worker thread so a slow upstream lookup
+        // never blocks the packet-reading loop for other queries.
+        val resolverIp = plainDnsResolverIp
+        workers.submit {
+          val response = engine.processPacket(packet, packet.size, resolverIp)
+          if (response != null) {
+            synchronized(outputLock) {
+              try { output.write(response) } catch (_: IOException) { }
+            }
+          }
         }
       }
     } catch (_: IOException) {
@@ -272,14 +286,8 @@ class FilterVpnService : VpnService() {
         TamperMonitor(repository).markVpnStoppedUnexpectedly()
       }
     } finally {
-      try {
-        input.close()
-      } catch (_: IOException) {
-      }
-      try {
-        output.close()
-      } catch (_: IOException) {
-      }
+      try { input.close() } catch (_: IOException) { }
+      try { output.close() } catch (_: IOException) { }
     }
   }
 
@@ -345,7 +353,13 @@ class FilterVpnService : VpnService() {
     super.onRevoke()
   }
 
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    scheduleVpnRestart()
+    super.onTaskRemoved(rootIntent)
+  }
+
   override fun onDestroy() {
+    scheduleVpnRestart()
     shutdown(markTamperIfRequested = true)
     super.onDestroy()
   }
@@ -360,6 +374,8 @@ class FilterVpnService : VpnService() {
     repository.setVpnActive(false)
     worker?.interrupt()
     worker = null
+    dnsWorkers?.shutdownNow()
+    dnsWorkers = null
     localProxy?.stop()
     localProxy = null
 
@@ -401,6 +417,7 @@ class FilterVpnService : VpnService() {
     private const val VPN_RESTART_JOB_ID = 8501
     private const val ACTION_ENCRYPTED_DNS_BLOCKED = "encrypted_dns_blocked"
     private const val ACTION_DOH_BLOCKED = "doh_blocked"
+    private const val DNS_WORKER_THREADS = 6
 
     private const val VPN_CLIENT_ADDRESS = "10.88.0.2"
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
@@ -410,7 +427,7 @@ class FilterVpnService : VpnService() {
     private const val TCP_PROTOCOL = 6
     private const val UDP_PROTOCOL = 17
 
-    private val ENCRYPTED_DNS_PORTS = setOf(443, 853)
+    private val ENCRYPTED_DNS_PORTS = setOf(443, 784, 853, 8853)
     private val ENCRYPTED_DNS_PROTOCOLS = setOf(TCP_PROTOCOL, UDP_PROTOCOL)
 
     private val ENCRYPTED_DNS_RESOLVER_IPV4 = setOf(
@@ -470,6 +487,16 @@ class FilterVpnService : VpnService() {
       "google.co.id"       to "forcesafesearch.google.com",
       "google.com.pk"      to "forcesafesearch.google.com",
       "google.co.za"       to "forcesafesearch.google.com",
+      "google.co.ma"       to "forcesafesearch.google.com",
+      "google.dz"          to "forcesafesearch.google.com",
+      "google.co.tn"       to "forcesafesearch.google.com",
+      "google.com.ly"      to "forcesafesearch.google.com",
+      "google.iq"          to "forcesafesearch.google.com",
+      "google.jo"          to "forcesafesearch.google.com",
+      "google.com.lb"      to "forcesafesearch.google.com",
+      "google.com.qa"      to "forcesafesearch.google.com",
+      "google.com.kw"      to "forcesafesearch.google.com",
+      "google.com.bh"      to "forcesafesearch.google.com",
       "google.com.ng"      to "forcesafesearch.google.com",
       "google.com.tr"      to "forcesafesearch.google.com",
       "google.com.br"      to "forcesafesearch.google.com",

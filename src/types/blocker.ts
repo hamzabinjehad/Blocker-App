@@ -387,7 +387,7 @@ export type TamperSignal = {
 };
 
 export type NativeStartStopResult = {
-  status: ProtectionStatus | 'pin_required' | 'time_locked' | 'unlock_countdown_active';
+  status: ProtectionStatus | 'pin_required' | 'pin_locked_out' | 'time_locked' | 'unlock_countdown_active';
   unlocksAt?: number | null;
   remainingMs?: number | null;
 };
@@ -640,6 +640,23 @@ export type BlockerNativeModule = {
   getWeeklyUsageSummary(): Promise<WeeklyUsageSummary>;
   getAppUsageDetail(packageName: string): Promise<AppUsageDetail>;
   getAppIcon(packageName: string): Promise<{ iconBase64: string | null }>;
+  testDnsFiltering(): Promise<DnsFilterTestResult>;
+};
+
+export type DnsDomainResult = {
+  domain: string;
+  blocked: boolean;
+  addresses: string[];
+  error?: string;
+};
+
+export type DnsFilterTestResult = {
+  vpnActive: boolean;
+  safeDomainsReachable: boolean;
+  adultDomainsBlocked: boolean;
+  safeResults: DnsDomainResult[];
+  adultResults: DnsDomainResult[];
+  timestamp: number;
 };
 
 // ── Remote Management ──────────────────────────────────────────────────

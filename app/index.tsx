@@ -2,7 +2,6 @@ import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Animated, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
@@ -23,6 +22,22 @@ import { radius, spacing, typography, useTheme } from '@/theme';
 
 const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
 const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function getDateLabel(): string {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function levelNameShort(level: number): string {
+  const names = ['Starting', 'Aware', 'Steady', 'Resilient', 'Grounded', 'Strong'];
+  return names[Math.min(level, names.length - 1)] ?? 'Resilient';
+}
 
 export default function HomeScreen() {
   const { colors } = useTheme();
@@ -52,41 +67,16 @@ export default function HomeScreen() {
   const cleanMinutes = gamification.todayCleanHours * 60 + liveSessionMinutes;
   const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
 
-  const pulseScale = useRef(new Animated.Value(1)).current;
-  const pulseOpacity = useRef(new Animated.Value(0)).current;
-  const xpBarWidth = useRef(new Animated.Value(0)).current;
-  const { animatedStyle: shieldAnimStyle, onPressIn: shieldPressIn, onPressOut: shieldPressOut } = usePressScale(0.94);
+  const xpBarAnim = useRef(new Animated.Value(0)).current;
+  const { animatedStyle: heroAnimStyle, onPressIn: heroPressIn, onPressOut: heroPressOut } = usePressScale(0.98);
 
   useEffect(() => {
-    if (!isProtected) {
-      pulseScale.setValue(1);
-      pulseOpacity.setValue(0);
-      return;
-    }
-    pulseOpacity.setValue(0.4);
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(pulseScale, { toValue: 1.55, duration: 1600, useNativeDriver: true }),
-          Animated.timing(pulseOpacity, { toValue: 0, duration: 1600, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(pulseScale, { toValue: 1, duration: 0, useNativeDriver: true }),
-          Animated.timing(pulseOpacity, { toValue: 0.4, duration: 0, useNativeDriver: true }),
-        ]),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [isProtected, pulseOpacity, pulseScale]);
-
-  useEffect(() => {
-    Animated.timing(xpBarWidth, {
+    Animated.timing(xpBarAnim, {
       toValue: progressRatio,
       duration: 900,
       useNativeDriver: false,
     }).start();
-  }, [progressRatio, xpBarWidth]);
+  }, [progressRatio, xpBarAnim]);
 
   useEffect(() => {
     void getTodaysMood().then((storedMood) => setMood(storedMood));
@@ -194,9 +184,14 @@ export default function HomeScreen() {
     setMoodModalStep(null);
   };
 
+  const needsSetupWarning = !protection.accessibilityServiceEnabled
+    || !protection.overlayPermissionGranted
+    || !protection.managedDeviceStatus.deviceAdminActive;
+
   return (
     <ScreenScaffold
-      title="Control Yourself"
+      title={getGreeting()}
+      subtitle={getDateLabel()}
       floatingContent={
         <>
           <XpPopup amount={10} visible={showXp} />
@@ -218,6 +213,7 @@ export default function HomeScreen() {
           <DisableProtectionSheet
             countdown={disableCountdown}
             locked={protection.managedDeviceStatus.uninstallLockActive}
+            lockExpiresAt={protection.managedDeviceStatus.uninstallLockExpiresAt}
             pin={disablePin}
             pinConfigured={protection.pinConfigured}
             pinError={disablePinError}
@@ -254,83 +250,69 @@ export default function HomeScreen() {
       }
       contentContainerStyle={s.screenContent}
     >
-      <View style={s.hero}>
-        {isProtected ? (
-          <LinearGradient
-            colors={[colors.green[50] as string, 'transparent']}
-            style={StyleSheet.absoluteFillObject}
-          />
-        ) : null}
-        {isProtected ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              s.pulseRing,
-              {
-                borderColor: colors.green[500],
-                opacity: pulseOpacity,
-                transform: [{ scale: pulseScale }],
-              },
-            ]}
-          />
-        ) : null}
-        <Animated.View style={shieldAnimStyle}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ checked: isProtected }}
-            onPress={handleProtectionPress}
-            onPressIn={shieldPressIn}
-            onPressOut={shieldPressOut}
-            style={[
-              s.shield,
-              {
-                borderColor: isProtected ? colors.green[500] : colors.border.default,
-                height: isProtected ? 160 : 136,
-                width: isProtected ? 160 : 136,
-              },
-            ]}
-          >
-            <AppIcon name="shield" size={32} color={isProtected ? colors.green[500] : colors.text.muted} />
-            <Text style={[s.shieldLabel, { color: isProtected ? colors.green[600] : colors.text.muted }]}>
-              {isProtected ? 'PROTECTED' : 'OFF'}
-            </Text>
-          </Pressable>
-        </Animated.View>
-        <Text style={[s.statusLine, { color: colors.text.secondary }]}>{statusLine}</Text>
-        {!isProtected ? (
-          <Text style={[s.startHint, { color: colors.text.muted }]}>Tap the shield to start protection.</Text>
-        ) : null}
-      </View>
+      {/* Hero card */}
+      <Animated.View style={heroAnimStyle}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ checked: isProtected }}
+          onPress={handleProtectionPress}
+          onPressIn={heroPressIn}
+          onPressOut={heroPressOut}
+          style={[
+            s.heroCard,
+            isProtected
+              ? { backgroundColor: colors.bg.green, borderColor: colors.green[700] }
+              : { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle },
+          ]}
+        >
+          <View style={s.heroCardTop}>
+            <View style={[s.heroIconCircle, { backgroundColor: isProtected ? 'rgba(255,255,255,0.18)' : colors.bg.tertiary }]}>
+              <AppIcon name="shield" size={18} color={isProtected ? colors.text.inverse : colors.text.muted} />
+            </View>
+            <View style={s.heroCardCenter}>
+              <Text style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.muted }]}>
+                {isProtected ? 'PROTECTED' : 'OFF'}
+              </Text>
+              <Text style={[s.heroSub, { color: isProtected ? 'rgba(255,255,255,0.7)' : colors.text.muted }]}>
+                {isProtected ? statusLine : 'Tap to start protection'}
+              </Text>
+            </View>
+            <View style={s.heroBlocksRight}>
+              <Text style={[s.heroBlocksNum, { color: isProtected ? colors.text.inverse : colors.text.primary }]}>
+                {gamification.blocksToday}
+              </Text>
+              <Text style={[s.heroBlocksLabel, { color: isProtected ? 'rgba(255,255,255,0.65)' : colors.text.muted }]}>
+                blocks
+              </Text>
+            </View>
+          </View>
+          {isProtected ? (
+            <View style={[s.heroStatsRow, { borderTopColor: 'rgba(255,255,255,0.15)' }]}>
+              <View style={s.heroStat}>
+                <Text style={s.heroStatVal}>{gamification.currentStreak}</Text>
+                <Text style={s.heroStatLabel}>day streak</Text>
+              </View>
+              <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+              <View style={s.heroStat}>
+                <Text style={s.heroStatVal}>{formatCleanTime(cleanMinutes)}</Text>
+                <Text style={s.heroStatLabel}>clean today</Text>
+              </View>
+              <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+              <View style={s.heroStat}>
+                <Text style={s.heroStatVal}>Lv {gamification.level}</Text>
+                <Text style={s.heroStatLabel}>{levelNameShort(gamification.level)}</Text>
+              </View>
+            </View>
+          ) : null}
+        </Pressable>
+      </Animated.View>
 
-      <View style={s.statsRow}>
-        <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
-          <Text style={[s.statValue, { color: colors.text.primary }]}>{gamification.blocksToday}</Text>
-          <Text style={[s.statLabel, { color: colors.text.muted }]}>blocks today</Text>
-        </View>
-        <View style={[s.stat, s.statCenter, { backgroundColor: colors.bg.tertiary }]}>
-          <View style={s.streakRow}>
-            <AppIcon name="streak" size={14} color={gamification.currentStreak > 0 ? colors.green[500] : colors.text.muted} />
-            <Text style={[s.streakNum, { color: gamification.currentStreak > 0 ? colors.green[600] : colors.text.muted }]}>
-              {gamification.currentStreak}
-            </Text>
-          </View>
-          <Text style={[s.statLabel, { color: colors.text.muted }]}>day streak</Text>
-          <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
-            <Animated.View
-              style={[s.xpFill, { backgroundColor: colors.green[500], width: xpBarWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]}
-            />
-          </View>
-          <Text style={[s.xpLabel, { color: colors.text.muted }]}>Lv {gamification.level} · {gamification.xpProgress.current} XP</Text>
-        </View>
-        <View style={[s.stat, { backgroundColor: colors.bg.tertiary }]}>
-          <Text style={[s.statValue, { color: colors.text.primary }]}>{formatCleanTime(cleanMinutes)}</Text>
-          <Text style={[s.statLabel, { color: colors.text.muted }]}>clean time</Text>
-        </View>
-      </View>
+      {/* Mood check-in */}
+      <MoodStrip mood={mood} onPress={openMoodModal} />
 
       {isProtected ? (
         <>
-          {(!protection.accessibilityServiceEnabled || !protection.overlayPermissionGranted || !protection.managedDeviceStatus.deviceAdminActive) ? (
+          {needsSetupWarning ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push('/guardian')}
@@ -343,44 +325,100 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={14} color={colors.amber[700]} />
             </Pressable>
           ) : null}
-          <View style={s.quickActions}>
-            <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
-            <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
-            <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
-            <QuickAction icon="user" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
+          <View style={s.quickActionsGrid}>
+            <View style={s.quickActionsRow}>
+              <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
+              <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
+            </View>
+            <View style={s.quickActionsRow}>
+              <QuickAction icon="users" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
+              <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
+            </View>
           </View>
         </>
       ) : (
         <SetupChecklist protection={protection} colors={colors} onStart={() => void protection.startProtection(7)} />
       )}
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={openMoodModal}
-        style={[s.moodStrip, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}
-      >
-        <View style={s.completedMood}>
-          {mood ? (
-            <>
-              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>Today's mood</Text>
-              <View style={s.completedMoodRight}>
-                <MoodFace mood={mood} size={28} />
-                <Text style={[s.moodLabel, { color: colors.text.primary }]}>
-                  {moodOptions.find((o) => o.value === mood)?.label ?? ''}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>How are you feeling?</Text>
-              <Feather name="chevron-right" size={14} color={colors.text.muted} />
-            </>
-          )}
+      {/* XP progress */}
+      <View style={[s.xpCard, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+        <View style={s.xpCardRow}>
+          <Text style={[s.xpCardLabel, { color: colors.text.secondary }]}>
+            Level {gamification.level} · {levelNameShort(gamification.level)}
+          </Text>
+          <Text style={[s.xpCardXp, { color: colors.green[500] }]}>
+            {gamification.xpProgress.current} / {gamification.xpProgress.required} XP
+          </Text>
         </View>
-      </Pressable>
+        <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
+          <Animated.View
+            style={[
+              s.xpFill,
+              {
+                backgroundColor: colors.green[500],
+                width: xpBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+              },
+            ]}
+          />
+        </View>
+      </View>
 
       {protection.error ? <Text style={[s.notice, { color: colors.red[500] }]}>{protection.error}</Text> : null}
     </ScreenScaffold>
+  );
+}
+
+function MoodStrip({
+  mood,
+  onPress,
+}: {
+  mood: MoodCheckIn | null;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale(0.97);
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={mood ? `Today's mood: ${moodOptions.find((o) => o.value === mood)?.label ?? ''}` : 'Log your mood'}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={[
+          s.moodStrip,
+          {
+            backgroundColor: colors.bg.elevated,
+            borderColor: mood ? colors.border.green : colors.border.subtle,
+            borderLeftColor: mood ? colors.green[500] : colors.border.subtle,
+          },
+        ]}
+      >
+        {mood ? (
+          <>
+            <View style={s.moodEmptyLeft}>
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>Today's mood</Text>
+            </View>
+            <View style={s.completedMoodRight}>
+              <MoodFace mood={mood} size={26} />
+              <Text style={[s.moodLabel, { color: colors.text.primary }]}>
+                {moodOptions.find((o) => o.value === mood)?.label ?? ''}
+              </Text>
+              <Feather name="chevron-right" size={13} color={colors.text.muted} />
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={s.moodEmptyLeft}>
+              <Feather name="smile" size={15} color={colors.text.muted} />
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>How are you feeling?</Text>
+            </View>
+            <Feather name="chevron-right" size={14} color={colors.text.muted} />
+          </>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -395,7 +433,7 @@ function QuickAction({
   onPress: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
-  const { animatedStyle, onPressIn, onPressOut } = usePressScale(0.93);
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale(0.95);
   return (
     <Animated.View style={[s.quickAction, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }, animatedStyle]}>
       <Pressable
@@ -405,8 +443,8 @@ function QuickAction({
         onPressOut={onPressOut}
         style={s.quickActionPressable}
       >
-        <Feather name={icon} size={18} color={colors.green[500]} />
-        <Text style={[s.quickActionLabel, { color: colors.text.secondary }]}>{label}</Text>
+        <Feather name={icon} size={15} color={colors.green[500]} />
+        <Text style={[s.quickActionLabel, { color: colors.text.primary }]}>{label}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -557,6 +595,7 @@ function SetupItem({
 function DisableProtectionSheet({
   countdown,
   locked,
+  lockExpiresAt,
   pin,
   pinConfigured,
   pinError,
@@ -567,6 +606,7 @@ function DisableProtectionSheet({
 }: {
   countdown: number;
   locked: boolean;
+  lockExpiresAt?: number | null;
   pin: string;
   pinConfigured: boolean;
   pinError: boolean;
@@ -579,6 +619,15 @@ function DisableProtectionSheet({
   const pinInputRef = useRef<TextInput>(null);
   const canConfirm = !locked && (!pinConfigured || pin.length >= 4) && countdown <= 0;
 
+  const lockCopy = useMemo(() => {
+    if (!locked) return null;
+    if (!lockExpiresAt || lockExpiresAt <= 0) return 'Protection is time-locked and cannot be turned off right now.';
+    const remaining = lockExpiresAt - Date.now();
+    const days = Math.max(0, Math.ceil(remaining / 86_400_000));
+    const date = new Date(lockExpiresAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    return `Protection is locked until ${date} · ${days} day${days === 1 ? '' : 's'} remaining.`;
+  }, [locked, lockExpiresAt]);
+
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onCancel}>
       <Pressable style={s.sheetBackdrop} onPress={onCancel}>
@@ -587,7 +636,7 @@ function DisableProtectionSheet({
           <Text style={[s.sheetTitle, { color: colors.text.primary }]}>Turn protection off?</Text>
           <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>
             {locked
-              ? 'Protection is time-locked right now.'
+              ? lockCopy
               : pinConfigured
                 ? 'Enter your parent PIN to turn protection off.'
                 : `Wait ${DISABLE_PROTECTION_COUNTDOWN_SECONDS} seconds, then confirm only if this is intentional.`}
@@ -645,7 +694,7 @@ function DisableProtectionSheet({
 function formatCleanTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  if (hours <= 0) return remainingMinutes === 0 ? '\u2014' : `${remainingMinutes} min`;
+  if (hours <= 0) return remainingMinutes === 0 ? '—' : `${remainingMinutes} min`;
   return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
 }
 
@@ -654,176 +703,121 @@ function isSameDay(first: number, second: number) {
 }
 
 const s = StyleSheet.create({
-  hero: {
-    alignItems: 'center',
-    borderRadius: radius.lg,
+  screenContent: {
     gap: spacing.lg,
-    minHeight: 260,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  pulseRing: {
-    borderRadius: radius.full,
-    borderWidth: 2,
-    height: 180,
-    position: 'absolute',
-    width: 180,
-  },
-  completedMoodRight: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  moodLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  moodStrip: {
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 56,
-    paddingHorizontal: spacing.lg,
-  },
-  completedMood: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  moodTitle: {
-    fontSize: 13,
-    fontWeight: '400',
   },
   notice: {
     ...typography.body,
     textAlign: 'center',
   },
-  screenContent: {
-    gap: spacing.lg,
+
+  // Hero card
+  heroCard: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  shield: {
+  heroCardTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  heroIconCircle: {
     alignItems: 'center',
     borderRadius: radius.full,
-    borderWidth: 2,
-    gap: spacing.sm,
-    height: 160,
+    height: 38,
     justifyContent: 'center',
-    width: 160,
+    width: 38,
   },
-  shieldLabel: {
+  heroCardCenter: {
+    flex: 1,
+    gap: 3,
+  },
+  heroStatus: {
     fontSize: 11,
     fontWeight: '500',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    gap: spacing.md,
-    padding: spacing.xl,
-    width: '100%',
-  },
-  sheetBackdrop: {
-    backgroundColor: 'rgba(21,26,23,0.18)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheetButton: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  sheetButtonText: {
-    ...typography.bodyMd,
-  },
-  sheetCopy: {
-    ...typography.body,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    borderRadius: radius.full,
-    height: 4,
-    width: 32,
-  },
-  pinInput: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    fontSize: 18,
-    letterSpacing: 4,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    textAlign: 'center',
-  },
-  pinError: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: -spacing.xs,
-  },
-  sheetTextButton: {
-    alignItems: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  sheetTextButtonLabel: {
-    ...typography.bodyMd,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    fontWeight: '500',
-  },
-  stat: {
-    borderRadius: radius.lg,
-    flex: 1,
-    gap: spacing.xs,
-    minHeight: 74,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  statLabel: {
+  heroSub: {
     fontSize: 10,
     fontWeight: '400',
   },
-  statValue: {
-    fontSize: 20,
+  heroBlocksRight: {
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  heroBlocksNum: {
+    fontSize: 24,
     fontWeight: '500',
+    lineHeight: 28,
   },
-  statCenter: {
-    alignItems: 'center',
-    flex: 1.3,
-  },
-  streakRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-  },
-  streakNum: {
-    fontSize: 22,
-    fontWeight: '600',
-  },
-  xpLabel: {
+  heroBlocksLabel: {
     fontSize: 9,
     fontWeight: '400',
-    marginTop: -2,
   },
-  statsRow: {
+  heroStatsRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  heroStat: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 2,
+  },
+  heroStatVal: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  heroStatLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 9,
+    fontWeight: '400',
+  },
+  heroStatDivider: {
+    alignSelf: 'stretch',
+    marginVertical: 4,
+    width: StyleSheet.hairlineWidth,
+  },
+
+  // Mood strip
+  moodStrip: {
+    alignItems: 'center',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 3,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
+  },
+  completedMoodRight: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  moodLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  moodEmptyLeft: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  statusLine: {
-    fontSize: 14,
+  moodTitle: {
+    fontSize: 13,
     fontWeight: '400',
   },
-  startHint: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: -spacing.sm,
-    textAlign: 'center',
+
+  // Quick actions 2×2
+  quickActionsGrid: {
+    gap: spacing.sm,
   },
-  quickActions: {
+  quickActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
@@ -835,15 +829,61 @@ const s = StyleSheet.create({
   },
   quickActionPressable: {
     alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: 64,
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
   },
   quickActionLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '500',
   },
+
+  // XP card
+  xpCard: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  xpCardRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  xpCardLabel: {
+    ...typography.captionMd,
+  },
+  xpCardXp: {
+    ...typography.caption,
+  },
+  xpTrack: {
+    borderRadius: radius.full,
+    height: 4,
+    overflow: 'hidden',
+  },
+  xpFill: {
+    borderRadius: radius.full,
+    height: '100%',
+  },
+
+  // Setup banner
+  setupBanner: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+  },
+  setupBannerText: {
+    ...typography.caption,
+    flex: 1,
+  },
+
+  // Setup checklist
   checklist: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -908,29 +948,62 @@ const s = StyleSheet.create({
   checklistItemBtnText: {
     ...typography.captionMd,
   },
-  setupBanner: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-  },
-  setupBannerText: {
-    ...typography.caption,
-    flex: 1,
-  },
-  xpFill: {
-    borderRadius: radius.full,
-    height: '100%',
-  },
-  xpTrack: {
-    borderRadius: radius.full,
-    height: 3,
-    overflow: 'hidden',
+
+  // Disable sheet
+  sheet: {
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    gap: spacing.md,
+    padding: spacing.xl,
     width: '100%',
   },
+  sheetBackdrop: {
+    backgroundColor: 'rgba(21,26,23,0.18)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetButton: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  sheetButtonText: {
+    ...typography.bodyMd,
+  },
+  sheetCopy: {
+    ...typography.body,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    borderRadius: radius.full,
+    height: 4,
+    width: 32,
+  },
+  pinInput: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    fontSize: 18,
+    letterSpacing: 4,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    textAlign: 'center',
+  },
+  pinError: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
+  },
+  sheetTextButton: {
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  sheetTextButtonLabel: {
+    ...typography.bodyMd,
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontWeight: '500',
+  },
 });
-
-

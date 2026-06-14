@@ -1,23 +1,45 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Switch } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
 
 import { ParentPinCard } from '@/components/ParentPinCard';
 import { RemoteManagementCard } from '@/components/RemoteManagementCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import BlockerModule from '@/native/BlockerModule';
+import type { DnsFilterTestResult } from '@/types/blocker';
 import { useProtectionState } from '@/store/useProtectionState';
 import { useRemoteManagement } from '@/store/useRemoteManagement';
-import { colors, radius, spacing, typography } from '@/theme';
+import { radius, spacing, typography, useTheme } from '@/theme';
+
+const FAMILY_SAFE_HOSTS = [
+  'family.cloudflare-dns.com',
+  'dns.cleanbrowsing.org',
+  'family-filter-dns.cleanbrowsing.org',
+  'doh.familyshield.opendns.com',
+];
 
 export default function GuardianScreen() {
+  const { colors } = useTheme();
   const protection = useProtectionState();
   const remote = useRemoteManagement();
   const [unlockRequestsEnabled, setUnlockRequestsEnabled] = useState(true);
   const recentRequests = remote.session.pendingRequests.slice(0, 5);
 
+  useEffect(() => {
+    void AsyncStorage.getItem('unlock_requests_enabled').then((val) => {
+      if (val !== null) setUnlockRequestsEnabled(val === 'true');
+    });
+  }, []);
+
+  const handleUnlockRequestsToggle = (value: boolean) => {
+    setUnlockRequestsEnabled(value);
+    void AsyncStorage.setItem('unlock_requests_enabled', String(value));
+  };
+
   return (
-    <ScreenScaffold title="Guardian" subtitle="PIN, paired devices, and unlock requests." iconName="guardian">
+    <ScreenScaffold title="Guardian" subtitle="PIN, paired devices, and protection health." iconName="guardian">
       <View style={s.section}>
         <ParentPinCard
           pinConfigured={protection.pinConfigured}
@@ -25,6 +47,14 @@ export default function GuardianScreen() {
           onSetPin={protection.setParentPin}
         />
       </View>
+
+      <DnsProtectionCard
+        vpnActive={protection.vpnActive}
+        privateDnsStatus={protection.privateDnsStatus}
+        onOpenPrivateDnsSettings={protection.openPrivateDnsSettings}
+        onConfigureManagedPrivateDns={protection.configureManagedPrivateDns}
+        canConfigureManagedDns={protection.managedDeviceStatus.canConfigurePrivateDns}
+      />
 
       <View style={s.section}>
         <RemoteManagementCard
@@ -38,29 +68,256 @@ export default function GuardianScreen() {
         />
       </View>
 
-      <View style={[s.panel, { borderColor: colors.border.subtle }]}>
+      <View style={[s.panel, { borderColor: colors.border.subtle, backgroundColor: colors.bg.elevated }]}>
         <View style={s.toggleRow}>
           <View style={s.toggleCopy}>
-            <Text style={s.sectionTitle}>Unlock Requests</Text>
-            <Text style={s.sectionMeta}>Allow protected users to ask a guardian for temporary access.</Text>
+            <Text style={[s.sectionTitle, { color: colors.text.primary }]}>Unlock Requests</Text>
+            <Text style={[s.sectionMeta, { color: colors.text.secondary }]}>
+              Allow protected users to ask a guardian for temporary access.
+            </Text>
           </View>
-          <Switch value={unlockRequestsEnabled} onValueChange={setUnlockRequestsEnabled} />
+          <Switch value={unlockRequestsEnabled} onValueChange={handleUnlockRequestsToggle} />
         </View>
         <View style={s.requestList}>
           {recentRequests.length > 0 ? recentRequests.map((request) => (
-            <View key={request.id} style={s.requestRow}>
+            <View key={request.id} style={[s.requestRow, { backgroundColor: colors.bg.tertiary }]}>
               <Feather name="lock" size={16} color={colors.text.secondary} />
               <View style={s.requestText}>
-                <Text style={s.requestReason} numberOfLines={1}>{request.reason}</Text>
-                <Text style={s.requestMeta}>{request.status} · {formatTimeAgo(request.requestedAt)}</Text>
+                <Text style={[s.requestReason, { color: colors.text.primary }]} numberOfLines={1}>
+                  {request.reason}
+                </Text>
+                <Text style={[s.requestMeta, { color: colors.text.muted }]}>
+                  {request.status} · {formatTimeAgo(request.requestedAt)}
+                </Text>
               </View>
             </View>
           )) : (
-            <Text style={s.emptyText}>No recent unlock requests.</Text>
+            <Text style={[s.emptyText, { color: colors.text.muted }]}>No recent unlock requests.</Text>
           )}
         </View>
       </View>
     </ScreenScaffold>
+  );
+}
+
+function DnsProtectionCard({
+  vpnActive,
+  privateDnsStatus,
+  onOpenPrivateDnsSettings,
+  onConfigureManagedPrivateDns,
+  canConfigureManagedDns,
+}: {
+  vpnActive: boolean;
+  privateDnsStatus: ReturnType<typeof useProtectionState>['privateDnsStatus'];
+  onOpenPrivateDnsSettings: () => Promise<void>;
+  onConfigureManagedPrivateDns: (host: string) => Promise<void>;
+  canConfigureManagedDns: boolean;
+}) {
+  const { colors } = useTheme();
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<DnsFilterTestResult | null>(null);
+
+  const dnsHost = privateDnsStatus?.configuredHost?.toLowerCase() ?? '';
+  const dnsMode = privateDnsStatus?.mode ?? '';
+  const privateDnsConfigured = dnsMode === 'hostname' && FAMILY_SAFE_HOSTS.some((h) => dnsHost.includes(h.split('.')[0]!));
+
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      const result = await BlockerModule.testDnsFiltering();
+      setTestResult(result);
+    } catch (_) {
+      setTestResult(null);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const configureDns = async () => {
+    if (canConfigureManagedDns) {
+      await onConfigureManagedPrivateDns('family.cloudflare-dns.com');
+    } else {
+      await onOpenPrivateDnsSettings();
+    }
+  };
+
+  return (
+    <View style={[s.panel, { borderColor: colors.border.subtle, backgroundColor: colors.bg.elevated }]}>
+      <View style={s.panelHeader}>
+        <View style={[s.panelIcon, { backgroundColor: colors.green[50] }]}>
+          <Feather name="shield" size={16} color={colors.green[600]} />
+        </View>
+        <View style={s.panelHeaderText}>
+          <Text style={[s.sectionTitle, { color: colors.text.primary }]}>DNS Filtering</Text>
+          <Text style={[s.sectionMeta, { color: colors.text.secondary }]}>
+            Blocks adult content at the network level.
+          </Text>
+        </View>
+      </View>
+
+      <StatusRow
+        label="VPN filter"
+        active={vpnActive}
+        description={vpnActive ? 'Active — DNS queries are being filtered' : 'Off — start protection to enable'}
+        colors={colors}
+      />
+      <StatusRow
+        label="Private DNS backup"
+        active={privateDnsConfigured}
+        description={
+          privateDnsConfigured
+            ? `Configured: ${privateDnsStatus?.configuredHost ?? ''}`
+            : 'Not set — filtered by VPN only'
+        }
+        colors={colors}
+      />
+
+      {!privateDnsConfigured ? (
+        <View style={[s.setupBox, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}>
+          <Text style={[s.setupBoxTitle, { color: colors.amber[900] }]}>Add a backup DNS filter</Text>
+          <Text style={[s.setupBoxBody, { color: colors.amber[800] }]}>
+            {canConfigureManagedDns
+              ? 'As Device Owner, this app can configure Private DNS automatically.'
+              : 'Go to Settings → Network → Private DNS and enter:'}
+          </Text>
+          {!canConfigureManagedDns ? (
+            <View style={[s.hostnameBox, { backgroundColor: colors.amber[100] }]}>
+              <Text style={[s.hostnameText, { color: colors.amber[900] }]} selectable>
+                family.cloudflare-dns.com
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            onPress={configureDns}
+            style={[s.setupButton, { backgroundColor: colors.amber[700] }]}
+          >
+            <Text style={[s.setupButtonText, { color: '#FFFFFF' }]}>
+              {canConfigureManagedDns ? 'Configure automatically' : 'Open Private DNS settings'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={s.testRow}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={testing}
+          onPress={runTest}
+          style={[s.testButton, { borderColor: colors.border.subtle, backgroundColor: colors.bg.tertiary }]}
+        >
+          {testing ? (
+            <ActivityIndicator size="small" color={colors.green[500]} />
+          ) : (
+            <Feather name="activity" size={14} color={colors.green[500]} />
+          )}
+          <Text style={[s.testButtonText, { color: colors.text.secondary }]}>
+            {testing ? 'Testing…' : 'Test DNS filtering'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {testResult ? <DnsTestResults result={testResult} colors={colors} /> : null}
+    </View>
+  );
+}
+
+function StatusRow({
+  label,
+  active,
+  description,
+  colors,
+}: {
+  label: string;
+  active: boolean;
+  description: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <View style={s.statusRow}>
+      <Feather
+        name={active ? 'check-circle' : 'circle'}
+        size={15}
+        color={active ? colors.green[500] : colors.text.muted}
+      />
+      <View style={s.statusRowText}>
+        <Text style={[s.statusLabel, { color: colors.text.primary }]}>{label}</Text>
+        <Text style={[s.statusDesc, { color: colors.text.muted }]} numberOfLines={2}>
+          {description}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function DnsTestResults({
+  result,
+  colors,
+}: {
+  result: DnsFilterTestResult;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const allGood = result.safeDomainsReachable && result.adultDomainsBlocked;
+  const bgColor = allGood ? colors.green[50] : colors.amber[50];
+  const borderColor = allGood ? colors.border.green : colors.amber[200];
+  const textColor = allGood ? colors.green[700] : colors.amber[800];
+
+  return (
+    <View style={[s.resultBox, { backgroundColor: bgColor, borderColor }]}>
+      <Text style={[s.resultTitle, { color: textColor }]}>
+        {allGood ? 'DNS filter is working correctly' : 'DNS filter needs attention'}
+      </Text>
+      {!result.vpnActive ? (
+        <Text style={[s.resultNote, { color: textColor }]}>
+          Protection is off — start blocking to activate DNS filtering.
+        </Text>
+      ) : null}
+      <View style={s.resultGrid}>
+        <ResultRow
+          label="Safe sites reachable"
+          pass={result.safeDomainsReachable}
+          detail={result.safeResults
+            .filter((r) => !r.blocked)
+            .map((r) => r.domain)
+            .join(', ') || 'none'}
+          colors={colors}
+        />
+        <ResultRow
+          label="Adult sites blocked"
+          pass={result.adultDomainsBlocked}
+          detail={result.adultResults.map((r) => r.domain).join(', ')}
+          colors={colors}
+        />
+      </View>
+    </View>
+  );
+}
+
+function ResultRow({
+  label,
+  pass,
+  detail,
+  colors,
+}: {
+  label: string;
+  pass: boolean;
+  detail: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <View style={s.resultRow}>
+      <Feather
+        name={pass ? 'check' : 'x'}
+        size={13}
+        color={pass ? colors.green[600] : colors.red[500]}
+      />
+      <View style={s.resultRowText}>
+        <Text style={[s.resultLabel, { color: colors.text.primary }]}>{label}</Text>
+        <Text style={[s.resultDetail, { color: colors.text.muted }]} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -77,30 +334,52 @@ function formatTimeAgo(timestamp: number) {
 const s = StyleSheet.create({
   emptyText: {
     ...typography.body,
-    color: colors.text.muted,
+  },
+  hostnameBox: {
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  hostnameText: {
+    fontFamily: 'monospace',
+    fontSize: 13,
+    fontWeight: '500',
   },
   panel: {
-    backgroundColor: colors.bg.elevated,
     borderRadius: radius.md,
     borderWidth: 1,
     gap: spacing.md,
     padding: spacing.md,
+  },
+  panelHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  panelHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  panelIcon: {
+    alignItems: 'center',
+    borderRadius: radius.sm,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
   },
   requestList: {
     gap: spacing.sm,
   },
   requestMeta: {
     ...typography.caption,
-    color: colors.text.muted,
     textTransform: 'capitalize',
   },
   requestReason: {
     ...typography.bodyMd,
-    color: colors.text.primary,
   },
   requestRow: {
     alignItems: 'center',
-    backgroundColor: colors.bg.tertiary,
     borderRadius: radius.sm,
     flexDirection: 'row',
     gap: spacing.sm,
@@ -110,16 +389,100 @@ const s = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  resultBox: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  resultDetail: {
+    ...typography.caption,
+  },
+  resultGrid: {
+    gap: spacing.sm,
+  },
+  resultLabel: {
+    ...typography.captionMd,
+  },
+  resultNote: {
+    ...typography.caption,
+  },
+  resultRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  resultRowText: {
+    flex: 1,
+    gap: 1,
+  },
+  resultTitle: {
+    ...typography.bodyMd,
+  },
   section: {
     gap: spacing.sm,
   },
   sectionMeta: {
     ...typography.body,
-    color: colors.text.secondary,
   },
   sectionTitle: {
     ...typography.h3,
-    color: colors.text.primary,
+  },
+  setupBox: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  setupBoxBody: {
+    ...typography.body,
+  },
+  setupBoxTitle: {
+    ...typography.bodyMd,
+  },
+  setupButton: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  setupButtonText: {
+    ...typography.captionMd,
+  },
+  statusDesc: {
+    ...typography.caption,
+    lineHeight: 17,
+  },
+  statusLabel: {
+    ...typography.captionMd,
+  },
+  statusRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: 2,
+  },
+  statusRowText: {
+    flex: 1,
+    gap: 1,
+  },
+  testButton: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  testButtonText: {
+    ...typography.captionMd,
+  },
+  testRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
   },
   toggleCopy: {
     flex: 1,

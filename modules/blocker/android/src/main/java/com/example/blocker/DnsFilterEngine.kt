@@ -5,6 +5,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
 class DnsFilterEngine(
@@ -14,6 +15,7 @@ class DnsFilterEngine(
   private val safeSearchOverrides: Map<String, String> = emptyMap()
 ) {
   private val classifier = DomainClassifier(vpnService.applicationContext, repository)
+  private val dnsCache = ConcurrentHashMap<String, DnsCacheEntry>(256)
 
   private fun recordPlainDnsBypassIfNeeded(query: DnsQuery, originalResolverIp: String? = null) {
     val resolverIp = (originalResolverIp ?: query.destinationIpText).lowercase()
@@ -77,8 +79,11 @@ class DnsFilterEngine(
         buildSafeSearchResponse(packet, query, classification.rewriteTarget)
       }
       DomainClassification.Action.ALLOW -> {
-        forwardDns(packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength))
-          ?: buildBlockedDnsResponse(packet, query.dnsOffset, query.dnsLength)
+        forwardDnsWithCache(
+          packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength),
+          query.domain,
+          query.queryType
+        ) ?: buildServfailDnsResponse(packet, query.dnsOffset, query.dnsLength)
       }
     }
 
@@ -392,6 +397,55 @@ class DnsFilterEngine(
     return min(offset + 4, query.size)
   }
 
+  private fun forwardDnsWithCache(query: ByteArray, domain: String, queryType: Int): ByteArray? {
+    val cacheKey = "$domain:$queryType"
+    val now = System.currentTimeMillis()
+
+    val cached = dnsCache[cacheKey]
+    if (cached != null && now < cached.expiresAt) {
+      // Return cached response, patching the transaction ID to match the current query
+      val response = cached.response.copyOf()
+      if (response.size >= 2 && query.size >= 2) {
+        response[0] = query[0]
+        response[1] = query[1]
+      }
+      return response
+    }
+
+    val response = forwardDns(query) ?: return null
+
+    // Cache NOERROR and NXDOMAIN — not SERVFAIL or other transient errors
+    if (response.size >= DNS_HEADER_LENGTH) {
+      val rcode = response[3].toInt() and 0x0f
+      if (rcode == 0 || rcode == 3) {
+        if (dnsCache.size >= DNS_CACHE_MAX_SIZE) {
+          dnsCache.keys.firstOrNull()?.let { dnsCache.remove(it) }
+        }
+        dnsCache[cacheKey] = DnsCacheEntry(response.copyOf(), now + DNS_CACHE_TTL_MS)
+      }
+    }
+
+    return response
+  }
+
+  private fun buildServfailDnsResponse(packet: ByteArray, dnsOffset: Int, dnsLength: Int): ByteArray {
+    val query = packet.copyOfRange(dnsOffset, dnsOffset + dnsLength)
+    val questionEnd = findQuestionEnd(query)
+    val responseLength = min(questionEnd, query.size)
+    val response = ByteArray(responseLength)
+    query.copyInto(response, 0, 0, responseLength)
+
+    if (response.size >= DNS_HEADER_LENGTH) {
+      response[2] = 0x80.toByte() // QR=1
+      response[3] = 0x82.toByte() // RA=1, RCODE=2 (SERVFAIL)
+      response[4] = 0x00; response[5] = 0x01 // QDCOUNT=1
+      response[6] = 0x00; response[7] = 0x00 // ANCOUNT=0
+      response[8] = 0x00; response[9] = 0x00 // NSCOUNT=0
+      response[10] = 0x00; response[11] = 0x00 // ARCOUNT=0
+    }
+    return response
+  }
+
   private fun forwardDns(query: ByteArray): ByteArray? {
     for (resolver in upstreamResolvers) {
       val response = try {
@@ -500,6 +554,8 @@ class DnsFilterEngine(
     val rawPacket: ByteArray? = null
   )
 
+  private data class DnsCacheEntry(val response: ByteArray, val expiresAt: Long)
+
   companion object {
     private const val IPV4_HEADER_LENGTH = 20
     private const val IPV6_HEADER_LENGTH = 40
@@ -514,8 +570,10 @@ class DnsFilterEngine(
     private const val DNS_TYPE_HTTPS = 65
     private const val DNS_TYPE_AAAA = 28
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
-    private const val DNS_READ_TIMEOUT_MS = 2500
+    private const val DNS_READ_TIMEOUT_MS = 1500
     private const val MAX_DNS_RESPONSE_SIZE = 4096
+    private const val DNS_CACHE_TTL_MS = 60_000L
+    private const val DNS_CACHE_MAX_SIZE = 512
     private const val ACTION_PLAIN_DNS_BYPASS_INTERCEPTED = "plain_dns_bypass_intercepted"
     private const val ACTION_ECH_HINT_STRIPPED = "ech_hint_stripped"
 
@@ -525,13 +583,12 @@ class DnsFilterEngine(
 
     private val ECH_ADVERTISING_DNS_TYPES = setOf(DNS_TYPE_SVCB, DNS_TYPE_HTTPS)
 
-    // Standard upstream resolvers — domain blocking is handled by local blocklists only.
+    // Three reliable upstream resolvers tried sequentially; blocking uses local lists only.
+    // Kept to 3 so worst-case timeout is 4.5 s instead of 12.5 s with 5 resolvers.
     private val DEFAULT_UPSTREAM_RESOLVERS = listOf(
       InetSocketAddress("1.1.1.1", DNS_PORT),
       InetSocketAddress("8.8.8.8", DNS_PORT),
-      InetSocketAddress("9.9.9.9", DNS_PORT),
-      InetSocketAddress("1.0.0.1", DNS_PORT),
-      InetSocketAddress("8.8.4.4", DNS_PORT)
+      InetSocketAddress("9.9.9.9", DNS_PORT)
     )
 
     private val PUBLIC_DNS_RESOLVER_IPV4 = setOf(

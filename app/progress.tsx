@@ -5,9 +5,6 @@ import { AnimatedCard } from '@/components/AnimatedCard';
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
-import { getDailyCoachingNudge } from '@/services/coaching';
-import { getTodaysMood } from '@/services/mood';
-import type { MoodCheckIn } from '@/services/mood';
 import { useGamification } from '@/store/useGamification';
 import type { DayRecord } from '@/store/useGamification';
 import { radius, spacing, typography, useTheme } from '@/theme';
@@ -38,27 +35,22 @@ function formatShortDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Journey Gauge ────────────────────────────────────────────────────────────
+// ─── Journey Banner ───────────────────────────────────────────────────────────
 
-function JourneyGauge({
+function JourneyBanner({
   progress,
+  daysElapsed,
+  daysRemaining,
   goalDateStr,
 }: {
   progress: number;
+  daysElapsed: number;
+  daysRemaining: number;
   goalDateStr: string;
 }) {
   const { colors } = useTheme();
-
-  const CANVAS_W = 280;
-  const SIDE_PAD = 20;
-  const ARC_W = CANVAS_W - 2 * SIDE_PAD; // 240
-  const BORDER = 14;
-  const CLIP_H = ARC_W / 2 + BORDER; // 134
-  const ARC_R = ARC_W / 2 - BORDER / 2; // 113
-  const DOT_D = 18;
-
-  // Animate progress value
   const progressAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: Math.min(1, Math.max(0, progress)),
@@ -67,264 +59,90 @@ function JourneyGauge({
     }).start();
   }, [progress, progressAnim]);
 
-  const clampedProg = Math.min(1, Math.max(0, progress));
-  const angle = Math.PI * (1 - clampedProg);
-  const arcCenterX = SIDE_PAD + ARC_W / 2; // 140
-
-  const dotLeft = arcCenterX + Math.cos(angle) * ARC_R - DOT_D / 2;
-  const dotTop = ARC_W / 2 - Math.sin(angle) * ARC_R - DOT_D / 2;
-  const pct = Math.round(clampedProg * 100);
-
-  // Arc fill: rotate a green circle so only the left segment is visible.
-  // progress 0 → rotate 0deg (nothing shows left of center)
-  // progress 0.5 → rotate 90deg (left half filled)
-  // progress 1 → rotate 180deg (whole top filled)
-  // We render it in two halves so we can fill past 50%.
-  const leftRotateDeg = progressAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: ['0deg', '90deg', '90deg'],
-  });
-  const rightRotateDeg = progressAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: ['0deg', '0deg', '90deg'],
-  });
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
 
   return (
-    <View style={sg.outer}>
-      <View style={{ width: CANVAS_W, position: 'relative' }}>
-        {/* Sparkles */}
-        <Text style={[sg.sparkle, { left: 8, top: 30, fontSize: 18, color: colors.amber[600] }]}>✦</Text>
-        <Text style={[sg.sparkle, { left: 46, top: 10, fontSize: 11, color: colors.amber[600] }]}>✦</Text>
-        <Text style={[sg.sparkle, { right: 8, top: 22, fontSize: 20, color: colors.amber[600] }]}>✦</Text>
-        <Text style={[sg.sparkle, { right: 52, top: 6, fontSize: 10, color: colors.amber[600] }]}>✦</Text>
-
-        {/* Arc clip zone – shows only the top half of the circle */}
-        <View style={{ width: CANVAS_W, height: CLIP_H, overflow: 'hidden' }}>
-          {/* Background arc (gray track) */}
-          <View
-            style={{
-              position: 'absolute',
-              left: SIDE_PAD,
-              top: 0,
-              width: ARC_W,
-              height: ARC_W,
-              borderRadius: ARC_W / 2,
-              borderWidth: BORDER,
-              borderColor: colors.border.subtle,
-            }}
-          />
-
-          {/* Progress fill — left half (progress 0–50%) */}
-          <View
-            style={{
-              position: 'absolute',
-              left: SIDE_PAD,
-              top: 0,
-              width: ARC_W / 2,
-              height: ARC_W,
-              overflow: 'hidden',
-            }}
-          >
-            <Animated.View
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: ARC_W,
-                height: ARC_W,
-                borderRadius: ARC_W / 2,
-                borderWidth: BORDER,
-                borderLeftColor: colors.green[500],
-                borderBottomColor: colors.green[500],
-                borderRightColor: 'transparent',
-                borderTopColor: 'transparent',
-                transform: [{ rotate: leftRotateDeg }],
-              }}
-            />
-          </View>
-
-          {/* Progress fill — right half (progress 50–100%) */}
-          <View
-            style={{
-              position: 'absolute',
-              left: SIDE_PAD + ARC_W / 2,
-              top: 0,
-              width: ARC_W / 2,
-              height: ARC_W,
-              overflow: 'hidden',
-            }}
-          >
-            <Animated.View
-              style={{
-                position: 'absolute',
-                left: -ARC_W / 2,
-                top: 0,
-                width: ARC_W,
-                height: ARC_W,
-                borderRadius: ARC_W / 2,
-                borderWidth: BORDER,
-                borderRightColor: colors.green[500],
-                borderTopColor: colors.green[500],
-                borderLeftColor: 'transparent',
-                borderBottomColor: 'transparent',
-                transform: [{ rotate: rightRotateDeg }],
-              }}
-            />
-          </View>
-
-          {/* Dot at current progress position */}
-          <View
-            style={{
-              position: 'absolute',
-              left: dotLeft,
-              top: dotTop,
-              width: DOT_D,
-              height: DOT_D,
-              borderRadius: DOT_D / 2,
-              backgroundColor: colors.green[500],
-              borderWidth: 2.5,
-              borderColor: colors.bg.elevated,
-            }}
-          />
+    <View style={[sjb.card, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
+      <View style={sjb.topRow}>
+        <View style={sjb.textCol}>
+          <Text style={[sjb.label, { color: colors.text.muted }]}>90-DAY JOURNEY</Text>
+          <Text style={[sjb.pct, { color: colors.text.primary }]}>{pct}%</Text>
         </View>
-
-        {/* Text content – pulled up into the visual arch space */}
-        <View style={[sg.centerContent, { marginTop: -(CLIP_H * 0.78) }]}>
-          <Text style={[sg.gaugeLabel, { color: colors.text.muted }]}>JOURNEY COMPLETION</Text>
-          <Text style={[sg.gaugePct, { color: colors.text.primary }]}>{pct}%</Text>
-          <View style={[sg.goalBadge, { backgroundColor: colors.bg.elevated }]}>
-            <Text style={sg.goalIcon}>🎯</Text>
-            <Text style={[sg.goalText, { color: colors.text.primary }]}>Goal: {goalDateStr}</Text>
-          </View>
+        <View style={sjb.statsCol}>
+          <Text style={[sjb.statVal, { color: colors.green[500] }]}>Day {daysElapsed}</Text>
+          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>of 90</Text>
+          <Text style={[sjb.statVal, { color: colors.text.secondary, marginTop: 6 }]}>{daysRemaining}d</Text>
+          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>remaining</Text>
         </View>
       </View>
+      <View style={[sjb.track, { backgroundColor: colors.border.subtle }]}>
+        <Animated.View
+          style={[
+            sjb.fill,
+            {
+              backgroundColor: colors.green[500],
+              width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+            },
+          ]}
+        />
+      </View>
+      <Text style={[sjb.goal, { color: colors.text.muted }]}>Goal: {goalDateStr}</Text>
     </View>
   );
 }
 
-const sg = StyleSheet.create({
-  outer: {
-    alignItems: 'center',
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+const sjb = StyleSheet.create({
+  card: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+    padding: spacing.lg,
   },
-  sparkle: {
-    position: 'absolute',
-    zIndex: 10,
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  centerContent: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingBottom: spacing.lg,
+  textCol: {
+    gap: 2,
   },
-  gaugeLabel: {
+  label: {
     fontSize: 9,
     fontWeight: '600',
-    letterSpacing: 1.8,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
-  gaugePct: {
-    fontSize: 52,
-    fontWeight: '700',
-    lineHeight: 58,
+  pct: {
+    fontSize: 40,
+    fontWeight: '600',
+    lineHeight: 46,
   },
-  goalBadge: {
-    alignItems: 'center',
+  statsCol: {
+    alignItems: 'flex-end',
+  },
+  statVal: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '400',
+  },
+  track: {
     borderRadius: radius.full,
-    elevation: 2,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    height: 5,
+    overflow: 'hidden',
   },
-  goalIcon: {
-    fontSize: 14,
+  fill: {
+    borderRadius: radius.full,
+    height: '100%',
   },
-  goalText: {
-    fontSize: 13,
+  goal: {
+    fontSize: 11,
     fontWeight: '400',
   },
 });
 
-// ─── Coach Card ───────────────────────────────────────────────────────────────
-
-function CoachCard() {
-  const { colors } = useTheme();
-  const gamification = useGamification();
-  const [tip, setTip] = useState<string | null>(null);
-  const [mood, setMood] = useState<MoodCheckIn | null>(null);
-
-  useEffect(() => {
-    void getTodaysMood().then(setMood);
-  }, []);
-
-  useEffect(() => {
-    void getDailyCoachingNudge({
-      streak: gamification.currentStreak,
-      level: gamification.level,
-      blocksYesterday: 0,
-      cleanHoursYesterday: gamification.todayCleanHours,
-      mood: mood ?? 'steady',
-    }).then(setTip);
-  }, [gamification.currentStreak, gamification.level, gamification.todayCleanHours, mood]);
-
-  return (
-    <AnimatedCard delay={40}>
-      <Card>
-        <View style={sc.header}>
-          <View style={[sc.iconCircle, { backgroundColor: colors.text.primary }]}>
-            <AppIcon name="coach" size={14} color={colors.text.inverse} />
-          </View>
-          <Text style={[sc.title, { color: colors.text.primary }]}>Coach says</Text>
-        </View>
-        {tip ? (
-          <Text style={[sc.tipText, { color: colors.text.secondary }]}>{tip}</Text>
-        ) : (
-          <View style={sc.skeleton}>
-            {[100, 85, 60].map((w, i) => (
-              <View
-                key={i}
-                style={[sc.skeletonLine, { backgroundColor: colors.border.subtle, width: `${w}%` }]}
-              />
-            ))}
-          </View>
-        )}
-      </Card>
-    </AnimatedCard>
-  );
-}
-
-const sc = StyleSheet.create({
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  iconCircle: {
-    alignItems: 'center',
-    borderRadius: radius.full,
-    height: 28,
-    justifyContent: 'center',
-    width: 28,
-  },
-  title: {
-    ...typography.bodyMd,
-  },
-  tipText: {
-    ...typography.body,
-    lineHeight: 22,
-  },
-  skeleton: {
-    gap: spacing.xs,
-  },
-  skeletonLine: {
-    borderRadius: radius.full,
-    height: 10,
-  },
-});
 
 // ─── Week Calendar ────────────────────────────────────────────────────────────
 
@@ -502,76 +320,6 @@ const sw = StyleSheet.create({
   },
 });
 
-// ─── Journey Stats Row ────────────────────────────────────────────────────────
-
-function JourneyStats({
-  todayStr,
-  goalStr,
-  daysRemaining,
-}: {
-  todayStr: string;
-  goalStr: string;
-  daysRemaining: number;
-}) {
-  const { colors } = useTheme();
-  return (
-    <AnimatedCard delay={100}>
-      <View style={ss.row}>
-        <StatPill icon="📅" label="TODAY" value={todayStr} colors={colors} />
-        <StatPill icon="🎯" label="GOAL DATE" value={goalStr} colors={colors} />
-        <StatPill icon="⌛" label="REMAINING" value={`${daysRemaining}d`} colors={colors} />
-      </View>
-    </AnimatedCard>
-  );
-}
-
-function StatPill({
-  icon,
-  label,
-  value,
-  colors,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useTheme>['colors'];
-}) {
-  return (
-    <View style={[ss.pill, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
-      <Text style={ss.pillIcon}>{icon}</Text>
-      <Text style={[ss.pillLabel, { color: colors.text.muted }]}>{label}</Text>
-      <Text style={[ss.pillValue, { color: colors.text.primary }]}>{value}</Text>
-    </View>
-  );
-}
-
-const ss = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  pill: {
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flex: 1,
-    gap: 3,
-    paddingVertical: spacing.md,
-  },
-  pillIcon: {
-    fontSize: 18,
-  },
-  pillLabel: {
-    fontSize: 8,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  pillValue: {
-    ...typography.captionMd,
-    textAlign: 'center',
-  },
-});
 
 // ─── Full Streak Grid ─────────────────────────────────────────────────────────
 
@@ -733,26 +481,20 @@ export default function ProgressScreen() {
   }, [progressRatio, xpBarAnim]);
 
   return (
-    <ScreenScaffold title="Your Progress" subtitle="One day at a time." iconName="progress">
-      {/* Journey gauge */}
+    <ScreenScaffold title="Your Progress" subtitle="One day at a time." iconName="progress" collapsibleTitle>
+      {/* Journey banner */}
       <AnimatedCard delay={0}>
-        <Card padding={0}>
-          <JourneyGauge progress={journeyProgress} goalDateStr={formatShortDate(goalDate)} />
-        </Card>
+        <JourneyBanner
+          progress={journeyProgress}
+          daysElapsed={daysElapsed}
+          daysRemaining={daysRemaining}
+          goalDateStr={formatShortDate(goalDate)}
+        />
       </AnimatedCard>
-
-      {/* Coach says */}
-      <CoachCard />
 
       {/* Current week calendar */}
       <WeekCalendarSection days={calendarDays} onPressMore={() => setShowFullCalendar((v) => !v)} />
 
-      {/* Journey stats */}
-      <JourneyStats
-        todayStr={formatShortDate(today)}
-        goalStr={formatShortDate(goalDate)}
-        daysRemaining={daysRemaining}
-      />
 
       {/* 12-week grid (toggleable via MORE) */}
       {showFullCalendar ? (

@@ -8,6 +8,7 @@ import { OnboardingFlow } from '@/components/OnboardingFlow';
 import { ThemeProvider, useTheme } from '@/theme';
 import { buildPaperTheme } from '@/theme';
 import { radius } from '@/theme';
+import { useAlertCenter } from '@/store/useAlertCenter';
 import { useOnboarding } from '@/store/useOnboarding';
 
 type TabFeatherIconName = ComponentProps<typeof Feather>['name'];
@@ -25,6 +26,21 @@ function TabIcon({ name, color, focused }: { name: TabFeatherIconName; color: st
   return (
     <View style={[styles.tabIconWrap, focused && { backgroundColor: colors.green[50] }]}>
       <Feather name={name} size={focused ? 22 : 21} color={color} />
+    </View>
+  );
+}
+
+function AdminTabIcon({ color, focused }: { color: string; focused: boolean }) {
+  const { colors } = useTheme();
+  const { unreadCount } = useAlertCenter();
+  return (
+    <View>
+      <TabIcon name={tabIcons.admin} color={color} focused={focused} />
+      {unreadCount > 0 ? (
+        <View style={[styles.badge, { backgroundColor: colors.red[500] }]}>
+          <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -107,7 +123,7 @@ function AppContent() {
           name="admin"
           options={{
             title: 'Settings',
-            tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.admin} color={color} focused={focused} />,
+            tabBarIcon: ({ color, focused }) => <AdminTabIcon color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen name="focus" options={{ href: null }} />
@@ -140,5 +156,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0,
     marginBottom: 5,
+  },
+  badge: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    height: 14,
+    justifyContent: 'center',
+    minWidth: 14,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: -2,
+    top: -2,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '700',
+    lineHeight: 10,
   },
 });

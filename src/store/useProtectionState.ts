@@ -544,7 +544,11 @@ export function useProtectionState() {
         await refreshStatus(false);
         return;
       }
-      setStatus(result.status === 'pin_required' ? 'inactive' : result.status);
+      const safeStatus: ProtectionStatus =
+        result.status === 'pin_required' || result.status === 'pin_locked_out'
+          ? 'inactive'
+          : result.status;
+      setStatus(safeStatus);
       setVpnActive(result.status === 'active');
       setTampered(result.status === 'tampered');
       setError(undefined);
@@ -1285,11 +1289,6 @@ function normalizeSafeSearchSettings(settings: Partial<SafeSearchSettings>): Saf
   return {
     ...initialSafeSearchSettings,
     ...settings,
-    googleSafeSearch: true,
-    bingSafeSearch: true,
-    duckDuckGoSafeSearch: true,
-    youtubeRestrictedMode: true,
-    blockUnknownSearchEngines: true,
   };
 }
 

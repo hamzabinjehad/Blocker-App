@@ -158,6 +158,32 @@ class DeviceOwnerPolicyManager(
     )
   }
 
+  fun ensureRestrictionsApplied() {
+    if (!isManagedOwner()) return
+    if (!repository.isProtectionRequested() && !repository.isStrictModeEnabled()) return
+    strictRestrictions().forEach { restriction ->
+      runCatching { manager.addUserRestriction(component, restriction) }
+    }
+    runCatching {
+      manager.setUninstallBlocked(component, context.packageName, true)
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      runCatching {
+        manager.setAlwaysOnVpnPackage(component, context.packageName, true)
+      }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      runCatching {
+        manager.setPermissionGrantState(
+          component,
+          context.packageName,
+          Manifest.permission.POST_NOTIFICATIONS,
+          DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+        )
+      }
+    }
+  }
+
   private fun strictRestrictions(): List<String> {
     val restrictions = mutableListOf(
       UserManager.DISALLOW_SAFE_BOOT,
@@ -173,10 +199,12 @@ class DeviceOwnerPolicyManager(
       UserManager.DISALLOW_MODIFY_ACCOUNTS,
       UserManager.DISALLOW_CONFIG_DATE_TIME,
       UserManager.DISALLOW_CONFIG_VPN,
-      UserManager.DISALLOW_APPS_CONTROL
+      UserManager.DISALLOW_APPS_CONTROL,
+      UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA
     )
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       restrictions.add(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+      restrictions.add(UserManager.DISALLOW_NETWORK_RESET)
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       restrictions.add(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY)

@@ -110,6 +110,7 @@ class BootReceiver : BroadcastReceiver() {
     VpnRestartJobService.schedulePeriodic(context)
     BlocklistUpdateWorker.scheduleWeekly(context)
     NightModeWorker.schedule(context)
+    DeviceOwnerPolicyManager(context, repository).ensureRestrictionsApplied()
     ManagedEnforcer(context, repository).applyPackageSuspension()
     UninstallLockManager(context, repository).reconcile()
     TamperDetector(context, repository).evaluateAndRecord(FilterVpnService.isRunning && repository.isVpnActive())

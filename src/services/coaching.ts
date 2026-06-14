@@ -16,11 +16,11 @@ export interface CoachingStats {
   mood?: string;
 }
 
-export async function getDailyCoachingNudge(stats: CoachingStats): Promise<string> {
+export async function getDailyCoachingNudge(stats: CoachingStats, forceRefresh = false): Promise<string> {
   const lastTimestamp = await AsyncStorage.getItem(COACHING_TIMESTAMP_KEY);
   const lastMood = await AsyncStorage.getItem(COACHING_MOOD_KEY);
   const now = Date.now();
-  if (lastTimestamp && lastMood === (stats.mood ?? '') && now - Number(lastTimestamp) < 24 * 60 * 60 * 1000) {
+  if (!forceRefresh && lastTimestamp && lastMood === (stats.mood ?? '') && now - Number(lastTimestamp) < 24 * 60 * 60 * 1000) {
     const cached = await AsyncStorage.getItem(COACHING_STORAGE_KEY);
     if (cached) return cached;
   }

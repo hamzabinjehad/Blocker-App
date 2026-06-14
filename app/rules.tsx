@@ -78,7 +78,7 @@ export default function RulesScreen() {
         </View>
       </View>
 
-      <View style={s.sectionList}>
+      <View style={[s.segControl, { backgroundColor: colors.bg.tertiary }]}>
         {sections.map((section) => {
           const selected = section.id === activeSection;
           const status = statuses[section.id];
@@ -89,36 +89,19 @@ export default function RulesScreen() {
               key={section.id}
               onPress={() => setActiveSection(section.id)}
               style={[
-                s.sectionButton,
-                {
-                  backgroundColor: selected ? colors.green[50] : colors.bg.elevated,
-                  borderColor: selected ? colors.green[500] : colors.border.subtle,
-                },
+                s.segButton,
+                selected && { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle },
               ]}
             >
-              <View style={[s.sectionIconWrap, { backgroundColor: selected ? colors.green[100] : colors.bg.tertiary }]}>
-                <AppIcon name={section.icon} size={16} color={selected ? colors.green[600] : colors.text.secondary} />
-              </View>
-              <View style={s.sectionText}>
-                <Text style={[s.sectionLabel, { color: selected ? colors.green[600] : colors.text.primary }]}>
-                  {section.label}
-                </Text>
-                <Text style={[s.sectionSummary, { color: colors.text.muted }]} numberOfLines={1}>
-                  {section.summary}
-                </Text>
-              </View>
-              <StatusChip label={status.label} tone={status.tone} />
+              <Text style={[s.segLabel, { color: selected ? colors.text.primary : colors.text.muted }]}>
+                {section.label}
+              </Text>
+              {status.tone !== 'neutral' ? (
+                <View style={[s.segDot, { backgroundColor: status.tone === 'success' ? colors.green[500] : colors.amber[500] }]} />
+              ) : null}
             </Pressable>
           );
         })}
-      </View>
-
-      <View style={[s.detailHeader, { borderColor: colors.border.subtle }]}>
-        <View style={s.detailCopy}>
-          <Text style={[s.detailTitle, { color: colors.text.primary }]}>{active.label}</Text>
-          <Text style={[s.detailSubtitle, { color: colors.text.secondary }]}>{active.detail}</Text>
-        </View>
-        <StatusChip label={statuses[active.id].label} tone={statuses[active.id].tone} />
       </View>
 
       <Card padding={spacing.md}>
@@ -322,23 +305,6 @@ function ImageScanningCard({
 }
 
 const s = StyleSheet.create({
-  detailCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  detailHeader: {
-    alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  detailSubtitle: {
-    ...typography.body,
-  },
-  detailTitle: {
-    ...typography.h3,
-  },
   metric: {
     borderRadius: radius.md,
     flex: 1,
@@ -389,36 +355,31 @@ const s = StyleSheet.create({
   panelStack: {
     gap: spacing.lg,
   },
-  sectionList: {
-    gap: spacing.sm,
-  },
-  sectionButton: {
-    alignItems: 'center',
+  segControl: {
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 64,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: 3,
+    padding: 3,
   },
-  sectionIconWrap: {
+  segButton: {
     alignItems: 'center',
     borderRadius: radius.sm,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
-  sectionLabel: {
-    ...typography.bodyMd,
-  },
-  sectionSummary: {
-    ...typography.caption,
-  },
-  sectionText: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
     flex: 1,
-    gap: 2,
-    minWidth: 0,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+  },
+  segLabel: {
+    ...typography.captionMd,
+  },
+  segDot: {
+    borderRadius: radius.full,
+    height: 5,
+    width: 5,
   },
   statusPill: {
     borderRadius: radius.full,

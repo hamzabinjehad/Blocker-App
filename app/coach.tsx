@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
@@ -7,6 +7,8 @@ import { Card } from '@/components/Card';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { UrgeSurfingSheet } from '@/components/UrgeSurfingSheet';
 import { getDailyCoachingNudge } from '@/services/coaching';
+import { getTodaysMood } from '@/services/mood';
+import type { MoodCheckIn } from '@/services/mood';
 import { useGamification } from '@/store/useGamification';
 import { emotionalStateLabels, triggerLabels, useRecovery } from '@/store/useRecovery';
 import type { EmotionalState, TriggerSituation } from '@/store/useRecovery';
@@ -24,15 +26,34 @@ export default function CoachScreen() {
   const [tip, setTip] = useState('Notice the first small choice. It is usually enough to change the next one.');
   const [urgeSheetVisible, setUrgeSheetVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false);
+  const [currentMood, setCurrentMood] = useState<MoodCheckIn | null>(null);
+
+  useEffect(() => {
+    void getTodaysMood().then(setCurrentMood);
+  }, []);
+
+  const getYesterdayBlocks = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yesterday = d.toISOString().split('T')[0]!;
+    return gamification.dayHistory.find((r) => r.date === yesterday)?.blocksCount ?? 0;
+  };
+
+  const buildCoachingStats = () => ({
+    streak: gamification.currentStreak,
+    level: gamification.level,
+    blocksYesterday: getYesterdayBlocks(),
+    cleanHoursYesterday: gamification.todayCleanHours,
+    mood: currentMood ?? 'steady',
+  });
+
+  useEffect(() => {
+    void getDailyCoachingNudge(buildCoachingStats()).then(setTip);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentMood]);
 
   const refreshTip = () => {
-    void getDailyCoachingNudge({
-      streak: gamification.currentStreak,
-      level: gamification.level,
-      blocksYesterday: 0,
-      cleanHoursYesterday: gamification.todayCleanHours,
-      mood: 'steady',
-    }).then(setTip);
+    void getDailyCoachingNudge(buildCoachingStats(), true).then(setTip);
   };
 
   const saveJournal = () => {
@@ -50,17 +71,18 @@ export default function CoachScreen() {
   };
 
   return (
-    <ScreenScaffold title="Coach" subtitle="A quiet place for the next useful step." iconName="coach">
-      <Card accent="green">
-        <View style={s.tipRow}>
-          <Text style={[s.tipText, { color: colors.text.primary }]} numberOfLines={2}>
-            {tip}
-          </Text>
+    <ScreenScaffold title="Coach" subtitle="A quiet place for the next useful step." iconName="coach" collapsibleTitle>
+      <View style={[s.tipCard, { backgroundColor: colors.green[50], borderColor: colors.border.green }]}>
+        <View style={s.tipCardHeader}>
+          <Text style={[s.tipCardLabel, { color: colors.green[600] }]}>TODAY'S TIP</Text>
           <Pressable accessibilityRole="button" onPress={refreshTip} style={s.textLinkButton}>
-            <Text style={[s.swapLink, { color: colors.text.secondary }]}>New tip</Text>
+            <Text style={[s.swapLink, { color: colors.text.secondary }]}>Refresh</Text>
           </Pressable>
         </View>
-      </Card>
+        <Text style={[s.tipText, { color: colors.text.primary }]}>
+          {tip}
+        </Text>
+      </View>
 
       <View style={s.actionGrid}>
         <Pressable
@@ -68,13 +90,13 @@ export default function CoachScreen() {
           onPress={() => setUrgeSheetVisible(true)}
           style={[s.primaryAction, { backgroundColor: colors.green[500] }]}
         >
-          <AppIcon name="shield" size={20} color={colors.text.inverse} />
+          <AppIcon name="coach" size={20} color={colors.text.inverse} />
           <Text style={[s.actionTitle, { color: colors.text.inverse }]}>I'm struggling</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => setMomentSheetVisible(true)}
-          style={[s.secondaryAction, { borderColor: colors.border.subtle }]}
+          style={[s.secondaryAction, { borderColor: colors.border.subtle, backgroundColor: colors.bg.elevated }]}
         >
           <Feather name="edit-3" size={18} color={colors.green[500]} />
           <Text style={[s.actionTitle, { color: colors.text.primary }]}>Log a moment</Text>
@@ -114,14 +136,15 @@ export default function CoachScreen() {
               {recovery.activeChallenge.detail}
             </Text>
           </View>
-          <Text style={[s.challengeProgress, { color: colors.green[600] }]}>
-            {recovery.activeChallenge.completed ? '+100 XP' : 'weekly'}
-          </Text>
+          <Text style={[s.challengeProgress, { color: colors.green[600] }]}>+100 XP</Text>
+        </View>
+        <View style={[s.challengeTrack, { backgroundColor: colors.border.subtle }]}>
+          <View style={[s.challengeFill, { backgroundColor: colors.green[500], width: recovery.activeChallenge.completed ? '100%' : '0%' }]} />
         </View>
         <View style={s.challengeActions}>
           <Pressable accessibilityRole="button" disabled={recovery.activeChallenge.completed} onPress={completeChallenge}>
-            <Text style={[s.challengeLink, { color: colors.green[600] }]}>
-              {recovery.activeChallenge.completed ? 'Completed' : 'Mark progress'}
+            <Text style={[s.challengeLink, { color: recovery.activeChallenge.completed ? colors.text.muted : colors.green[600] }]}>
+              {recovery.activeChallenge.completed ? 'Completed' : 'Mark complete'}
             </Text>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={recovery.swapChallenge}>
@@ -133,7 +156,6 @@ export default function CoachScreen() {
       <Card>
         <View style={s.cardHeader}>
           <Text style={[s.cardTitle, { color: colors.text.primary }]}>Recent journal</Text>
-          <Text style={[s.cardMeta, { color: colors.text.secondary }]}>See all</Text>
         </View>
         {recovery.journalEntries.slice(0, 2).length > 0 ? (
           recovery.journalEntries.slice(0, 2).map((entry) => (
@@ -294,24 +316,26 @@ const s = StyleSheet.create({
   primaryAction: {
     alignItems: 'center',
     borderRadius: radius.lg,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 52,
+    flex: 1,
+    flexDirection: 'column',
+    gap: spacing.xs,
+    minHeight: 72,
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
   secondaryAction: {
     alignItems: 'center',
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 44,
+    flex: 1,
+    flexDirection: 'column',
+    gap: spacing.xs,
+    minHeight: 72,
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
   actionGrid: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     gap: spacing.md,
   },
   actionTitle: {
@@ -463,15 +487,33 @@ const s = StyleSheet.create({
     ...typography.display,
     textAlign: 'center',
   },
-  tipRow: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#27A06A',
+  tipCard: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  tipCardHeader: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.md,
-    paddingLeft: spacing.md,
+    justifyContent: 'space-between',
+  },
+  tipCardLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.6,
   },
   tipText: {
     ...typography.bodyLg,
-    flex: 1,
+    lineHeight: 26,
+  },
+  challengeTrack: {
+    borderRadius: radius.full,
+    height: 4,
+    overflow: 'hidden',
+  },
+  challengeFill: {
+    borderRadius: radius.full,
+    height: '100%',
   },
 });
