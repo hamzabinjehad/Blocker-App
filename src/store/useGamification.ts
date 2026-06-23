@@ -73,6 +73,7 @@ export interface GamificationState {
   currentMonthCleanDays: number;
   streakMultiplier: number;
   lastStreakFreezeAt: number;
+  journeyStartDate?: string;
 }
 
 const LEVEL_THRESHOLDS = [
@@ -213,6 +214,7 @@ const defaultState: GamificationState = {
   currentMonthCleanDays: 0,
   streakMultiplier: 1.0,
   lastStreakFreezeAt: 0,
+  journeyStartDate: undefined,
 };
 
 let sharedState = defaultState;
@@ -241,9 +243,16 @@ export function useGamification() {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<GamificationState>;
+        const journeyStartDate = parsed.journeyStartDate
+          ?? (parsed.dayHistory ?? []).slice().sort((a, b) => a.date.localeCompare(b.date))[0]?.date
+          ?? getToday();
+        if (!parsed.journeyStartDate) {
+          void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, journeyStartDate }));
+        }
         setSharedState((current) => ({
           ...current,
           ...parsed,
+          journeyStartDate,
           hydrated: true,
           dayHistory: (parsed.dayHistory ?? []).map(normalizeDayRecord),
           badges: RECOVERY_BADGE_DEFS.map((def) => {
@@ -266,7 +275,9 @@ export function useGamification() {
           }),
         }));
       } else {
-        setSharedState((current) => ({ ...current, hydrated: true }));
+        const journeyStartDate = getToday();
+        setSharedState((current) => ({ ...current, journeyStartDate, hydrated: true }));
+        void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ journeyStartDate }));
       }
     } catch {
       setSharedState((current) => ({ ...current, hydrated: true }));

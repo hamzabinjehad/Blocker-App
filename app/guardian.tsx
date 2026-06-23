@@ -116,6 +116,7 @@ function DnsProtectionCard({
   const { colors } = useTheme();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<DnsFilterTestResult | null>(null);
+  const [testLastRanAt, setTestLastRanAt] = useState<number | null>(null);
 
   const dnsHost = privateDnsStatus?.configuredHost?.toLowerCase() ?? '';
   const dnsMode = privateDnsStatus?.mode ?? '';
@@ -126,6 +127,7 @@ function DnsProtectionCard({
     try {
       const result = await BlockerModule.testDnsFiltering();
       setTestResult(result);
+      setTestLastRanAt(Date.now());
     } catch (_) {
       setTestResult(null);
     } finally {
@@ -215,6 +217,11 @@ function DnsProtectionCard({
             {testing ? 'Testing…' : 'Test DNS filtering'}
           </Text>
         </Pressable>
+        {testLastRanAt !== null && !testing ? (
+          <Text style={[s.testTimestamp, { color: colors.text.muted }]}>
+            Last tested {formatTimeAgo(testLastRanAt)}
+          </Text>
+        ) : null}
       </View>
 
       {testResult ? <DnsTestResults result={testResult} colors={colors} /> : null}
@@ -276,16 +283,23 @@ function DnsTestResults({
         <ResultRow
           label="Safe sites reachable"
           pass={result.safeDomainsReachable}
-          detail={result.safeResults
-            .filter((r) => !r.blocked)
-            .map((r) => r.domain)
-            .join(', ') || 'none'}
+          detail={(() => {
+            const reachable = result.safeResults.filter((r) => !r.blocked).length;
+            const total = result.safeResults.length;
+            return total > 0 ? `${reachable}/${total} accessible` : 'No results';
+          })()}
           colors={colors}
         />
         <ResultRow
-          label="Adult sites blocked"
+          label="Adult content blocked"
           pass={result.adultDomainsBlocked}
-          detail={result.adultResults.map((r) => r.domain).join(', ')}
+          detail={(() => {
+            const blocked = result.adultResults.filter((r) => r.blocked).length;
+            const total = result.adultResults.length;
+            if (total === 0) return 'No results';
+            if (blocked === total) return `All ${total} test domains filtered`;
+            return `${total - blocked} domain${total - blocked === 1 ? '' : 's'} not filtered`;
+          })()}
           colors={colors}
         />
       </View>
@@ -480,9 +494,15 @@ const s = StyleSheet.create({
   testButtonText: {
     ...typography.captionMd,
   },
+  testTimestamp: {
+    ...typography.caption,
+    marginLeft: spacing.sm,
+  },
   testRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
   toggleCopy: {
     flex: 1,

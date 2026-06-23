@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Chip, Searchbar, Text } from 'react-native-paper';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 
 import { Card } from '../Card';
-import { Button, Field } from '../controls';
-import { colors, radius, spacing, typography } from '@/theme';
+import { radius, spacing, typography, useTheme } from '@/theme';
 import type { BlocklistImportResult } from '@/types/blocker';
 
 type WebsiteTab = 'blocked' | 'allowed';
@@ -40,6 +39,7 @@ export function CustomKeywordManager({
   onAddAllowlistedDomain,
   onRemoveAllowlistedDomain,
 }: CustomKeywordManagerProps) {
+  const { colors } = useTheme();
   const [keyword, setKeyword] = useState('');
   const [domain, setDomain] = useState('');
   const [pin, setPin] = useState('');
@@ -64,17 +64,15 @@ export function CustomKeywordManager({
   };
 
   const removeKeyword = (item: string) => {
-    void onUpdateKeywordList(keywords.filter((keywordItem) => keywordItem !== item), suppliedPin);
+    void onUpdateKeywordList(keywords.filter((k) => k !== item), suppliedPin);
   };
 
   const addWebsite = async () => {
     const normalized = normalizeDomain(domain);
     if (!normalized) return;
-
     const added = websiteTab === 'blocked'
       ? await onAddBlockedDomain(normalized, suppliedPin)
       : await onAddAllowlistedDomain(normalized, suppliedPin);
-
     if (added) {
       setDomain('');
       setImportMessage(undefined);
@@ -82,11 +80,8 @@ export function CustomKeywordManager({
   };
 
   const removeWebsite = (item: string) => {
-    if (websiteTab === 'blocked') {
-      void onRemoveBlockedDomain(item, suppliedPin);
-    } else {
-      void onRemoveAllowlistedDomain(item, suppliedPin);
-    }
+    if (websiteTab === 'blocked') void onRemoveBlockedDomain(item, suppliedPin);
+    else void onRemoveAllowlistedDomain(item, suppliedPin);
   };
 
   const importWebsites = async () => {
@@ -99,20 +94,16 @@ export function CustomKeywordManager({
         type: ['text/plain', 'text/csv', 'text/comma-separated-values', 'application/csv'],
       });
       if (result.canceled) return;
-
       const asset = result.assets[0];
       const content = await FileSystem.readAsStringAsync(asset.uri);
       const parsed = parseDomainImport(content);
       if (parsed.length === 0) {
-        setImportMessage('No valid websites were found in that file.');
+        setImportMessage('No valid sites found in that file.');
         return;
       }
-
       const imported = await onImportBlockedDomains(parsed, suppliedPin);
       if (imported) {
-        setImportMessage(
-          `Imported ${imported.imported} new websites from ${parsed.length} parsed entries. ${imported.ignored} duplicates.`,
-        );
+        setImportMessage(`Imported ${imported.imported} sites. ${imported.ignored} duplicates.`);
       }
     } catch (cause) {
       setImportMessage(cause instanceof Error ? cause.message : 'Unable to import that file.');
@@ -121,161 +112,203 @@ export function CustomKeywordManager({
     }
   };
 
+  const inputStyle = [s.input, { color: colors.text.primary, backgroundColor: colors.bg.elevated, borderColor: colors.border.default }];
+
   return (
     <Card
-      title="Keywords and Websites"
-      subtitle="Manage blocked terms and custom website rules from one place."
-      action={<Chip compact icon="shield-lock-outline">{blockedDomainCount.toLocaleString()} domains</Chip>}
+      title="Keywords & Websites"
+      subtitle="Manage blocked terms and custom website rules."
+      action={
+        <View style={[s.badge, { backgroundColor: colors.green[50] }]}>
+          <Text style={[s.badgeText, { color: colors.green[600] }]}>{blockedDomainCount.toLocaleString()} domains</Text>
+        </View>
+      }
     >
-      <View style={styles.statsRow}>
-        <Stat label="Keywords" value={keywords.length} />
-        <Stat label="Blocked" value={blockedDomains.length} tone="red" />
-        <Stat label="Allowed" value={allowlistedDomains.length} tone="green" />
-      </View>
-
       {pinConfigured ? (
-        <Field
+        <TextInput
           keyboardType="number-pad"
-          label="Parent PIN for rule changes"
-          onChangeText={setPin}
-          placeholder="Enter PIN"
+          placeholder="Enter PIN to make changes"
+          placeholderTextColor={colors.text.muted}
           secureTextEntry
+          style={inputStyle}
+          onChangeText={setPin}
           value={pin}
         />
       ) : null}
 
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>Block Keywords</Text>
-        <View style={styles.inlineForm}>
-          <View style={styles.inlineField}>
-            <Field
-              label="Blocked keyword"
-              onChangeText={setKeyword}
-              placeholder="Add a custom blocked term"
-              value={keyword}
-            />
-          </View>
-          <Button icon="plus-circle-outline" onPress={addKeyword}>
-            Add
-          </Button>
+      {/* Keywords */}
+      <View style={s.section}>
+        <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>Keywords</Text>
+        <View style={s.inputRow}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Add a blocked keyword"
+            placeholderTextColor={colors.text.muted}
+            returnKeyType="done"
+            style={inputStyle}
+            onChangeText={setKeyword}
+            onSubmitEditing={addKeyword}
+            value={keyword}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={addKeyword}
+            style={[s.circleBtn, { backgroundColor: colors.green[500] }]}
+          >
+            <Feather name="plus" size={18} color="#fff" />
+          </Pressable>
         </View>
-        <View style={styles.list}>
-          {keywords.length > 0 ? (
-            keywords.map((item) => (
-              <Chip
-                key={item}
-                compact
-                closeIcon="close"
-                icon="text-search"
-                onClose={() => removeKeyword(item)}
-                style={styles.keyword}
-              >
-                {item}
-              </Chip>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>No custom keywords yet.</Text>
+        <View style={s.tagRow}>
+          {keywords.length > 0 ? keywords.map((kw) => (
+            <Pressable
+              key={kw}
+              accessibilityRole="button"
+              onPress={() => removeKeyword(kw)}
+              style={[s.tag, { backgroundColor: colors.green[50], borderColor: colors.border.green }]}
+            >
+              <Text style={[s.tagText, { color: colors.green[700] }]}>{kw}</Text>
+              <Feather name="x" size={11} color={colors.green[600]} />
+            </Pressable>
+          )) : (
+            <Text style={[s.emptyText, { color: colors.text.muted }]}>No keywords yet.</Text>
           )}
         </View>
       </View>
 
-      <View style={styles.panel}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Block Websites</Text>
-          <Text style={styles.updateText}>Updated: {lastBlocklistUpdate}</Text>
-        </View>
-
-        <View style={styles.tabRow}>
-          <Chip
-            compact
-            icon="block-helper"
-            selected={websiteTab === 'blocked'}
-            onPress={() => setWebsiteTab('blocked')}
-          >
-            Blocked ({blockedDomains.length})
-          </Chip>
-          <Chip
-            compact
-            icon="check-circle-outline"
-            selected={websiteTab === 'allowed'}
-            onPress={() => setWebsiteTab('allowed')}
-          >
-            Allowed ({allowlistedDomains.length})
-          </Chip>
-        </View>
-
-        <Searchbar
-          placeholder={`Search ${websiteTab} websites`}
-          onChangeText={setWebsiteSearch}
-          value={websiteSearch}
-          style={styles.searchbar}
-          inputStyle={styles.searchInput}
-          elevation={0}
-        />
-
-        <View style={styles.inlineForm}>
-          <View style={styles.inlineField}>
-            <Field
-              label={websiteTab === 'blocked' ? 'Website to block' : 'Website to allow'}
-              onChangeText={setDomain}
-              placeholder="example.com"
-              value={domain}
-            />
-          </View>
-          <Button
-            icon={websiteTab === 'blocked' ? 'block-helper' : 'check-circle-outline'}
-            tone={websiteTab === 'blocked' ? 'danger' : 'primary'}
-            onPress={() => void addWebsite()}
-          >
-            {websiteTab === 'blocked' ? 'Block' : 'Allow'}
-          </Button>
-        </View>
-
-        {websiteTab === 'blocked' ? (
-          <Button icon="file-upload-outline" loading={importing} tone="neutral" onPress={() => void importWebsites()}>
-            Import Websites
-          </Button>
-        ) : null}
-
-        <View style={styles.list}>
-          {filteredDomains.length > 0 ? (
-            filteredDomains.slice(0, 48).map((item) => (
-              <Chip
-                key={item}
-                compact
-                closeIcon="close"
-                icon={websiteTab === 'blocked' ? 'web-off' : 'web-check'}
-                onClose={() => removeWebsite(item)}
-                style={websiteTab === 'blocked' ? styles.blockedWebsite : styles.allowedWebsite}
+      {/* Websites */}
+      <View style={s.section}>
+        <View style={s.sectionHeader}>
+          <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>Websites</Text>
+          <View style={s.sectionMeta}>
+            <Text style={[s.metaText, { color: colors.text.muted }]}>{formatLastUpdate(lastBlocklistUpdate)}</Text>
+            {websiteTab === 'blocked' ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={importing}
+                onPress={() => void importWebsites()}
+                style={s.importBtn}
               >
+                <Feather name="upload" size={13} color={importing ? colors.text.muted : colors.text.secondary} />
+                <Text style={[s.importText, { color: importing ? colors.text.muted : colors.text.secondary }]}>
+                  {importing ? 'Importing…' : 'Import'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={[s.segControl, { backgroundColor: colors.bg.tertiary }]}>
+          {(['blocked', 'allowed'] as WebsiteTab[]).map((tab) => {
+            const selected = websiteTab === tab;
+            const count = tab === 'blocked' ? blockedDomains.length : allowlistedDomains.length;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={tab}
+                onPress={() => setWebsiteTab(tab)}
+                style={[s.segBtn, selected && { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}
+              >
+                <Text style={[s.segLabel, { color: selected ? colors.text.primary : colors.text.muted }]}>
+                  {tab === 'blocked' ? 'Blocked' : 'Allowed'}{count > 0 ? ` (${count})` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={[s.searchRow, { backgroundColor: colors.bg.tertiary, borderColor: colors.border.subtle }]}>
+          <Feather name="search" size={14} color={colors.text.muted} />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={`Search ${websiteTab} sites`}
+            placeholderTextColor={colors.text.muted}
+            style={[s.searchInput, { color: colors.text.primary }]}
+            onChangeText={setWebsiteSearch}
+            value={websiteSearch}
+          />
+          {websiteSearch ? (
+            <Pressable accessibilityRole="button" onPress={() => setWebsiteSearch('')}>
+              <Feather name="x" size={14} color={colors.text.muted} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={s.inputRow}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="example.com"
+            placeholderTextColor={colors.text.muted}
+            returnKeyType="done"
+            style={inputStyle}
+            onChangeText={setDomain}
+            onSubmitEditing={() => void addWebsite()}
+            value={domain}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void addWebsite()}
+            style={[
+              s.actionBtn,
+              websiteTab === 'blocked'
+                ? { backgroundColor: colors.red[50], borderColor: colors.red[400] }
+                : { backgroundColor: colors.green[50], borderColor: colors.green[500] },
+            ]}
+          >
+            <Text style={[s.actionBtnText, { color: websiteTab === 'blocked' ? colors.red[500] : colors.green[600] }]}>
+              {websiteTab === 'blocked' ? 'Block' : 'Allow'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={s.tagRow}>
+          {filteredDomains.length > 0 ? filteredDomains.slice(0, 48).map((item) => (
+            <Pressable
+              key={item}
+              accessibilityRole="button"
+              onPress={() => removeWebsite(item)}
+              style={[
+                s.tag,
+                websiteTab === 'blocked'
+                  ? { backgroundColor: colors.red[50], borderColor: colors.red[100] }
+                  : { backgroundColor: colors.green[50], borderColor: colors.border.green },
+              ]}
+            >
+              <Text style={[s.tagText, { color: websiteTab === 'blocked' ? colors.red[500] : colors.green[700] }]}>
                 {item}
-              </Chip>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              {websiteSearch ? `No websites matching "${websiteSearch}"` : `No custom ${websiteTab} websites.`}
+              </Text>
+              <Feather name="x" size={11} color={websiteTab === 'blocked' ? colors.red[400] : colors.green[600]} />
+            </Pressable>
+          )) : (
+            <Text style={[s.emptyText, { color: colors.text.muted }]}>
+              {websiteSearch ? `No sites matching "${websiteSearch}"` : `No ${websiteTab} sites yet.`}
             </Text>
           )}
         </View>
 
         {filteredDomains.length > 48 ? (
-          <Text style={styles.helpText}>Showing 48 of {filteredDomains.length} matching websites.</Text>
+          <Text style={[s.helpText, { color: colors.text.secondary }]}>
+            Showing 48 of {filteredDomains.length}
+          </Text>
         ) : null}
-        {importMessage ? <Text style={styles.helpText}>{importMessage}</Text> : null}
+        {importMessage ? (
+          <Text style={[s.helpText, { color: colors.text.secondary }]}>{importMessage}</Text>
+        ) : null}
       </View>
     </Card>
   );
 }
 
-function Stat({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'green' | 'red' }) {
-  const valueColor = tone === 'green' ? colors.green[500] : tone === 'red' ? colors.red[400] : colors.text.primary;
-
-  return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, { color: valueColor }]}>{value.toLocaleString()}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+function formatLastUpdate(value: string): string {
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return '';
+  const days = Math.floor((Date.now() - ts) / 86_400_000);
+  if (days < 1) return 'Updated today';
+  if (days === 1) return 'Updated yesterday';
+  return `Updated ${days}d ago`;
 }
 
 function parseDomainImport(content: string): string[] {
@@ -332,96 +365,131 @@ function normalizeDomainSearch(value: string): string {
     .toLowerCase();
 }
 
-const styles = StyleSheet.create({
-  statsRow: {
-    flexDirection: 'row',
+const s = StyleSheet.create({
+  badge: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  badgeText: {
+    ...typography.captionMd,
+  },
+  section: {
     gap: spacing.sm,
   },
-  stat: {
-    alignItems: 'center',
-    backgroundColor: colors.bg.tertiary,
-    borderRadius: radius.sm,
-    flex: 1,
-    gap: 2,
-    paddingVertical: spacing.sm,
-  },
-  statValue: {
-    ...typography.h2,
-  },
-  statLabel: {
+  sectionLabel: {
     ...typography.caption,
-    color: colors.text.muted,
-  },
-  panel: {
-    backgroundColor: colors.bg.tertiary,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.md,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   sectionHeader: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    ...typography.bodyMd,
-    color: colors.text.primary,
-  },
-  updateText: {
-    ...typography.caption,
-    color: colors.text.muted,
-  },
-  inlineForm: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  sectionMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  metaText: {
+    ...typography.caption,
+  },
+  importBtn: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  importText: {
+    ...typography.caption,
+    fontWeight: '500',
+  },
+  inputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing.sm,
   },
-  inlineField: {
+  input: {
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
-    minWidth: 180,
+    fontSize: 14,
+    height: 44,
+    paddingHorizontal: spacing.md,
   },
-  list: {
+  circleBtn: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+  },
+  actionBtnText: {
+    ...typography.captionMd,
+  },
+  segControl: {
+    borderRadius: radius.md,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: 3,
+    padding: 3,
   },
-  tabRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  keyword: {
-    backgroundColor: 'rgba(30,206,164,0.14)',
-  },
-  blockedWebsite: {
-    backgroundColor: colors.red[50],
-  },
-  allowedWebsite: {
-    backgroundColor: colors.green[50],
-  },
-  searchbar: {
-    backgroundColor: colors.bg.primary,
-    borderColor: colors.border.default,
+  segBtn: {
+    alignItems: 'center',
+    borderColor: 'transparent',
     borderRadius: radius.sm,
-    borderWidth: 1,
-    height: 42,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing.sm,
+  },
+  segLabel: {
+    ...typography.captionMd,
+  },
+  searchRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    height: 40,
+    paddingHorizontal: spacing.md,
   },
   searchInput: {
+    flex: 1,
     fontSize: 14,
-    minHeight: 42,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  tag: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  tagText: {
+    ...typography.caption,
   },
   emptyText: {
     ...typography.body,
-    color: colors.text.muted,
   },
   helpText: {
     ...typography.caption,
-    color: colors.text.secondary,
     lineHeight: 18,
   },
 });

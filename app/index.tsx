@@ -16,12 +16,30 @@ import { MoodFace } from '@/components/MoodFace';
 import { MoodPickerView } from '@/components/MoodPickerView';
 import { getTodaysMood, moodOptions, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
+import { useAlertCenter } from '@/store/useAlertCenter';
 import { useGamification } from '@/store/useGamification';
 import { useProtectionState } from '@/store/useProtectionState';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
 const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
 const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
+
+function mapGuardianEventType(eventType: string): 'tamper_attempt' | 'bypass_attempt' | 'vpn_disconnected' | 'keyword_detected' | 'app_blocked' | 'domain_blocked' | 'unlock_request' {
+  const t = eventType.toLowerCase();
+  if (t.includes('tamper')) return 'tamper_attempt';
+  if (t.includes('bypass')) return 'bypass_attempt';
+  if (t.includes('vpn') || t.includes('disconnect')) return 'vpn_disconnected';
+  if (t.includes('unlock')) return 'unlock_request';
+  if (t.includes('keyword')) return 'keyword_detected';
+  return 'tamper_attempt';
+}
+
+function mapGuardianSeverity(severity: string): 'info' | 'warning' | 'critical' {
+  const s = severity.toLowerCase();
+  if (s === 'critical' || s === 'high') return 'critical';
+  if (s === 'low') return 'info';
+  return 'warning';
+}
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -44,6 +62,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const protection = useProtectionState();
   const gamification = useGamification();
+  const alertCenter = useAlertCenter();
+  const appStartedAtRef = useRef(Date.now());
+  const syncedGuardianAlertIdsRef = useRef<Set<string>>(new Set());
   const streakPopup = useDailyStreakPopup({
     currentStreak: gamification.currentStreak,
     dayHistory: gamification.dayHistory,
@@ -65,18 +86,7 @@ export default function HomeScreen() {
   const liveSessionMinutes =
     isProtected && sessionStartedAt ? Math.max(0, Math.floor((now - sessionStartedAt) / 60000)) : 0;
   const cleanMinutes = gamification.todayCleanHours * 60 + liveSessionMinutes;
-  const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
-
-  const xpBarAnim = useRef(new Animated.Value(0)).current;
   const { animatedStyle: heroAnimStyle, onPressIn: heroPressIn, onPressOut: heroPressOut } = usePressScale(0.98);
-
-  useEffect(() => {
-    Animated.timing(xpBarAnim, {
-      toValue: progressRatio,
-      duration: 900,
-      useNativeDriver: false,
-    }).start();
-  }, [progressRatio, xpBarAnim]);
 
   useEffect(() => {
     void getTodaysMood().then((storedMood) => setMood(storedMood));
@@ -121,11 +131,32 @@ export default function HomeScreen() {
   }, [isProtected]);
 
   useEffect(() => {
-    const eventId = protection.activeBlockEvent?.id;
-    if (!eventId || eventId === lastRecordedBlockId) return;
+    const event = protection.activeBlockEvent;
+    if (!event || event.id === lastRecordedBlockId) return;
     gamification.recordBlock();
-    setLastRecordedBlockId(eventId);
-  }, [gamification, lastRecordedBlockId, protection.activeBlockEvent?.id]);
+    setLastRecordedBlockId(event.id);
+    void alertCenter.addAlert({
+      type: event.keyword ? 'keyword_detected' : event.appName ? 'app_blocked' : 'domain_blocked',
+      severity: event.keyword ? 'warning' : 'info',
+      title: event.keyword ? 'Keyword detected' : event.appName ? `${event.appName} blocked` : 'Site blocked',
+      description: event.reason ?? (event.keyword ? 'A keyword filter triggered' : event.appName ? `Feature blocked in ${event.appName}` : 'DNS filter blocked a request'),
+    });
+  }, [alertCenter, gamification, lastRecordedBlockId, protection.activeBlockEvent]);
+
+  useEffect(() => {
+    const newAlerts = protection.guardianAlerts.filter(
+      (a) => !a.cleared && !syncedGuardianAlertIdsRef.current.has(a.id) && a.timestamp >= appStartedAtRef.current,
+    );
+    for (const alert of newAlerts) {
+      syncedGuardianAlertIdsRef.current.add(alert.id);
+      void alertCenter.addAlert({
+        type: mapGuardianEventType(alert.eventType),
+        severity: mapGuardianSeverity(alert.severity),
+        title: alert.subject,
+        description: alert.action || alert.subject,
+      });
+    }
+  }, [alertCenter, protection.guardianAlerts]);
 
   const statusLine = useMemo(() => {
     if (!isProtected) return 'Protection is disabled';
@@ -183,10 +214,6 @@ export default function HomeScreen() {
   const closeMoodModal = () => {
     setMoodModalStep(null);
   };
-
-  const needsSetupWarning = !protection.accessibilityServiceEnabled
-    || !protection.overlayPermissionGranted
-    || !protection.managedDeviceStatus.deviceAdminActive;
 
   return (
     <ScreenScaffold
@@ -310,56 +337,42 @@ export default function HomeScreen() {
       {/* Mood check-in */}
       <MoodStrip mood={mood} onPress={openMoodModal} />
 
-      {isProtected ? (
-        <>
-          {needsSetupWarning ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/guardian')}
-              style={[s.setupBanner, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
-            >
-              <Feather name="alert-triangle" size={14} color={colors.amber[700]} />
-              <Text style={[s.setupBannerText, { color: colors.amber[700] }]}>
-                Some features need setup to work fully
-              </Text>
-              <Feather name="chevron-right" size={14} color={colors.amber[700]} />
-            </Pressable>
-          ) : null}
-          <View style={s.quickActionsGrid}>
-            <View style={s.quickActionsRow}>
-              <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
-              <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
-            </View>
-            <View style={s.quickActionsRow}>
-              <QuickAction icon="users" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
-              <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
-            </View>
+      {!protection.vpnPermissionGranted ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void protection.prepareVpn()}
+          style={[s.permNotice, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
+        >
+          <Feather name="alert-triangle" size={14} color={colors.amber[700]} />
+          <View style={{ flex: 1 }}>
+            <Text style={[s.permNoticeTitle, { color: colors.amber[700] }]}>VPN permission needed</Text>
+            <Text style={[s.permNoticeSub, { color: colors.amber[600] }]}>Tap to enable DNS filtering</Text>
           </View>
-        </>
-      ) : (
-        <SetupChecklist protection={protection} colors={colors} onStart={() => void protection.startProtection(7)} />
-      )}
-
-      {/* XP progress */}
-      <View style={[s.xpCard, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
-        <View style={s.xpCardRow}>
-          <Text style={[s.xpCardLabel, { color: colors.text.secondary }]}>
-            Level {gamification.level} · {levelNameShort(gamification.level)}
-          </Text>
-          <Text style={[s.xpCardXp, { color: colors.green[500] }]}>
-            {gamification.xpProgress.current} / {gamification.xpProgress.required} XP
-          </Text>
+          <Feather name="chevron-right" size={14} color={colors.amber[700]} />
+        </Pressable>
+      ) : null}
+      {!protection.accessibilityServiceEnabled ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void protection.openAccessibilitySettings()}
+          style={[s.permNotice, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
+        >
+          <Feather name="eye-off" size={14} color={colors.amber[700]} />
+          <View style={{ flex: 1 }}>
+            <Text style={[s.permNoticeTitle, { color: colors.amber[700] }]}>Behavior blocking inactive</Text>
+            <Text style={[s.permNoticeSub, { color: colors.amber[600] }]}>Tap to enable Accessibility — needed for app-level blocking</Text>
+          </View>
+          <Feather name="chevron-right" size={14} color={colors.amber[700]} />
+        </Pressable>
+      ) : null}
+      <View style={s.quickActionsGrid}>
+        <View style={s.quickActionsRow}>
+          <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
+          <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
         </View>
-        <View style={[s.xpTrack, { backgroundColor: colors.border.subtle }]}>
-          <Animated.View
-            style={[
-              s.xpFill,
-              {
-                backgroundColor: colors.green[500],
-                width: xpBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-              },
-            ]}
-          />
+        <View style={s.quickActionsRow}>
+          <QuickAction icon="users" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
+          <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
         </View>
       </View>
 
@@ -447,148 +460,6 @@ function QuickAction({
         <Text style={[s.quickActionLabel, { color: colors.text.primary }]}>{label}</Text>
       </Pressable>
     </Animated.View>
-  );
-}
-
-function SetupChecklist({
-  protection,
-  colors,
-  onStart,
-}: {
-  protection: ReturnType<typeof useProtectionState>;
-  colors: ReturnType<typeof useTheme>['colors'];
-  onStart: () => void;
-}) {
-  const required: Array<{
-    label: string;
-    sublabel: string;
-    done: boolean;
-    onEnable?: () => Promise<unknown> | void;
-  }> = [
-    {
-      label: 'VPN permission',
-      sublabel: 'Allows DNS-level filtering of adult content',
-      done: protection.vpnPermissionGranted,
-      onEnable: protection.vpnPermissionGranted ? undefined : protection.prepareVpn,
-    },
-    {
-      label: 'Device Admin',
-      sublabel: 'Prevents the app from being uninstalled',
-      done: protection.managedDeviceStatus.deviceAdminActive,
-      onEnable: protection.managedDeviceStatus.deviceAdminActive
-        ? undefined
-        : protection.requestDeviceAdminPermission,
-    },
-  ];
-
-  const recommended: typeof required = [
-    {
-      label: 'Behavior protection',
-      sublabel: 'Screen monitoring and keyword detection',
-      done: protection.accessibilityServiceEnabled,
-      onEnable: protection.accessibilityServiceEnabled
-        ? undefined
-        : protection.openAccessibilitySettings,
-    },
-    {
-      label: 'Block overlay',
-      sublabel: 'Shows block screen over apps when triggered',
-      done: protection.overlayPermissionGranted,
-      onEnable: protection.overlayPermissionGranted
-        ? undefined
-        : protection.openOverlaySettings,
-    },
-    {
-      label: 'Parent PIN',
-      sublabel: 'Locks settings so only you can change them',
-      done: protection.pinConfigured,
-    },
-  ];
-
-  const requiredDone = required.every((item) => item.done);
-  const totalDone = [...required, ...recommended].filter((item) => item.done).length;
-  const total = required.length + recommended.length;
-
-  return (
-    <View style={[s.checklist, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
-      <View style={s.checklistHeader}>
-        <View style={s.checklistHeaderText}>
-          <Text style={[s.checklistTitle, { color: colors.text.primary }]}>
-            {requiredDone ? 'Ready to start' : 'Complete setup first'}
-          </Text>
-          <Text style={[s.checklistSubtitle, { color: colors.text.muted }]}>
-            {totalDone} of {total} steps done
-          </Text>
-        </View>
-        {requiredDone ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={onStart}
-            style={[s.checklistCta, { backgroundColor: colors.green[500] }]}
-          >
-            <Text style={[s.checklistCtaText, { color: colors.text.inverse }]}>Start now</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <Text style={[s.checklistSection, { color: colors.text.muted }]}>Required</Text>
-      {required.map((item) => (
-        <SetupItem key={item.label} required colors={colors} {...item} />
-      ))}
-
-      <Text style={[s.checklistSection, { color: colors.text.muted }]}>Recommended</Text>
-      {recommended.map((item) => (
-        <SetupItem key={item.label} colors={colors} {...item} />
-      ))}
-    </View>
-  );
-}
-
-function SetupItem({
-  label,
-  sublabel,
-  done,
-  required = false,
-  onEnable,
-  colors,
-}: {
-  label: string;
-  sublabel: string;
-  done: boolean;
-  required?: boolean;
-  onEnable?: () => Promise<unknown> | void;
-  colors: ReturnType<typeof useTheme>['colors'];
-}) {
-  return (
-    <View style={s.checklistItem}>
-      <Feather
-        name={done ? 'check-circle' : required ? 'alert-circle' : 'circle'}
-        size={16}
-        color={done ? colors.green[500] : required ? colors.amber[600] : colors.text.muted}
-      />
-      <View style={s.checklistItemBody}>
-        <Text style={[s.checklistItemLabel, { color: done ? colors.text.secondary : colors.text.primary }]}>
-          {label}
-        </Text>
-        <Text style={[s.checklistItemSublabel, { color: colors.text.muted }]} numberOfLines={1}>
-          {sublabel}
-        </Text>
-      </View>
-      {!done && onEnable ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => { void onEnable(); }}
-          style={[
-            s.checklistItemBtn,
-            { borderColor: required ? colors.amber[400] : colors.border.subtle },
-          ]}
-        >
-          <Text style={[s.checklistItemBtnText, { color: required ? colors.amber[700] : colors.text.secondary }]}>
-            Enable
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
   );
 }
 
@@ -735,12 +606,12 @@ const s = StyleSheet.create({
     gap: 3,
   },
   heroStatus: {
-    fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.6,
   },
   heroSub: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '400',
   },
   heroBlocksRight: {
@@ -748,9 +619,9 @@ const s = StyleSheet.create({
     gap: 1,
   },
   heroBlocksNum: {
-    fontSize: 24,
-    fontWeight: '500',
-    lineHeight: 28,
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 34,
   },
   heroBlocksLabel: {
     fontSize: 9,
@@ -839,114 +710,24 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // XP card
-  xpCard: {
+  // VPN permission notice
+  permNotice: {
+    alignItems: 'center',
     borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  xpCardRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  xpCardLabel: {
-    ...typography.captionMd,
-  },
-  xpCardXp: {
-    ...typography.caption,
-  },
-  xpTrack: {
-    borderRadius: radius.full,
-    height: 4,
-    overflow: 'hidden',
-  },
-  xpFill: {
-    borderRadius: radius.full,
-    height: '100%',
-  },
-
-  // Setup banner
-  setupBanner: {
-    alignItems: 'center',
-    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.sm,
-    minHeight: 40,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  setupBannerText: {
-    ...typography.caption,
-    flex: 1,
-  },
-
-  // Setup checklist
-  checklist: {
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  checklistHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
-  },
-  checklistHeaderText: {
-    flex: 1,
-    gap: 2,
-  },
-  checklistTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  checklistSubtitle: {
-    ...typography.caption,
-  },
-  checklistSection: {
-    ...typography.caption,
-    fontWeight: '500',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  checklistCta: {
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-  },
-  checklistCtaText: {
+  permNoticeTitle: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  checklistItem: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 44,
-  },
-  checklistItemBody: {
-    flex: 1,
-    gap: 2,
-  },
-  checklistItemLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  checklistItemSublabel: {
-    ...typography.caption,
-  },
-  checklistItemBtn: {
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 5,
-  },
-  checklistItemBtnText: {
-    ...typography.captionMd,
+  permNoticeSub: {
+    fontSize: 11,
+    fontWeight: '400',
+    marginTop: 1,
   },
 
   // Disable sheet

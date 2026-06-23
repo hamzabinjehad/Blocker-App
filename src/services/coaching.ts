@@ -76,6 +76,45 @@ Write their daily coaching message.`,
   }
 }
 
+const OFFLINE_TIPS = [
+  `Your brain is literally rewiring itself each day you stay clean. Keep giving it the right signal.`,
+  `One decision at a time. You don't need to commit to forever — just the next hour.`,
+  `Protection is a boundary you set for yourself. Keeping it on is an act of self-respect.`,
+  `The urge will pass whether you act on it or not. Your only job is to wait it out.`,
+  `Small wins compound. The blocks you've racked up are proof that the system is working.`,
+  `You are not your habits — you are the one who chose to change them. That's the whole story.`,
+  `Momentum is real. Every clean day makes the next one slightly easier. Trust the process.`,
+  `Distraction is not failure. Notice it, name it, and let the blocker do its job.`,
+  `The best time to strengthen a habit is when it feels easy. The second best is right now.`,
+  `Recovery is not linear. A hard day doesn't erase the progress already built in.`,
+  `You already proved you can do this — every previous clean day is evidence.`,
+  `What you resist persists when you fight it. Let the craving wave peak and fall on its own.`,
+  `Your future self will thank today's version of you for staying the course.`,
+  `Boredom is not an emergency. It is just a feeling that can be waited through.`,
+  `The reason you installed this app is still true today. Remember what you are building toward.`,
+  `Stress activates old circuits. That's normal. Keep your environment protected and ride it out.`,
+  `A relapse in thought is not a relapse in action. Notice the thought, don't follow it.`,
+  `Each time you surf an urge instead of acting on it, you weaken the old pathway a little.`,
+  `You cannot fail your way out of recovery. Every session you open this app matters.`,
+  `Your streak is not a number — it's a record of dozens of individual choices you made correctly.`,
+  `Take the easiest protective action available right now. Lock the phone. Go for a walk. Done.`,
+  `Compare yourself to last month, not to some idealized future version. The gap is already closing.`,
+  `Sleep and food affect resistance more than willpower does. Protect the basics and the rest follows.`,
+  `The trigger is not the problem. Your automatic response to it is what we're changing.`,
+  `Every morning is a clean slate. Yesterday's score doesn't carry over.`,
+  `Consistency over perfection. Show up imperfectly every day and watch what compounds.`,
+  `The blocker is doing the heavy lifting so your willpower doesn't have to. Let it.`,
+  `You built a routine by accident. You can build a better one on purpose — and you already are.`,
+  `Notice what you're feeling right now without judging it. That's the whole practice.`,
+  `Logging a hard day honestly is still progress. Self-awareness is the first and hardest step.`,
+];
+
+function getDailyOfflineTip(): string {
+  const now = new Date();
+  const seed = now.getFullYear() * 1000 + now.getMonth() * 31 + now.getDate();
+  return OFFLINE_TIPS[seed % OFFLINE_TIPS.length]!;
+}
+
 function getOfflineNudge(stats: CoachingStats): string {
   if (stats.mood === 'tempted') {
     return `Make the next step small: keep protection on for 10 minutes and move away from the trigger. You only need to win this window.`;
@@ -98,5 +137,5 @@ function getOfflineNudge(stats: CoachingStats): string {
   if (stats.streak >= 1) {
     return `${stats.streak} day${stats.streak > 1 ? 's' : ''} clean and counting. Each day is proof you can do this.`;
   }
-  return `Today is a fresh start. One clean hour at a time - that's all it takes.`;
+  return getDailyOfflineTip();
 }

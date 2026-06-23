@@ -11,13 +11,6 @@ import { radius, spacing, typography, useTheme } from '@/theme';
 
 const JOURNEY_DAYS = 90;
 const WEEK_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const GRID_DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
-function mondayBasedDow(dateStr: string): number {
-  const d = new Date(dateStr + 'T00:00:00');
-  const dow = d.getDay();
-  return dow === 0 ? 6 : dow - 1;
-}
 
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -148,10 +141,8 @@ const sjb = StyleSheet.create({
 
 function WeekCalendarSection({
   days,
-  onPressMore,
 }: {
   days: DayRecord[];
-  onPressMore: () => void;
 }) {
   const { colors } = useTheme();
   const today = new Date().toISOString().split('T')[0]!;
@@ -169,14 +160,9 @@ function WeekCalendarSection({
       <Card>
         <View style={sw.header}>
           <View style={sw.headerText}>
-            <Text style={[sw.title, { color: colors.text.primary }]}>Your calendar</Text>
-            <Text style={[sw.sub, { color: colors.text.secondary }]}>
-              Track daily activity and completed sessions.
-            </Text>
+            <Text style={[sw.title, { color: colors.text.primary }]}>This week</Text>
+            <Text style={[sw.sub, { color: colors.text.secondary }]}>Your daily activity at a glance.</Text>
           </View>
-          <Pressable accessibilityRole="button" onPress={onPressMore} style={[sw.moreBtn, { borderColor: colors.border.subtle }]}>
-            <Text style={[sw.moreText, { color: colors.text.secondary }]}>MORE →</Text>
-          </Pressable>
         </View>
 
         <View style={sw.week}>
@@ -321,137 +307,12 @@ const sw = StyleSheet.create({
 });
 
 
-// ─── Full Streak Grid ─────────────────────────────────────────────────────────
-
-function StreakGrid({
-  days,
-  selectedDate,
-  onSelect,
-}: {
-  days: DayRecord[];
-  selectedDate?: string;
-  onSelect: (day: DayRecord) => void;
-}) {
-  const { colors } = useTheme();
-
-  const leadingPad = days.length > 0 ? mondayBasedDow(days[0]!.date) : 0;
-  const padded: Array<DayRecord | null> = [...Array<null>(leadingPad).fill(null), ...days];
-  const weeks: Array<Array<DayRecord | null>> = [];
-  for (let i = 0; i < padded.length; i += 7) {
-    weeks.push(padded.slice(i, i + 7));
-  }
-
-  return (
-    <View style={sgrid.wrap}>
-      <View style={sgrid.labelRow}>
-        {GRID_DAY_LABELS.map((label, i) => (
-          <View key={i} style={sgrid.labelCell}>
-            <Text style={[sgrid.label, { color: colors.text.muted }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-      {weeks.map((week, wi) => (
-        <View key={wi} style={sgrid.weekRow}>
-          {week.map((day, di) =>
-            day ? (
-              <Pressable
-                accessibilityRole="button"
-                key={day.date}
-                onPress={() => onSelect(day)}
-                style={[sgrid.cell, gridCellStyle(day, colors), selectedDate === day.date ? { borderColor: colors.text.primary, borderWidth: 2 } : null]}
-              />
-            ) : (
-              <View key={`pad-${wi}-${di}`} style={sgrid.cell} />
-            )
-          )}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const sgrid = StyleSheet.create({
-  wrap: { gap: 4 },
-  labelRow: { flexDirection: 'row', gap: 4 },
-  labelCell: { flex: 1, alignItems: 'center' },
-  label: { fontSize: 9, fontWeight: '500' },
-  weekRow: { flexDirection: 'row', gap: 4 },
-  cell: {
-    borderRadius: 5,
-    height: 26,
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
-  },
-});
-
-function gridCellStyle(day: DayRecord, colors: ReturnType<typeof useTheme>['colors']) {
-  const today = new Date().toISOString().split('T')[0];
-  if (day.relapseLogged && !day.freezeUsed) return { backgroundColor: '#D9A441', borderColor: '#D9A441' };
-  if (day.clean) return { backgroundColor: colors.green[500], borderColor: colors.green[500] };
-  if (day.date === today) return { backgroundColor: 'transparent', borderColor: colors.green[500], borderWidth: 1 };
-  return { backgroundColor: 'transparent', borderColor: colors.border.subtle };
-}
-
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
-
-function AnimatedBarColumn({
-  day,
-  ratio,
-  delay,
-  colors,
-}: {
-  day: { date: string; blocks: number; label: string };
-  ratio: number;
-  delay: number;
-  colors: ReturnType<typeof useTheme>['colors'];
-}) {
-  const heightAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.spring(heightAnim, {
-      toValue: Math.max(8, ratio * 100),
-      damping: 18,
-      mass: 0.8,
-      stiffness: 100,
-      delay,
-      useNativeDriver: false,
-    }).start();
-  }, [delay, heightAnim, ratio]);
-
-  return (
-    <View style={sbar.col}>
-      <View style={sbar.slot}>
-        <Animated.View
-          style={[
-            sbar.bar,
-            {
-              backgroundColor: day.blocks > 0 ? colors.green[500] : colors.border.subtle,
-              height: heightAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }),
-            },
-          ]}
-        />
-      </View>
-      <Text style={[sbar.value, { color: colors.text.secondary }]}>{day.blocks}</Text>
-      <Text style={[sbar.label, { color: colors.text.muted }]}>{day.label}</Text>
-    </View>
-  );
-}
-
-const sbar = StyleSheet.create({
-  col: { alignItems: 'flex-end', flex: 1, height: '100%', justifyContent: 'flex-end' },
-  slot: { alignItems: 'flex-end', flex: 1, justifyContent: 'flex-end', width: '100%' },
-  bar: { borderRadius: radius.full, width: '100%' },
-  value: { ...typography.captionMd, marginTop: spacing.xs, textAlign: 'center', width: '100%' },
-  label: { ...typography.label, marginTop: spacing.xs, textAlign: 'center', width: '100%' },
-});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
   const { colors } = useTheme();
   const gamification = useGamification();
-  const [selectedDay, setSelectedDay] = useState<DayRecord | undefined>();
-  const [showFullCalendar, setShowFullCalendar] = useState(false);
   const [milestoneVisible, setMilestoneVisible] = useState(Boolean(gamification.latestMilestoneBadge));
 
   useEffect(() => {
@@ -459,13 +320,12 @@ export default function ProgressScreen() {
   }, [gamification.latestMilestoneBadge?.id]);
 
   const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
-  const earnedBadges = gamification.badges.filter((badge) => badge.earned).slice(0, 6);
-  const maxWeeklyBlocks = Math.max(1, ...gamification.weeklyBlockCounts.map((day) => day.blocks));
+  const earnedBadges = gamification.badges.filter((badge) => badge.earned);
   const calendarDays = gamification.calendarDays.length > 0 ? gamification.calendarDays : buildFallbackCalendarDays();
 
   // Journey progress computation
   const today = new Date().toISOString().split('T')[0]!;
-  const startDate = gamification.dayHistory[0]?.date ?? today;
+  const startDate = gamification.journeyStartDate ?? today;
   const goalDate = addDays(startDate, JOURNEY_DAYS);
   const daysElapsed = Math.max(0, daysBetween(startDate, today));
   const daysRemaining = Math.max(0, daysBetween(today, goalDate));
@@ -493,34 +353,7 @@ export default function ProgressScreen() {
       </AnimatedCard>
 
       {/* Current week calendar */}
-      <WeekCalendarSection days={calendarDays} onPressMore={() => setShowFullCalendar((v) => !v)} />
-
-
-      {/* 12-week grid (toggleable via MORE) */}
-      {showFullCalendar ? (
-        <AnimatedCard delay={0}>
-          <Card>
-            <View style={s.cardHeader}>
-              <View>
-                <Text style={[s.cardTitle, { color: colors.text.primary }]}>12-week history</Text>
-                <Text style={[s.cardMeta, { color: colors.text.secondary }]}>
-                  {gamification.currentStreak} day streak
-                </Text>
-              </View>
-              <Text style={[s.streakValue, { color: colors.green[600] }]}>
-                {gamification.currentStreak} days
-              </Text>
-            </View>
-            <StreakGrid days={calendarDays} selectedDate={selectedDay?.date} onSelect={setSelectedDay} />
-            {selectedDay ? (
-              <View style={[s.dayDetail, { backgroundColor: colors.bg.tertiary }]}>
-                <Text style={[s.insightText, { color: colors.text.primary }]}>{selectedDay.date}</Text>
-                <Text style={[s.supportCopy, { color: colors.text.secondary }]}>{daySummary(selectedDay)}</Text>
-              </View>
-            ) : null}
-          </Card>
-        </AnimatedCard>
-      ) : null}
+      <WeekCalendarSection days={calendarDays} />
 
       {/* Level card */}
       <AnimatedCard delay={160}>
@@ -627,26 +460,6 @@ export default function ProgressScreen() {
         </Card>
       </AnimatedCard>
 
-      {/* Weekly blocks chart */}
-      <AnimatedCard delay={320}>
-        <Card>
-          <View style={s.cardHeader}>
-            <Text style={[s.cardTitle, { color: colors.text.primary }]}>Weekly blocks</Text>
-            <Text style={[s.cardMeta, { color: colors.text.secondary }]}>Blocked moments</Text>
-          </View>
-          <View style={s.chart}>
-            {gamification.weeklyBlockCounts.map((day, i) => (
-              <AnimatedBarColumn
-                key={day.date}
-                day={day}
-                ratio={day.blocks / maxWeeklyBlocks}
-                delay={i * 60}
-                colors={colors}
-              />
-            ))}
-          </View>
-        </Card>
-      </AnimatedCard>
     </ScreenScaffold>
   );
 }
@@ -777,18 +590,6 @@ function buildFallbackCalendarDays(): DayRecord[] {
 function levelName(level: number) {
   const names = ['Starting', 'Aware', 'Steady', 'Resilient', 'Grounded', 'Strong'];
   return names[Math.min(level, names.length - 1)] ?? 'Resilient';
-}
-
-function daySummary(day: DayRecord) {
-  const parts = [
-    `${day.blocksCount} blocks`,
-    day.moodCheckedIn ? 'mood checked' : null,
-    day.journalWritten ? 'journal written' : null,
-    day.urgesSurfed ? `${day.urgesSurfed} urges surfed` : null,
-    day.freezeUsed ? 'freeze used' : null,
-    day.relapseLogged && !day.freezeUsed ? 'moment logged' : null,
-  ].filter(Boolean);
-  return parts.join(' · ') || 'No data yet';
 }
 
 function milestoneMessage(id: string) {

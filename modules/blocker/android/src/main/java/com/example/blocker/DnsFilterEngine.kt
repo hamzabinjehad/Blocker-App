@@ -5,7 +5,10 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 import kotlin.math.min
 
 class DnsFilterEngine(
@@ -448,24 +451,71 @@ class DnsFilterEngine(
 
   private fun forwardDns(query: ByteArray): ByteArray? {
     for (resolver in upstreamResolvers) {
-      val response = try {
-        DatagramSocket().use { socket ->
-          if (!vpnService.protect(socket)) return@use null
-          socket.soTimeout = DNS_READ_TIMEOUT_MS
-          socket.connect(resolver)
-          socket.send(DatagramPacket(query, query.size))
-
-          val buffer = ByteArray(MAX_DNS_RESPONSE_SIZE)
-          val packet = DatagramPacket(buffer, buffer.size)
-          socket.receive(packet)
-          buffer.copyOf(packet.length).takeIf { it.isNotEmpty() }
-        }
-      } catch (_: Exception) {
-        null
-      }
+      val response = if (resolver.port == DOT_PORT) forwardDot(query, resolver) else forwardDnsUdp(query, resolver)
       if (response != null) return response
     }
     return null
+  }
+
+  private fun forwardDnsUdp(query: ByteArray, resolver: InetSocketAddress): ByteArray? {
+    return try {
+      DatagramSocket().use { socket ->
+        if (!vpnService.protect(socket)) return@use null
+        socket.soTimeout = DNS_READ_TIMEOUT_MS
+        socket.connect(resolver)
+        socket.send(DatagramPacket(query, query.size))
+        val buffer = ByteArray(MAX_DNS_RESPONSE_SIZE)
+        val packet = DatagramPacket(buffer, buffer.size)
+        socket.receive(packet)
+        buffer.copyOf(packet.length).takeIf { it.isNotEmpty() }
+      }
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  // DNS-over-TLS (RFC 7858): bypasses ISP port-53 blocking by using an encrypted TCP connection
+  // on port 853. The underlying socket is protected via vpnService.protect() so it escapes the
+  // VPN tunnel entirely before the TLS handshake begins.
+  private fun forwardDot(query: ByteArray, resolver: InetSocketAddress): ByteArray? {
+    val rawSocket = Socket()
+    return try {
+      if (!vpnService.protect(rawSocket)) {
+        rawSocket.close()
+        return null
+      }
+      rawSocket.connect(resolver, DOT_TIMEOUT_MS)
+      val hostAddress = resolver.address?.hostAddress ?: run { rawSocket.close(); return null }
+      val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+      (factory.createSocket(rawSocket, hostAddress, resolver.port, true) as SSLSocket).use { ssl ->
+        ssl.soTimeout = DOT_TIMEOUT_MS
+        ssl.startHandshake()
+        val out = ssl.outputStream
+        val inp = ssl.inputStream
+        // 2-byte length prefix required by RFC 7858
+        out.write((query.size ushr 8) and 0xff)
+        out.write(query.size and 0xff)
+        out.write(query)
+        out.flush()
+        val lenHigh = inp.read()
+        val lenLow = inp.read()
+        if (lenHigh < 0 || lenLow < 0) return@use null
+        val respLen = (lenHigh shl 8) or lenLow
+        if (respLen <= 0 || respLen > MAX_DNS_RESPONSE_SIZE) return@use null
+        val buf = ByteArray(respLen)
+        var totalRead = 0
+        while (totalRead < respLen) {
+          val n = inp.read(buf, totalRead, respLen - totalRead)
+          if (n < 0) break
+          totalRead += n
+        }
+        if (totalRead == respLen) buf else null
+      }
+    } catch (_: Exception) {
+      null
+    } finally {
+      try { rawSocket.close() } catch (_: Exception) { }
+    }
   }
 
   private fun buildIpv4UdpPacket(
@@ -571,6 +621,8 @@ class DnsFilterEngine(
     private const val DNS_TYPE_AAAA = 28
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
     private const val DNS_READ_TIMEOUT_MS = 1500
+    private const val DOT_PORT = 853
+    private const val DOT_TIMEOUT_MS = 4000
     private const val MAX_DNS_RESPONSE_SIZE = 4096
     private const val DNS_CACHE_TTL_MS = 60_000L
     private const val DNS_CACHE_MAX_SIZE = 512
@@ -583,12 +635,14 @@ class DnsFilterEngine(
 
     private val ECH_ADVERTISING_DNS_TYPES = setOf(DNS_TYPE_SVCB, DNS_TYPE_HTTPS)
 
-    // Three reliable upstream resolvers tried sequentially; blocking uses local lists only.
-    // Kept to 3 so worst-case timeout is 4.5 s instead of 12.5 s with 5 resolvers.
+    // Primary resolvers use DoT (port 853) to avoid ISP port-53 blocking and DNS tampering.
+    // All three are family-safe: they block adult content and malware at the resolver level,
+    // adding a second layer on top of the app's own domain classifier.
+    // Worst-case latency: 2 × 4 000 ms (DoT) + 1 × 1 500 ms (UDP fallback) = 9.5 s.
     private val DEFAULT_UPSTREAM_RESOLVERS = listOf(
-      InetSocketAddress("1.1.1.1", DNS_PORT),
-      InetSocketAddress("8.8.8.8", DNS_PORT),
-      InetSocketAddress("9.9.9.9", DNS_PORT)
+      InetSocketAddress("1.1.1.3", DOT_PORT),          // Cloudflare Family — fastest, adult+malware filter
+      InetSocketAddress("185.228.168.168", DOT_PORT),  // CleanBrowsing Family — strict family filter
+      InetSocketAddress("1.1.1.3", DNS_PORT)           // Cloudflare Family UDP — fallback if DoT blocked
     )
 
     private val PUBLIC_DNS_RESOLVER_IPV4 = setOf(

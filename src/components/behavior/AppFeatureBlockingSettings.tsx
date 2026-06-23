@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
-import { Button, Field } from '../controls';
+import { Field } from '../controls';
 import BlockerModule from '@/native/BlockerModule';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { FeatureBlockSettings, InstalledApp, PolicyUpdate } from '@/types/blocker';
@@ -12,8 +12,6 @@ type FeatureBlockKey = keyof FeatureBlockSettings;
 
 type AppFeatureBlockingSettingsProps = {
   settings: FeatureBlockSettings;
-  keywords: string[];
-  blockedDomains: string[];
   pinConfigured: boolean;
   installedApps: InstalledApp[];
   onChange: (policy: PolicyUpdate) => Promise<void>;
@@ -176,8 +174,6 @@ const highRiskFeatureKeys: FeatureBlockKey[] = [
 
 export function AppFeatureBlockingSettings({
   settings,
-  keywords,
-  blockedDomains,
   pinConfigured,
   installedApps,
   onChange,
@@ -274,33 +270,28 @@ export function AppFeatureBlockingSettings({
 
   return (
     <Card
-      title="App Feature Blocking Settings"
-      subtitle="Block high-risk app surfaces and keep keyword and website rule coverage visible."
+      title="App Rules"
+      subtitle="Limit risky features in social, video, and browser apps."
       action={<Chip compact icon="shield-check-outline">{featureCount.enabled}/{featureCount.total} on</Chip>}
     >
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="Parent PIN for feature changes"
+          label="PIN"
           onChangeText={setPin}
-          placeholder="Enter PIN"
+          placeholder="Enter PIN to make changes"
           secureTextEntry
           value={pin}
         />
       ) : null}
 
-      <View style={styles.coverageRow}>
-        <Chip compact icon="text-search">{keywords.length} keywords</Chip>
-        <Chip compact icon="web-off">{blockedDomains.length} websites</Chip>
-      </View>
-
-      <View style={styles.quickActions}>
-        <Button icon="magnify" tone="neutral" onPress={() => updateKeys(searchFeatureKeys, true)}>
-          Block Search Features
-        </Button>
-        <Button icon="shield-alert-outline" tone="neutral" onPress={() => updateKeys(highRiskFeatureKeys, true)}>
-          Block High-Risk Features
-        </Button>
+      <View style={styles.quickRow}>
+        <Pressable accessibilityRole="button" onPress={() => updateKeys(searchFeatureKeys, true)} style={styles.quickChip}>
+          <Text style={styles.quickChipText}>Block all search</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => updateKeys(highRiskFeatureKeys, true)} style={styles.quickChip}>
+          <Text style={styles.quickChipText}>Block high-risk</Text>
+        </Pressable>
       </View>
 
       {visibleGroups.map((group) => {
@@ -350,23 +341,8 @@ function FeatureGroupSection({
           <Text style={styles.groupTitle}>{group.title}</Text>
           {group.description ? <Text style={styles.groupDescription}>{group.description}</Text> : null}
         </View>
-        <Text style={styles.groupDescription}>{enabledCount}/{group.items.length}</Text>
-      </View>
-      <View style={styles.groupActions}>
-        <Button
-          tone="neutral"
-          onPress={() => onApplyGroup(group, true)}
-          disabled={allEnabled}
-        >
-          Enable All
-        </Button>
-        <Button
-          tone="neutral"
-          onPress={() => onApplyGroup(group, false)}
-          disabled={enabledCount === 0}
-        >
-          Disable All
-        </Button>
+        <Text style={styles.groupCount}>{enabledCount}/{group.items.length}</Text>
+        <Switch value={allEnabled} onValueChange={(value) => onApplyGroup(group, value)} />
       </View>
       {group.items.map((item) => (
         <ToggleRow
@@ -390,33 +366,32 @@ function ToggleRow({ label, value, onValueChange }: { label: string; value: bool
 }
 
 const styles = StyleSheet.create({
-  coverageRow: {
+  quickRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
-  quickActions: {
-    backgroundColor: colors.bg.tertiary,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    padding: spacing.md,
+  quickChip: {
+    borderColor: colors.border.default,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  quickChipText: {
+    ...typography.captionMd,
+    color: colors.text.secondary,
   },
   group: {
-    paddingVertical: spacing.md,
     borderBottomColor: colors.border.subtle,
-    borderBottomWidth: 1,
-    gap: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
   },
   groupHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
   },
   groupText: {
     flex: 1,
@@ -430,11 +405,9 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text.muted,
   },
-  groupActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: spacing.xs,
+  groupCount: {
+    ...typography.caption,
+    color: colors.text.muted,
   },
   row: {
     alignItems: 'center',

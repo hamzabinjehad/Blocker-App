@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -36,6 +36,7 @@ export default function SettingsScreen() {
   const alertCenter = useAlertCenter();
   const remote = useRemoteManagement();
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [aboutVisible, setAboutVisible] = useState(false);
   const isProtected = protection.status === 'active' || protection.vpnActive;
   const unreadAlerts = alertCenter.alerts.filter((alert) => !alert.read);
   const criticalUnread = unreadAlerts.filter((alert) => alert.severity === 'critical').length;
@@ -157,10 +158,46 @@ export default function SettingsScreen() {
             sublabel={getThemeSublabel(mode, isDark)}
             onPress={() => router.push('/appearance')}
           />
-          <SettingsRow icon="info" iconTone="appearance" label="About" value={`v${appVersion}`} valueTone="neutral" />
+          <SettingsRow icon="info" iconTone="appearance" label="About" value={`v${appVersion}`} valueTone="neutral" onPress={() => setAboutVisible(true)} />
         </View>
       </View>
+
+      <AboutModal visible={aboutVisible} version={appVersion} onClose={() => setAboutVisible(false)} />
     </ScreenScaffold>
+  );
+}
+
+function AboutModal({ visible, version, onClose }: { visible: boolean; version: string; onClose: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <Pressable style={s.aboutBackdrop} onPress={onClose}>
+        <Pressable style={[s.aboutSheet, { backgroundColor: colors.bg.elevated }]}>
+          <View style={[s.aboutIconRow]}>
+            <View style={[s.aboutIcon, { backgroundColor: colors.green[50] }]}>
+              <Feather name="shield" size={28} color={colors.green[600]} />
+            </View>
+          </View>
+          <Text style={[s.aboutTitle, { color: colors.text.primary }]}>Control Yourself</Text>
+          <Text style={[s.aboutVersion, { color: colors.text.muted }]}>Version {version}</Text>
+          <Text style={[s.aboutBody, { color: colors.text.secondary }]}>
+            A parental control and self-accountability app for Android. DNS filtering, app blocking, habit tracking, and guardian oversight — all on-device.
+          </Text>
+          <View style={[s.aboutDivider, { backgroundColor: colors.border.subtle }]} />
+          <Text style={[s.aboutLabel, { color: colors.text.muted }]}>DATA & PRIVACY</Text>
+          <Text style={[s.aboutBody, { color: colors.text.secondary }]}>
+            All filtering and blocking happens locally on your device. No browsing data, usage stats, or personal information is sent to any server without your explicit consent.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={[s.aboutCloseBtn, { backgroundColor: colors.green[500] }]}
+          >
+            <Text style={[s.aboutCloseBtnText, { color: colors.text.inverse }]}>Close</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -314,14 +351,6 @@ function formatProtectionSince(startedAt: number | null) {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-function showToast(message: string) {
-  if (Platform.OS === 'android') {
-    ToastAndroid.show(message, ToastAndroid.SHORT);
-    return;
-  }
-  Alert.alert(message);
-}
-
 const s = StyleSheet.create({
   bannerAction: {
     ...typography.captionMd,
@@ -396,5 +425,71 @@ const s = StyleSheet.create({
   },
   valueText: {
     ...typography.captionMd,
+  },
+
+  // About modal
+  aboutBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  aboutSheet: {
+    alignItems: 'center',
+    borderRadius: radius.lg,
+    gap: spacing.md,
+    maxWidth: 360,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  aboutIconRow: {
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  aboutIcon: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    height: 60,
+    justifyContent: 'center',
+    width: 60,
+  },
+  aboutTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  aboutVersion: {
+    ...typography.caption,
+    textAlign: 'center',
+  },
+  aboutBody: {
+    ...typography.body,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  aboutDivider: {
+    alignSelf: 'stretch',
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing.xs,
+  },
+  aboutLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  aboutCloseBtn: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+    minHeight: 44,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  aboutCloseBtnText: {
+    ...typography.bodyMd,
   },
 });
