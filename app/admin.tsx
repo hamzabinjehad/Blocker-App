@@ -6,11 +6,15 @@ import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 
+import { Banner } from '@/components/Banner';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { useTranslation } from '@/i18n';
 import { useAlertCenter } from '@/store/useAlertCenter';
-import { useProtectionState } from '@/store/useProtectionState';
+import { useProtection } from '@/store/ProtectionContext';
 import { useRemoteManagement } from '@/store/useRemoteManagement';
 import { radius, spacing, typography, useTheme } from '@/theme';
+
+type Translate = ReturnType<typeof useTranslation>;
 
 type IconTone = 'shield' | 'details' | 'focus' | 'guardian' | 'alerts' | 'appearance';
 type RowTone = 'neutral' | 'success' | 'warning' | 'danger';
@@ -31,8 +35,9 @@ const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
 
 export default function SettingsScreen() {
   const { colors, isDark, mode } = useTheme();
+  const t = useTranslation();
   const router = useRouter();
-  const protection = useProtectionState();
+  const protection = useProtection();
   const alertCenter = useAlertCenter();
   const remote = useRemoteManagement();
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
@@ -58,51 +63,45 @@ export default function SettingsScreen() {
     };
   }, [isProtected]);
 
-  const protectionDetailsSublabel = useMemo(() => getProtectionDetailsSublabel(protection), [protection]);
-  const focusSublabel = useMemo(() => getFocusSublabel(protection), [protection]);
-  const guardianSublabel = getGuardianSublabel(remote.session, protection.pinConfigured);
-  const alertSublabel = getAlertSublabel(alertCenter.unreadCount, warningUnread, criticalUnread);
+  const protectionDetailsSublabel = useMemo(() => getProtectionDetailsSublabel(protection, t), [protection, t]);
+  const focusSublabel = useMemo(() => getFocusSublabel(protection, t), [protection, t]);
+  const guardianSublabel = getGuardianSublabel(remote.session, protection.pinConfigured, t);
+  const alertSublabel = getAlertSublabel(alertCenter.unreadCount, warningUnread, criticalUnread, t);
   const alertTone: RowTone = criticalUnread > 0 ? 'danger' : warningUnread > 0 || alertCenter.unreadCount > 0 ? 'warning' : 'neutral';
 
   return (
     <ScreenScaffold
-      title="Settings"
-      subtitle="Manage protection, focus, and accountability"
+      title={t('settings.title')}
+      subtitle={t('settings.subtitle')}
       iconName="control"
       collapsibleTitle
     >
       {!protection.pinConfigured ? (
-        <Pressable
-          accessibilityRole="button"
+        <Banner
+          icon="alert-triangle"
+          iconSize={18}
+          title={t('settings.pinNotSet')}
+          subtitle={t('settings.pinNotSetCopy')}
+          trailing={<Text style={[s.bannerAction, { color: colors.amber[900] }]}>{t('settings.setPinNow')}</Text>}
           onPress={() => router.push('/guardian')}
-          style={[s.pinBanner, { backgroundColor: colors.amber[50], borderColor: colors.border.amber }]}
-        >
-          <Feather name="alert-triangle" size={18} color={colors.amber[700]} />
-          <View style={s.bannerText}>
-            <Text style={[s.bannerTitle, { color: colors.amber[900] }]}>PIN not set</Text>
-            <Text style={[s.bannerCopy, { color: colors.amber[800] }]}>
-              Protection can be disabled without a PIN.
-            </Text>
-          </View>
-          <Text style={[s.bannerAction, { color: colors.amber[900] }]}>Set PIN now</Text>
-        </Pressable>
+        />
       ) : null}
 
       <View style={s.section}>
-        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>PROTECTION</Text>
+        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>{t('settings.sectionProtection')}</Text>
         <View style={[s.list, { borderColor: colors.border.subtle }]}>
           <SettingsRow
             icon="shield"
             iconTone="shield"
-            label="Protection"
-            sublabel={isProtected ? `Active · protecting ${formatProtectionSince(sessionStartedAt)}` : 'Off · not protecting'}
-            value={isProtected ? 'ON' : 'OFF'}
+            label={t('settings.protection')}
+            sublabel={isProtected ? t('settings.protectionActiveSince', { since: formatProtectionSince(sessionStartedAt, t) }) : t('settings.protectionOff')}
+            value={isProtected ? t('settings.valueOn') : t('settings.valueOff')}
             valueTone={isProtected ? 'success' : 'neutral'}
           />
           <SettingsRow
             icon="sliders"
             iconTone="details"
-            label="Protection details"
+            label={t('settings.protectionDetails')}
             sublabel={protectionDetailsSublabel}
             onPress={() => router.push('/rules')}
           />
@@ -110,25 +109,25 @@ export default function SettingsScreen() {
       </View>
 
       <View style={s.section}>
-        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>ACCOUNTABILITY</Text>
+        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>{t('settings.sectionAccountability')}</Text>
         <View style={[s.list, { borderColor: colors.border.subtle }]}>
           <SettingsRow
             icon="user"
             iconTone="guardian"
-            label="Guardian"
+            label={t('settings.guardian')}
             sublabel={guardianSublabel}
             sublabelTone={protection.pinConfigured ? 'neutral' : 'warning'}
-            value="Private"
+            value={t('settings.private')}
             valueTone="neutral"
             onPress={() => router.push('/guardian')}
           />
           <SettingsRow
             icon="bell"
             iconTone="alerts"
-            label="Alert Center"
+            label={t('settings.alertCenter')}
             sublabel={alertSublabel}
             sublabelTone={alertTone}
-            value={alertCenter.unreadCount > 0 ? `${alertCenter.unreadCount} unread` : undefined}
+            value={alertCenter.unreadCount > 0 ? t('settings.unreadValue', { count: alertCenter.unreadCount }) : undefined}
             valueTone={alertTone}
             onPress={() => router.push('/alerts')}
           />
@@ -136,12 +135,12 @@ export default function SettingsScreen() {
       </View>
 
       <View style={s.section}>
-        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>FOCUS</Text>
+        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>{t('settings.sectionFocus')}</Text>
         <View style={[s.list, { borderColor: colors.border.subtle }]}>
           <SettingsRow
             icon="clock"
             iconTone="focus"
-            label="Focus & Screen Time"
+            label={t('settings.focusScreenTime')}
             sublabel={focusSublabel}
             onPress={() => router.push('/focus')}
           />
@@ -149,16 +148,16 @@ export default function SettingsScreen() {
       </View>
 
       <View style={s.section}>
-        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>APP</Text>
+        <Text style={[s.sectionHeader, { color: colors.text.muted }]}>{t('settings.sectionApp')}</Text>
         <View style={[s.list, { borderColor: colors.border.subtle }]}>
           <SettingsRow
             icon="sun"
             iconTone="appearance"
-            label="Appearance"
-            sublabel={getThemeSublabel(mode, isDark)}
+            label={t('settings.appearanceRow')}
+            sublabel={getThemeSublabel(mode, isDark, t)}
             onPress={() => router.push('/appearance')}
           />
-          <SettingsRow icon="info" iconTone="appearance" label="About" value={`v${appVersion}`} valueTone="neutral" onPress={() => setAboutVisible(true)} />
+          <SettingsRow icon="info" iconTone="appearance" label={t('settings.about')} value={`v${appVersion}`} valueTone="neutral" onPress={() => setAboutVisible(true)} />
         </View>
       </View>
 
@@ -169,6 +168,7 @@ export default function SettingsScreen() {
 
 function AboutModal({ visible, version, onClose }: { visible: boolean; version: string; onClose: () => void }) {
   const { colors } = useTheme();
+  const t = useTranslation();
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <Pressable style={s.aboutBackdrop} onPress={onClose}>
@@ -178,22 +178,22 @@ function AboutModal({ visible, version, onClose }: { visible: boolean; version: 
               <Feather name="shield" size={28} color={colors.green[600]} />
             </View>
           </View>
-          <Text style={[s.aboutTitle, { color: colors.text.primary }]}>Control Yourself</Text>
-          <Text style={[s.aboutVersion, { color: colors.text.muted }]}>Version {version}</Text>
+          <Text style={[s.aboutTitle, { color: colors.text.primary }]}>{t('common.appName')}</Text>
+          <Text style={[s.aboutVersion, { color: colors.text.muted }]}>{t('about.version', { version })}</Text>
           <Text style={[s.aboutBody, { color: colors.text.secondary }]}>
-            A parental control and self-accountability app for Android. DNS filtering, app blocking, habit tracking, and guardian oversight — all on-device.
+            {t('about.body')}
           </Text>
           <View style={[s.aboutDivider, { backgroundColor: colors.border.subtle }]} />
-          <Text style={[s.aboutLabel, { color: colors.text.muted }]}>DATA & PRIVACY</Text>
+          <Text style={[s.aboutLabel, { color: colors.text.muted }]}>{t('about.dataPrivacy')}</Text>
           <Text style={[s.aboutBody, { color: colors.text.secondary }]}>
-            All filtering and blocking happens locally on your device. No browsing data, usage stats, or personal information is sent to any server without your explicit consent.
+            {t('about.privacyBody')}
           </Text>
           <Pressable
             accessibilityRole="button"
             onPress={onClose}
             style={[s.aboutCloseBtn, { backgroundColor: colors.green[500] }]}
           >
-            <Text style={[s.aboutCloseBtnText, { color: colors.text.inverse }]}>Close</Text>
+            <Text style={[s.aboutCloseBtnText, { color: colors.text.inverse }]}>{t('about.close')}</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -258,7 +258,7 @@ function ValueChip({ value, tone }: { value: string; tone: RowTone }) {
   );
 }
 
-function getProtectionDetailsSublabel(protection: ReturnType<typeof useProtectionState>) {
+function getProtectionDetailsSublabel(protection: ReturnType<typeof useProtection>, t: Translate) {
   const dnsOn = protection.adultFilteringEnabled || protection.privateDnsStatus.mode === 'hostname' || protection.vpnActive;
   const safeSearchOn = Object.values(protection.safeSearchSettings).every(Boolean);
   const appBlockingOn =
@@ -266,46 +266,46 @@ function getProtectionDetailsSublabel(protection: ReturnType<typeof useProtectio
     Object.values(protection.behaviorPolicy.featureBlocks).some(Boolean);
 
   if (dnsOn && safeSearchOn && appBlockingOn) {
-    return 'DNS · SafeSearch · App blocking — all active';
+    return t('settings.detailsAllActive');
   }
   if (!dnsOn && !safeSearchOn && !appBlockingOn) {
-    return 'All filtering disabled';
+    return t('settings.detailsAllDisabled');
   }
 
-  return [
-    `DNS ${dnsOn ? 'on' : 'off'}`,
-    `SafeSearch ${safeSearchOn ? 'on' : 'off'}`,
-    `App blocking ${appBlockingOn ? 'on' : 'off'}`,
-  ].join(' · ');
+  return t('settings.detailsMixed', {
+    dns: t(dnsOn ? 'common.on' : 'common.off'),
+    safe: t(safeSearchOn ? 'common.on' : 'common.off'),
+    apps: t(appBlockingOn ? 'common.on' : 'common.off'),
+  });
 }
 
-function getFocusSublabel(protection: ReturnType<typeof useProtectionState>) {
+function getFocusSublabel(protection: ReturnType<typeof useProtection>, t: Translate) {
   const activeSchedule = protection.focusPolicy.schedules.find((schedule) => schedule.enabled);
   const appLimitCount = Object.values(protection.usageLimitPolicy.appLimits).filter((limit) => limit > 0).length;
 
-  if (!activeSchedule && appLimitCount === 0) return 'No schedule active';
-  if (activeSchedule && appLimitCount > 0) return `Bedtime lock on · ${appLimitCount} app limits set`;
-  if (activeSchedule) return `Bedtime lock on · ${minutesToTime(activeSchedule.startMinutes)} - ${minutesToTime(activeSchedule.endMinutes)}`;
-  return `${appLimitCount} app limits set`;
+  if (!activeSchedule && appLimitCount === 0) return t('settings.focusNoSchedule');
+  if (activeSchedule && appLimitCount > 0) return t('settings.focusBedtimeAndLimits', { count: appLimitCount });
+  if (activeSchedule) return t('settings.focusBedtimeRange', { start: minutesToTime(activeSchedule.startMinutes), end: minutesToTime(activeSchedule.endMinutes) });
+  return t('settings.focusLimits', { count: appLimitCount });
 }
 
-function getGuardianSublabel(session: ReturnType<typeof useRemoteManagement>['session'], pinConfigured: boolean) {
-  if (!pinConfigured) return 'PIN not set — tap to create';
-  if (!session.paired) return 'PIN set · no guardian paired';
-  return 'PIN set · Guardian paired';
+function getGuardianSublabel(session: ReturnType<typeof useRemoteManagement>['session'], pinConfigured: boolean, t: Translate) {
+  if (!pinConfigured) return t('settings.guardianNoPin');
+  if (!session.paired) return t('settings.guardianNoPair');
+  return t('settings.guardianPaired');
 }
 
-function getAlertSublabel(unreadCount: number, warningCount: number, criticalCount: number) {
-  if (criticalCount > 0) return `${criticalCount} critical alert${criticalCount === 1 ? '' : 's'}`;
-  if (warningCount > 0) return `${warningCount} warning${warningCount === 1 ? '' : 's'}`;
-  if (unreadCount > 0) return `${unreadCount} unread`;
-  return 'No unread alerts';
+function getAlertSublabel(unreadCount: number, warningCount: number, criticalCount: number, t: Translate) {
+  if (criticalCount > 0) return t('settings.alertsCritical', { count: criticalCount });
+  if (warningCount > 0) return t('settings.alertsWarning', { count: warningCount });
+  if (unreadCount > 0) return t('settings.alertsUnread', { count: unreadCount });
+  return t('settings.alertsNone');
 }
 
-function getThemeSublabel(mode: 'light' | 'dark' | 'system', isDark: boolean) {
-  if (mode === 'light') return 'Light';
-  if (mode === 'dark') return 'Dark';
-  return `System (${isDark ? 'Dark' : 'Light'})`;
+function getThemeSublabel(mode: 'light' | 'dark' | 'system', isDark: boolean, t: Translate) {
+  if (mode === 'light') return t('theme.light');
+  if (mode === 'dark') return t('theme.dark');
+  return t('settings.themeSystemResolved', { resolved: t(isDark ? 'theme.dark' : 'theme.light') });
 }
 
 function getIconToneStyle(tone: IconTone, isDark: boolean) {
@@ -341,29 +341,19 @@ function minutesToTime(value: number) {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
-function formatProtectionSince(startedAt: number | null) {
-  if (!startedAt) return 'now';
+function formatProtectionSince(startedAt: number | null, t: Translate) {
+  if (!startedAt) return t('time.now');
   const minutes = Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
-  if (minutes < 60) return minutes < 1 ? 'now' : `${minutes} min ago`;
+  if (minutes < 60) return minutes < 1 ? t('time.now') : t('time.minAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (hours < 24) return hours === 1 ? t('time.hourAgo', { count: hours }) : t('time.hoursAgo', { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
+  return days === 1 ? t('time.dayAgo', { count: days }) : t('time.daysAgo', { count: days });
 }
 
 const s = StyleSheet.create({
   bannerAction: {
     ...typography.captionMd,
-  },
-  bannerCopy: {
-    ...typography.caption,
-  },
-  bannerText: {
-    flex: 1,
-    gap: 2,
-  },
-  bannerTitle: {
-    ...typography.bodyMd,
   },
   iconTile: {
     alignItems: 'center',
@@ -475,7 +465,7 @@ const s = StyleSheet.create({
     marginVertical: spacing.xs,
   },
   aboutLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.8,
     textAlign: 'center',

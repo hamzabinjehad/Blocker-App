@@ -1,28 +1,40 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
+import { Banner } from '@/components/Banner';
 import { PolicyCard } from '@/components/PolicyCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { AIProtectionCard } from '@/components/behavior/AIProtectionCard';
 import { AppFeatureBlockingSettings } from '@/components/behavior/AppFeatureBlockingSettings';
 import { CustomKeywordManager } from '@/components/behavior/CustomKeywordManager';
-import { useProtectionState } from '@/store/useProtectionState';
+import { RecentlyBlockedCard } from '@/components/RecentlyBlockedCard';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
+import { useProtection } from '@/store/ProtectionContext';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
 type ControlSection = 'filtering' | 'lists' | 'apps';
 type StatusTone = 'success' | 'warning' | 'neutral';
 
-const sections: Array<{ id: ControlSection; label: string }> = [
-  { id: 'filtering', label: 'Filtering' },
-  { id: 'lists', label: 'Custom Lists' },
-  { id: 'apps', label: 'App Rules' },
+const sections: Array<{ id: ControlSection; labelKey: TranslationKey }> = [
+  { id: 'filtering', labelKey: 'rules.sectionFiltering' },
+  { id: 'lists', labelKey: 'rules.sectionLists' },
+  { id: 'apps', labelKey: 'rules.sectionApps' },
 ];
 
 export default function RulesScreen() {
+  const t = useTranslation();
   const { colors } = useTheme();
-  const protection = useProtectionState();
+  const protection = useProtection();
   const [activeSection, setActiveSection] = useState<ControlSection>('filtering');
+
+  // Installed apps load lazily, first time the Apps section is opened.
+  useEffect(() => {
+    if (activeSection === 'apps' && protection.installedApps.length === 0) {
+      void protection.refreshInstalledApps();
+    }
+  }, [activeSection, protection.installedApps.length, protection.refreshInstalledApps]);
   const statuses = useMemo(() => getSectionStatuses(protection), [protection]);
   const overview = useMemo(() => getOverview(protection), [protection]);
 
@@ -32,7 +44,7 @@ export default function RulesScreen() {
   const isLocked = protection.status === 'active' && !protection.pinConfigured;
 
   return (
-    <ScreenScaffold title="Control" subtitle="Protection details and filtering rules." iconName="control">
+    <ScreenScaffold title={t('rules.title')} subtitle={t('rules.subtitle')} iconName="control">
       <View style={[s.overviewPanel, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
         <View style={s.overviewHeader}>
           <View style={[s.overviewCircle, { backgroundColor: isSuccess ? colors.green[50] : colors.amber[50] }]}>
@@ -43,18 +55,22 @@ export default function RulesScreen() {
             />
           </View>
           <View style={s.overviewCopy}>
-            <Text style={[s.overviewTitle, { color: colors.text.primary }]}>{overview.title}</Text>
-            <Text style={[s.overviewSubtitle, { color: colors.text.secondary }]}>{overview.subtitle}</Text>
+            <Text style={[s.overviewTitle, { color: colors.text.primary }]}>{t(overview.titleKey)}</Text>
+            <Text style={[s.overviewSubtitle, { color: colors.text.secondary }]}>{t(overview.subtitleKey)}</Text>
           </View>
         </View>
         <View style={s.metricRow}>
-          <Metric label="Domains blocked" value={protection.blockedDomainCount.toLocaleString()} tone="success" />
-          <Metric label="App rules on" value={String(Object.values(protection.behaviorPolicy.featureBlocks).filter(Boolean).length)} />
-          <Metric label="Custom entries" value={String(
+          <Metric label={t('rules.metricDomainsBlocked')} value={protection.blockedDomainCount.toLocaleString()} tone="success" />
+          <Metric label={t('rules.metricAppRules')} value={String(Object.values(protection.behaviorPolicy.featureBlocks).filter(Boolean).length)} />
+          <Metric label={t('rules.metricCustomEntries')} value={String(
             protection.behaviorPolicy.customKeywords.length +
             protection.blockedDomains.length +
             protection.allowlistedDomains.length
           )} />
+        </View>
+        <View style={[s.scopeNote, { backgroundColor: colors.bg.tertiary }]}>
+          <Feather name="crosshair" size={13} color={colors.text.muted} style={s.scopeIcon} />
+          <Text style={[s.scopeText, { color: colors.text.secondary }]}>{t('rules.scopeNote')}</Text>
         </View>
       </View>
 
@@ -74,7 +90,7 @@ export default function RulesScreen() {
               ]}
             >
               <Text style={[s.segLabel, { color: selected ? colors.text.primary : colors.text.muted }]}>
-                {section.label}
+                {t(section.labelKey)}
               </Text>
               {status.tone !== 'neutral' ? (
                 <View style={[s.segDot, { backgroundColor: status.tone === 'success' ? colors.green[500] : colors.amber[500] }]} />
@@ -85,14 +101,12 @@ export default function RulesScreen() {
       </View>
 
       {protection.status === 'active' ? (
-        <View style={[s.lockBanner, { backgroundColor: isLocked ? colors.amber[50] : colors.green[50], borderColor: isLocked ? colors.amber[200] : colors.border.green }]}>
-          <Feather name={isLocked ? 'lock' : 'shield'} size={13} color={isLocked ? colors.amber[700] : colors.green[600]} />
-          <Text style={[s.lockText, { color: isLocked ? colors.amber[700] : colors.green[700] }]}>
-            {isLocked
-              ? 'Rules are locked while protection is active. Set a PIN to allow changes without stopping protection.'
-              : 'Protection is active. PIN required to make changes.'}
-          </Text>
-        </View>
+        <Banner
+          tone={isLocked ? 'warning' : 'success'}
+          icon={isLocked ? 'lock' : 'shield'}
+          iconSize={13}
+          subtitle={isLocked ? t('rules.lockedNoPin') : t('rules.lockedWithPin')}
+        />
       ) : null}
 
       <View pointerEvents={isLocked ? 'none' : 'auto'} style={isLocked ? s.lockedContent : undefined}>
@@ -100,6 +114,7 @@ export default function RulesScreen() {
           <View style={s.panelStack}>
             <PolicyCard
               adultFilteringEnabled={protection.adultFilteringEnabled}
+              blockUnknownSearchEngines={protection.safeSearchSettings.blockUnknownSearchEngines}
               riskySettings={protection.riskySettings}
               pinConfigured={protection.pinConfigured}
               onUpdatePolicy={protection.updatePolicy}
@@ -116,20 +131,27 @@ export default function RulesScreen() {
         ) : null}
 
         {activeSection === 'lists' ? (
-          <CustomKeywordManager
-            allowlistedDomains={protection.allowlistedDomains}
-            blockedDomains={protection.blockedDomains}
-            blockedDomainCount={protection.blockedDomainCount}
-            keywords={protection.behaviorPolicy.customKeywords}
-            lastBlocklistUpdate={protection.lastBlocklistUpdate}
-            onAddBlockedDomain={protection.addBlockedDomain}
-            onAddAllowlistedDomain={protection.addAllowlistedDomain}
-            onImportBlockedDomains={protection.importBlockedDomains}
-            onRemoveAllowlistedDomain={protection.removeAllowlistedDomain}
-            onRemoveBlockedDomain={protection.removeBlockedDomain}
-            onUpdateKeywordList={protection.updateKeywordList}
-            pinConfigured={protection.pinConfigured}
-          />
+          <View style={s.panelStack}>
+            <RecentlyBlockedCard
+              pinConfigured={protection.pinConfigured}
+              getRecentBlockedDomains={protection.getRecentBlockedDomains}
+              onAllowDomain={protection.addAllowlistedDomain}
+            />
+            <CustomKeywordManager
+              allowlistedDomains={protection.allowlistedDomains}
+              blockedDomains={protection.blockedDomains}
+              blockedDomainCount={protection.blockedDomainCount}
+              keywords={protection.behaviorPolicy.customKeywords}
+              lastBlocklistUpdate={protection.lastBlocklistUpdate}
+              onAddBlockedDomain={protection.addBlockedDomain}
+              onAddAllowlistedDomain={protection.addAllowlistedDomain}
+              onImportBlockedDomains={protection.importBlockedDomains}
+              onRemoveAllowlistedDomain={protection.removeAllowlistedDomain}
+              onRemoveBlockedDomain={protection.removeBlockedDomain}
+              onUpdateKeywordList={protection.updateKeywordList}
+              pinConfigured={protection.pinConfigured}
+            />
+          </View>
         ) : null}
 
         {activeSection === 'apps' ? (
@@ -145,7 +167,7 @@ export default function RulesScreen() {
   );
 }
 
-function getSectionStatuses(protection: ReturnType<typeof useProtectionState>): Record<ControlSection, { label: string; tone: StatusTone }> {
+function getSectionStatuses(protection: ReturnType<typeof useProtection>): Record<ControlSection, { label: string; tone: StatusTone }> {
   const filteringActive = protection.adultFilteringEnabled || Object.values(protection.riskySettings).some(Boolean);
   const customEntryCount =
     protection.behaviorPolicy.customKeywords.length +
@@ -162,19 +184,23 @@ function getSectionStatuses(protection: ReturnType<typeof useProtectionState>): 
   };
 }
 
-function getOverview(protection: ReturnType<typeof useProtectionState>): { title: string; subtitle: string; tone: StatusTone } {
+function getOverview(protection: ReturnType<typeof useProtection>): {
+  titleKey: TranslationKey;
+  subtitleKey: TranslationKey;
+  tone: StatusTone;
+} {
   const statuses = getSectionStatuses(protection);
   const issueCount = Object.values(statuses).filter((s) => s.tone === 'warning').length;
   if (issueCount === 0) {
     return {
-      title: 'Fully protected',
-      subtitle: 'Filtering, safe search, and app rules are all active.',
+      titleKey: 'rules.fullyProtected',
+      subtitleKey: 'rules.fullyProtectedSubtitle',
       tone: 'success',
     };
   }
   return {
-    title: 'Review your settings',
-    subtitle: `${issueCount} area${issueCount === 1 ? '' : 's'} may need attention.`,
+    titleKey: 'rules.reviewSettings',
+    subtitleKey: 'rules.reviewSettingsSubtitle',
     tone: 'warning',
   };
 }
@@ -191,19 +217,6 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: S
 }
 
 const s = StyleSheet.create({
-  lockBanner: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.md,
-  },
-  lockText: {
-    ...typography.caption,
-    flex: 1,
-    lineHeight: 18,
-  },
   lockedContent: {
     opacity: 0.45,
   },
@@ -260,6 +273,21 @@ const s = StyleSheet.create({
   panelStack: {
     gap: spacing.lg,
   },
+  scopeNote: {
+    alignItems: 'flex-start',
+    borderRadius: radius.sm,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  scopeIcon: {
+    marginTop: 2,
+  },
+  scopeText: {
+    ...typography.caption,
+    flex: 1,
+    lineHeight: 17,
+  },
   segControl: {
     borderRadius: radius.md,
     flexDirection: 'row',
@@ -275,7 +303,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: 44,
     paddingHorizontal: spacing.sm,
   },
   segLabel: {

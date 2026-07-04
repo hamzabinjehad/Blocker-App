@@ -12,9 +12,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { AppIcon } from '@/components/AppIcon';
+import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { useTheme } from '@/theme';
 import { radius, shadow, spacing, typography } from '@/theme';
-import { useProtectionState } from '@/store/useProtectionState';
+import { useProtection } from '@/store/ProtectionContext';
 
 type OnboardingFlowProps = {
   onComplete: () => void;
@@ -32,7 +34,8 @@ type PermissionItem = {
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const { colors, isDark, mode, setMode } = useTheme();
-  const protection = useProtectionState();
+  const { t } = useI18n();
+  const protection = useProtection();
   const [step, setStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -75,48 +78,48 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const permissions: PermissionItem[] = [
     {
       key: 'vpn',
-      title: 'VPN Connection',
-      description: 'Filters web traffic to block harmful content',
+      title: t('onboarding.permVpnTitle'),
+      description: t('onboarding.permVpnDesc'),
       icon: 'shield-check',
       ready: protection.vpnPermissionGranted,
       onPress: protection.prepareVpn,
     },
     {
       key: 'accessibility',
-      title: 'Accessibility Service',
-      description: 'Monitors on-screen content for protection',
+      title: t('onboarding.permAccessibilityTitle'),
+      description: t('onboarding.permAccessibilityDesc'),
       icon: 'eye-check',
       ready: protection.accessibilityServiceEnabled,
       onPress: protection.openAccessibilitySettings,
     },
     {
       key: 'overlay',
-      title: 'Overlay Permissions',
-      description: 'Shows block screen when harmful content is detected',
+      title: t('onboarding.permOverlayTitle'),
+      description: t('onboarding.permOverlayDesc'),
       icon: 'layers',
       ready: protection.overlayPermissionGranted,
       onPress: protection.openOverlaySettings,
     },
     {
       key: 'usage',
-      title: 'Usage Monitoring',
-      description: 'Tracks app usage for focus mode and limits',
+      title: t('onboarding.permUsageTitle'),
+      description: t('onboarding.permUsageDesc'),
       icon: 'chart-bar',
       ready: protection.usageAccessStatus.granted,
       onPress: protection.openUsageAccessSettings,
     },
     {
       key: 'battery',
-      title: 'Background Activity',
-      description: 'Keeps protection running in the background',
+      title: t('onboarding.permBatteryTitle'),
+      description: t('onboarding.permBatteryDesc'),
       icon: 'battery-charging',
       ready: protection.batteryOptimizationStatus.ignored,
       onPress: protection.requestIgnoreBatteryOptimizations,
     },
     {
       key: 'device-admin',
-      title: 'Device Admin',
-      description: 'Prevents unauthorized uninstallation',
+      title: t('onboarding.permDeviceAdminTitle'),
+      description: t('onboarding.permDeviceAdminDesc'),
       icon: 'shield-lock',
       ready: protection.managedDeviceStatus.deviceAdminActive,
       onPress: protection.requestDeviceAdminPermission,
@@ -137,13 +140,13 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </View>
       </Animated.View>
 
-      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>Your brain{'\n'}deserves better.</Text>
+      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>{t('onboarding.welcomeTitle')}</Text>
       <Text style={[s.welcomeSubtitle, { color: colors.text.secondary }]}>
-        Filter harmful content, build healthier habits, and take back your focus.
+        {t('onboarding.welcomeSubtitle')}
       </Text>
 
       <View style={s.themeSelector}>
-        <Text style={[s.themeSelectorLabel, { color: colors.text.muted }]}>APPEARANCE</Text>
+        <Text style={[s.themeSelectorLabel, { color: colors.text.muted }]}>{t('onboarding.appearance')}</Text>
         <View style={[s.themeOptions, { backgroundColor: colors.bg.tertiary }]}>
           {(['light', 'dark', 'system'] as const).map((opt) => (
             <Pressable
@@ -161,7 +164,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 color={mode === opt ? colors.green[500] : colors.text.muted}
               />
               <Text style={[s.themeOptionText, { color: mode === opt ? colors.text.primary : colors.text.muted }]}>
-                {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                {t(`theme.${opt}` as TranslationKey)}
               </Text>
             </Pressable>
           ))}
@@ -172,9 +175,9 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const renderPermissions = () => (
     <View style={s.stepContent}>
-      <Text style={[s.stepTitle, { color: colors.text.primary }]}>Enable Permissions</Text>
+      <Text style={[s.stepTitle, { color: colors.text.primary }]}>{t('onboarding.enablePermissions')}</Text>
       <Text style={[s.stepSubtitle, { color: colors.text.secondary }]}>
-        These let Guardian protect you in the background. Device admin can be added later.
+        {t('onboarding.enablePermissionsSub')}
       </Text>
 
       <View style={[s.progressBar, { backgroundColor: colors.bg.tertiary }]}>
@@ -189,7 +192,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         />
       </View>
       <Text style={[s.progressText, { color: colors.text.muted }]}>
-        {requiredReady} of {requiredTotal} required ready
+        {t('onboarding.requiredReady', { ready: requiredReady, total: requiredTotal })}
       </Text>
 
       <View style={s.permissionList}>
@@ -229,7 +232,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <Text style={[s.permissionTitle, { color: colors.text.primary }]}>
                 {perm.title}
                 {perm.optional ? (
-                  <Text style={{ color: colors.text.muted }}> (optional)</Text>
+                  <Text style={{ color: colors.text.muted }}> ({t('onboarding.optional')})</Text>
                 ) : null}
               </Text>
               <Text style={[s.permissionDesc, { color: colors.text.secondary }]}>
@@ -238,7 +241,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             </View>
             {!perm.ready && (
               <View style={[s.enableBadge, { backgroundColor: colors.green[500] }]}>
-                <Text style={[s.enableBadgeText, { color: '#FFFFFF' }]}>Enable</Text>
+                <Text style={[s.enableBadgeText, { color: '#FFFFFF' }]}>{t('onboarding.enable')}</Text>
               </View>
             )}
           </Pressable>
@@ -257,16 +260,16 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </View>
       </Animated.View>
 
-      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>You're All Set!</Text>
+      <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>{t('onboarding.allSet')}</Text>
       <Text style={[s.welcomeSubtitle, { color: colors.text.secondary }]}>
-        Guardian is ready. Start protection when you land on Home.
+        {t('onboarding.allSetSub')}
       </Text>
 
       <View style={s.featureList}>
         {[
-          { icon: 'shield-check', label: 'Content filtering active' },
-          { icon: 'chart-timeline-variant-shimmer', label: 'Progress tracking ready' },
-          { icon: 'target', label: 'Focus mode available' },
+          { icon: 'shield-check', label: t('onboarding.featureFiltering') },
+          { icon: 'chart-timeline-variant-shimmer', label: t('onboarding.featureProgress') },
+          { icon: 'target', label: t('onboarding.featureFocus') },
         ].map((feat) => (
           <View key={feat.label} style={s.featureRow}>
             <MaterialCommunityIcons
@@ -323,9 +326,9 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </View>
       </View>
       <View style={s.featureCaption}>
-        <Text style={[s.featureTitle, { color: colors.text.primary }]}>Blocks the{'\n'}noise instantly.</Text>
+        <Text style={[s.featureTitle, { color: colors.text.primary }]}>{t('onboarding.feature1Title')}</Text>
         <Text style={[s.featureSub, { color: colors.text.secondary }]}>
-          Filters harmful sites, bypass tools, and explicit images across every app on your device.
+          {t('onboarding.feature1Sub')}
         </Text>
       </View>
     </View>
@@ -371,9 +374,9 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </View>
       </View>
       <View style={s.featureCaption}>
-        <Text style={[s.featureTitle, { color: colors.text.primary }]}>Every clean{'\n'}day counts.</Text>
+        <Text style={[s.featureTitle, { color: colors.text.primary }]}>{t('onboarding.feature2Title')}</Text>
         <Text style={[s.featureSub, { color: colors.text.secondary }]}>
-          Build your streak, earn XP, and watch your 90-day recovery journey take shape.
+          {t('onboarding.feature2Sub')}
         </Text>
       </View>
     </View>
@@ -412,7 +415,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       <View style={s.footer}>
         {step > 0 ? (
           <Pressable onPress={() => animateToStep(step - 1)} style={s.backLink}>
-            <Text style={[s.backLinkText, { color: colors.text.secondary }]}>← Back</Text>
+            <Text style={[s.backLinkText, { color: colors.text.secondary }]}>← {t('onboarding.back')}</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -425,7 +428,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           ]}
         >
           <Text style={s.primaryBtnText}>
-            {step === 0 ? 'Get Started' : step < totalSteps - 1 ? 'Continue' : "Let's go"}
+            {step === 0 ? t('onboarding.getStarted') : step < totalSteps - 1 ? t('onboarding.continue') : t('onboarding.letsGo')}
           </Text>
         </Pressable>
       </View>

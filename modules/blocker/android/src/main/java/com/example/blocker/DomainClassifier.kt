@@ -7,7 +7,10 @@ data class DomainClassification(
   val domain: String,
   val category: String,
   val action: Action,
-  val rewriteTarget: String? = null
+  val rewriteTarget: String? = null,
+  // True when the block came from the name heuristic rather than a blocklist entry —
+  // logged with a distinct action so heuristic false-positives are measurable.
+  val heuristic: Boolean = false
 ) {
   enum class Action {
     ALLOW,
@@ -59,12 +62,12 @@ class DomainClassifier(
       return DomainClassification(domain, CATEGORY_UNKNOWN, DomainClassification.Action.ALLOW)
     }
 
-    if (matchesAny(domain, repository.blockedDomains()) || matchesAny(domain, blocklists.adultDomains)) {
+    if (matchesAny(domain, repository.blockedDomains()) || blocklists.adultMatcher.matches(domain)) {
       return DomainClassification(domain, CATEGORY_ADULT, DomainClassification.Action.BLOCK)
     }
 
     if (looksLikeAdultDomain(domain)) {
-      return DomainClassification(domain, CATEGORY_ADULT, DomainClassification.Action.BLOCK)
+      return DomainClassification(domain, CATEGORY_ADULT, DomainClassification.Action.BLOCK, heuristic = true)
     }
 
     return DomainClassification(domain, CATEGORY_UNKNOWN, DomainClassification.Action.ALLOW)
@@ -86,7 +89,26 @@ class DomainClassifier(
     if (domain == "yandex.com" || domain.endsWith(".yandex.com") ||
       domain == "yandex.ru" || domain.endsWith(".yandex.ru")) return true
     return GOOGLE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") } ||
-      YOUTUBE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") }
+      YOUTUBE_COUNTRY_TLDS.any { tld -> domain == tld || domain.endsWith(".$tld") } ||
+      isCountrySearchDomain(domain, "google") ||
+      isCountrySearchDomain(domain, "youtube")
+  }
+
+  // Google/YouTube country domains (google.fr, google.com.sa, youtube.co.uk, …) serve only
+  // search/video, so forcing safe search on every subdomain is safe. Matching the registrable
+  // shape {label}.{cc} / {label}.{co|com}.{cc} covers every country without maintaining a list.
+  // google.com itself stays restricted to search subdomains (handled above) because its other
+  // subdomains carry APIs, mail, and accounts that a rewrite would break.
+  private fun isCountrySearchDomain(domain: String, label: String): Boolean {
+    val labels = domain.split('.')
+    val index = labels.lastIndexOf(label)
+    if (index == -1) return false
+    val suffix = labels.subList(index + 1, labels.size)
+    return when (suffix.size) {
+      1 -> suffix[0].length == 2
+      2 -> (suffix[0] == "co" || suffix[0] == "com") && suffix[1].length == 2
+      else -> false
+    }
   }
 
   private fun isSafeSearchTargetDomain(domain: String): Boolean {
@@ -151,6 +173,11 @@ class DomainClassifier(
     return false
   }
 
+  // Precision-first adult heuristic. It must never fire on benign domains that merely
+  // *contain* a short marker as a substring (e.g. "essex" → sex, "analog" → anal,
+  // "twinkl" → twink, "camscanner" → cams, "stripe" → strip). The comprehensive blocklist
+  // and family upstream resolvers are the primary defence; this only catches unlisted
+  // domains whose name is unambiguously adult.
   private fun looksLikeAdultDomain(domain: String): Boolean {
     val labels = domain.split('.').filter { it.isNotBlank() }
     if (labels.size < 2) return false
@@ -158,27 +185,57 @@ class DomainClassifier(
     val tld = labels.last()
     if (tld in ADULT_ONLY_TLDS) return true
 
-    val searchableLabels = labels.dropLast(1)
-    val normalizedLabels = searchableLabels.map { normalizeAdultSignalLabel(it) }
-    val compactDomain = normalizedLabels.joinToString("").replace(Regex("[^a-z0-9]"), "")
-    if (compactDomain.isBlank()) return false
+    val hostLabels = labels.dropLast(1).map { normalizeAdultSignalLabel(it) }
+    val compactLabels = hostLabels
+      .map { it.replace(Regex("[^a-z0-9]"), "") }
+      .filter { it.isNotBlank() }
+    if (compactLabels.isEmpty()) return false
 
-    if (ADULT_PLATFORM_MARKERS.any { marker -> compactDomain.contains(marker) }) return true
-    if (STRONG_ADULT_DOMAIN_MARKERS.any { marker -> compactDomain.contains(marker) }) return true
-    if (ADULT_REGEX.containsMatchIn(compactDomain)) return true
+    // 1) Long / brand markers are unambiguous — safe to match as a substring within a label.
+    if (compactLabels.any { label -> SAFE_SUBSTRING_ADULT_MARKERS.any { label.contains(it) } }) {
+      return true
+    }
 
-    val tokens = normalizedLabels
+    // 2) Whole-label word segmentation: block only if a label decomposes *entirely* into
+    //    adult + neutral connector words and uses at least one core adult word. This blocks
+    //    "sexcams" / "freeporn" while leaving "essex" / "analytics" / "twinkl" untouched.
+    if (compactLabels.any { isAdultCompoundLabel(it) }) return true
+
+    // 3) Two-signal fallback for multi-token names: a contextual marker AND an intent marker,
+    //    both matched as whole tokens (never substrings).
+    val tokens = hostLabels
       .flatMap { label -> label.split(Regex("[^a-z0-9]+")) }
       .filter { it.isNotBlank() }
-      .toSet()
-    val hasContextualAdultMarker = CONTEXTUAL_ADULT_DOMAIN_MARKERS.any { marker ->
-      marker in tokens || compactDomain.contains(marker)
-    }
-    val hasIntentMarker = ADULT_INTENT_DOMAIN_MARKERS.any { marker ->
-      marker in tokens || compactDomain.contains(marker)
-    }
+      .toHashSet()
+    val hasContextual = tokens.any { it in CONTEXTUAL_ADULT_DOMAIN_MARKERS }
+    val hasIntent = tokens.any { it in ADULT_INTENT_DOMAIN_MARKERS }
+    return hasContextual && hasIntent
+  }
 
-    return hasContextualAdultMarker && hasIntentMarker
+  // Full-coverage segmentation over an adult/neutral vocabulary. Returns true only when the
+  // entire label is consumed and at least one CORE adult word was used. The full-coverage
+  // requirement is what makes short markers safe: "adult" is core, yet "adulteducation" is
+  // allowed because "education" is not in the vocabulary so the label cannot be fully covered.
+  private fun isAdultCompoundLabel(label: String): Boolean {
+    val n = label.length
+    if (n < 3) return false
+    val reachNoCore = BooleanArray(n + 1)
+    val reachCore = BooleanArray(n + 1)
+    reachNoCore[0] = true
+    for (i in 0 until n) {
+      if (!reachNoCore[i] && !reachCore[i]) continue
+      val maxLen = minOf(MAX_SEGMENT_LEN, n - i)
+      for (len in 1..maxLen) {
+        val word = label.substring(i, i + len)
+        val isCore = word in CORE_ADULT_WORDS
+        val isNeutral = word in NEUTRAL_CONNECTOR_WORDS
+        if (!isCore && !isNeutral) continue
+        val j = i + len
+        if (reachCore[i] || isCore) reachCore[j] = true
+        if (reachNoCore[i] && !isCore) reachNoCore[j] = true
+      }
+    }
+    return reachCore[n]
   }
 
   private fun normalizeAdultSignalLabel(label: String): String {
@@ -276,7 +333,6 @@ class DomainClassifier(
       "aol.com",
       "kagi.com",
       "perplexity.ai",
-      "phind.com",
       "andi.co",
       "metager.org",
       "metager.de",
@@ -284,64 +340,65 @@ class DomainClassifier(
       "gibiru.com",
       "searx.be",
       "searxng.org",
-      "whoogle.com",
-      "wolframalpha.com"
+      "whoogle.com"
     )
 
     private val ADULT_ONLY_TLDS = setOf("adult", "porn", "sex", "xxx")
 
-    private val STRONG_ADULT_DOMAIN_MARKERS = setOf(
-      "porn", "porno", "pornography",
-      "xxx", "xvideo", "xvideos", "xnxx", "xhamster",
-      "redtube", "youporn", "hentai",
-      "onlyfans", "fansly", "brazzers", "spankbang",
-      "motherless", "rule34", "e621", "nhentai", "hanime", "r34",
-      "tnaflix", "tube8", "p0rn", "pr0n", "h3ntai",
-      // additional explicit markers
-      "pornstar", "pornstars", "cumshot", "blowjob",
-      "gangbang", "creampie", "anal", "bdsm", "bondage",
-      "shemale", "tranny", "twink", "jerkmate",
-      "naughtyamerica", "bangbros", "mofos", "digitalplayground",
-      "penthouse", "nudevista", "peekvids", "voyeurhit"
+    private const val MAX_SEGMENT_LEN = 14
+
+    // Long / brand markers that are unambiguous even as a substring inside a label.
+    // Deliberately excludes short ambiguous roots (sex, anal, cam, cams, twink, strip,
+    // jasmin, wicked, bondage, milf, nude) — those are handled by bounded segmentation.
+    private val SAFE_SUBSTRING_ADULT_MARKERS = setOf(
+      "porn", "porno", "pornography", "pornstar", "pornhub",
+      "xvideo", "xvideos", "xnxx", "xhamster", "redtube", "youporn",
+      "hentai", "nhentai", "hanime", "rule34", "e621",
+      "onlyfans", "fansly", "brazzers", "spankbang", "motherless",
+      "tnaflix", "tube8", "cumshot", "blowjob", "gangbang", "creampie",
+      "shemale", "jerkmate", "naughtyamerica", "bangbros", "mofos",
+      "digitalplayground", "nudevista", "peekvids", "voyeurhit",
+      "chaturbate", "stripchat", "livejasmin", "manyvids", "camsoda",
+      "adultfriendfinder", "bongacams", "myfreecams", "flirt4free",
+      "streamate", "camgirl", "camwhore", "fuckbook"
     )
 
-    private val ADULT_PLATFORM_MARKERS = setOf(
-      "pornhub", "chaturbate", "stripchat", "livejasmin",
-      "manyvids", "camsoda", "cam4", "adultfriendfinder",
-      "bongacams", "myfreecams", "flirt4free", "streamate", "imlive",
-      // additional cam/live platforms
-      "cams", "camster", "camplace", "camdolls", "cambb",
-      "jasmin", "jerkmate", "lovense", "sexier", "sexplanet",
-      "xempire", "wicked"
+    // Core adult words for segmentation. A label is only flagged when it decomposes
+    // ENTIRELY into these plus neutral connectors, so benign suffixes (education, hood,
+    // ytics, og) keep the label from ever matching.
+    private val CORE_ADULT_WORDS = setOf(
+      "porn", "porno", "sex", "sexy", "xxx", "xnxx", "anal", "milf", "milfs",
+      "nude", "nudes", "nudity", "naked", "escort", "escorts", "erotic", "erotica",
+      "fetish", "hentai", "boobs", "tits", "titty", "pussy", "cock", "dick",
+      "cum", "orgasm", "bdsm", "hardcore", "blowjob", "handjob", "footjob",
+      "threesome", "creampie", "gangbang", "shemale", "tranny", "twink",
+      "nsfw", "incest", "hookup", "cam", "cams", "camgirl", "camgirls",
+      "camsex", "sexcam", "camwhore", "stripper", "striptease", "adult",
+      "camsoda", "jerkoff", "fap", "xhamster", "pornstar", "swingers",
+      "amateur", "voyeur"
+    )
+
+    // Neutral glue words: allowed in a decomposition but never sufficient on their own.
+    private val NEUTRAL_CONNECTOR_WORDS = setOf(
+      "free", "my", "the", "best", "top", "hot", "live", "hd", "x", "xx",
+      "vid", "vids", "video", "videos", "tube", "clip", "clips", "pic", "pics",
+      "hub", "chat", "real", "world", "zone", "online", "tv", "now", "daily",
+      "mega", "super", "247", "24", "247hd", "watch", "stream", "download"
     )
 
     private val CONTEXTUAL_ADULT_DOMAIN_MARKERS = setOf(
-      "adult", "sex", "sexy", "nude", "nudity",
-      "escort", "erotic", "erotica", "fetish",
-      "camgirl", "camgirls", "webcam", "nsfw",
-      "hookup", "milf", "onlyfan", "stripper", "camg", "3rotic",
-      // additional contextual markers
-      "amateur", "homemade", "kink", "swingers", "naughty",
-      "uncensored", "explicit", "bdsm", "bondage",
-      "18plus", "18only", "adultchat", "hotgirl", "hotgirls",
-      "lust", "lusty", "hump", "naked", "nakedness"
+      "adult", "sex", "sexy", "nude", "nudity", "nudes",
+      "escort", "escorts", "erotic", "erotica", "fetish",
+      "camgirl", "camgirls", "nsfw", "hookup", "milf", "onlyfan",
+      "stripper", "amateur", "kink", "swingers", "naughty",
+      "uncensored", "explicit", "bdsm", "18plus", "18only",
+      "hotgirl", "hotgirls", "lust", "naked"
     )
 
     private val ADULT_INTENT_DOMAIN_MARKERS = setOf(
       "video", "videos", "tube", "clips", "pics",
-      "photo", "photos", "free", "live", "chat",
-      "cam", "cams", "models", "leak", "leaks",
-      "hd", "xxx", "stream", "download", "watch",
-      "hub", "gallery",
-      // additional intent markers
-      "show", "shows", "content", "only", "site",
-      "network", "pass", "vip", "premium", "uncensored"
-    )
-
-    private val ADULT_REGEX = Regex(
-      "(p[o0]rn|s[e3]x|x+vid|nud[e3]|h[e3]ntai|camg[ir]+l|str[i1]p|esc[o0]rt" +
-        "|f[u4][c]?k|an[a4]l|bl[o0]wj|b[d]sm|j[e3]rkm|p[o0]rnst[a4]r|c[u]msh[o0]t)",
-      RegexOption.IGNORE_CASE
+      "photo", "photos", "cams", "models", "leak", "leaks",
+      "stream", "gallery", "content", "premium", "uncensored"
     )
   }
 }

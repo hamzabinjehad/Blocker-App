@@ -4,12 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Switch } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
 
+import { AlwaysOnVpnCard } from '@/components/AlwaysOnVpnCard';
 import { ParentPinCard } from '@/components/ParentPinCard';
 import { RemoteManagementCard } from '@/components/RemoteManagementCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { useTranslation } from '@/i18n';
 import BlockerModule from '@/native/BlockerModule';
 import type { DnsFilterTestResult } from '@/types/blocker';
-import { useProtectionState } from '@/store/useProtectionState';
+import { useProtection } from '@/store/ProtectionContext';
 import { useRemoteManagement } from '@/store/useRemoteManagement';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
@@ -22,7 +24,8 @@ const FAMILY_SAFE_HOSTS = [
 
 export default function GuardianScreen() {
   const { colors } = useTheme();
-  const protection = useProtectionState();
+  const t = useTranslation();
+  const protection = useProtection();
   const remote = useRemoteManagement();
   const [unlockRequestsEnabled, setUnlockRequestsEnabled] = useState(true);
   const recentRequests = remote.session.pendingRequests.slice(0, 5);
@@ -39,7 +42,7 @@ export default function GuardianScreen() {
   };
 
   return (
-    <ScreenScaffold title="Guardian" subtitle="PIN, paired devices, and protection health." iconName="guardian">
+    <ScreenScaffold title={t('guardian.title')} subtitle={t('guardian.subtitle')} iconName="guardian">
       <View style={s.section}>
         <ParentPinCard
           pinConfigured={protection.pinConfigured}
@@ -57,6 +60,10 @@ export default function GuardianScreen() {
       />
 
       <View style={s.section}>
+        <AlwaysOnVpnCard onOpenVpnSettings={protection.openVpnSettings} />
+      </View>
+
+      <View style={s.section}>
         <RemoteManagementCard
           session={remote.session}
           loading={remote.loading}
@@ -71,9 +78,9 @@ export default function GuardianScreen() {
       <View style={[s.panel, { borderColor: colors.border.subtle, backgroundColor: colors.bg.elevated }]}>
         <View style={s.toggleRow}>
           <View style={s.toggleCopy}>
-            <Text style={[s.sectionTitle, { color: colors.text.primary }]}>Unlock Requests</Text>
+            <Text style={[s.sectionTitle, { color: colors.text.primary }]}>{t('guardian.unlockRequests')}</Text>
             <Text style={[s.sectionMeta, { color: colors.text.secondary }]}>
-              Allow protected users to ask a guardian for temporary access.
+              {t('guardian.unlockRequestsCopy')}
             </Text>
           </View>
           <Switch value={unlockRequestsEnabled} onValueChange={handleUnlockRequestsToggle} />
@@ -92,7 +99,7 @@ export default function GuardianScreen() {
               </View>
             </View>
           )) : (
-            <Text style={[s.emptyText, { color: colors.text.muted }]}>No recent unlock requests.</Text>
+            <Text style={[s.emptyText, { color: colors.text.muted }]}>{t('guardian.noRecentRequests')}</Text>
           )}
         </View>
       </View>
@@ -108,11 +115,12 @@ function DnsProtectionCard({
   canConfigureManagedDns,
 }: {
   vpnActive: boolean;
-  privateDnsStatus: ReturnType<typeof useProtectionState>['privateDnsStatus'];
+  privateDnsStatus: ReturnType<typeof useProtection>['privateDnsStatus'];
   onOpenPrivateDnsSettings: () => Promise<void>;
   onConfigureManagedPrivateDns: (host: string) => Promise<void>;
   canConfigureManagedDns: boolean;
 }) {
+  const t = useTranslation();
   const { colors } = useTheme();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<DnsFilterTestResult | null>(null);
@@ -150,29 +158,30 @@ function DnsProtectionCard({
           <Feather name="shield" size={16} color={colors.green[600]} />
         </View>
         <View style={s.panelHeaderText}>
-          <Text style={[s.sectionTitle, { color: colors.text.primary }]}>DNS Filtering</Text>
+          <Text style={[s.sectionTitle, { color: colors.text.primary }]}>{t('guardian.dnsFiltering')}</Text>
           <Text style={[s.sectionMeta, { color: colors.text.secondary }]}>
-            Blocks adult content at the network level.
+            {t('guardian.dnsFilteringMeta')}
           </Text>
         </View>
       </View>
 
       <StatusRow
-        label="VPN filter"
+        label={t('guardian.vpnFilter')}
         active={vpnActive}
-        description={vpnActive ? 'Active — DNS queries are being filtered' : 'Off — start protection to enable'}
+        description={vpnActive ? t('guardian.vpnFilterActive') : t('guardian.vpnFilterOff')}
         colors={colors}
       />
       <StatusRow
-        label="Private DNS backup"
+        label={t('guardian.privateDnsBackup')}
         active={privateDnsConfigured}
         description={
           privateDnsConfigured
-            ? `Configured: ${privateDnsStatus?.configuredHost ?? ''}`
-            : 'Not set — filtered by VPN only'
+            ? t('guardian.privateDnsConfiguredHost', { host: privateDnsStatus?.configuredHost ?? '' })
+            : t('guardian.privateDnsNotSet')
         }
         colors={colors}
       />
+      <Text style={[s.batteryNote, { color: colors.text.muted }]}>{t('guardian.privateDnsBatteryNote')}</Text>
 
       {!privateDnsConfigured ? (
         <View style={[s.setupBox, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}>
@@ -346,6 +355,10 @@ function formatTimeAgo(timestamp: number) {
 }
 
 const s = StyleSheet.create({
+  batteryNote: {
+    ...typography.caption,
+    lineHeight: 17,
+  },
   emptyText: {
     ...typography.body,
   },

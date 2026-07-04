@@ -5,10 +5,12 @@ import { Tabs } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
 
 import { OnboardingFlow } from '@/components/OnboardingFlow';
+import { GlobalErrorBanner } from '@/components/GlobalErrorBanner';
+import { I18nProvider, useTranslation } from '@/i18n';
+import { ProtectionProvider } from '@/store/ProtectionContext';
 import { ThemeProvider, useTheme } from '@/theme';
 import { buildPaperTheme } from '@/theme';
 import { radius } from '@/theme';
-import { useAlertCenter } from '@/store/useAlertCenter';
 import { useOnboarding } from '@/store/useOnboarding';
 
 type TabFeatherIconName = ComponentProps<typeof Feather>['name'];
@@ -30,24 +32,10 @@ function TabIcon({ name, color, focused }: { name: TabFeatherIconName; color: st
   );
 }
 
-function AdminTabIcon({ color, focused }: { color: string; focused: boolean }) {
-  const { colors } = useTheme();
-  const { unreadCount } = useAlertCenter();
-  return (
-    <View>
-      <TabIcon name={tabIcons.admin} color={color} focused={focused} />
-      {unreadCount > 0 ? (
-        <View style={[styles.badge, { backgroundColor: colors.red[500] }]}>
-          <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function AppContent() {
   const { colors, isDark } = useTheme();
   const onboarding = useOnboarding();
+  const t = useTranslation();
   const paperTheme = buildPaperTheme(colors, isDark);
 
   if (onboarding.completed === null) return null;
@@ -62,6 +50,7 @@ function AppContent() {
 
   return (
     <PaperProvider theme={paperTheme}>
+      <GlobalErrorBanner />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -94,36 +83,36 @@ function AppContent() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'Home',
+            title: t('tab.home'),
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.index} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="rules"
           options={{
-            title: 'Control',
+            title: t('tab.control'),
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.rules} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="progress"
           options={{
-            title: 'Progress',
+            title: t('tab.progress'),
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.progress} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="coach"
           options={{
-            title: 'Coach',
+            title: t('tab.coach'),
             tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.coach} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen
           name="admin"
           options={{
-            title: 'Settings',
-            tabBarIcon: ({ color, focused }) => <AdminTabIcon color={color} focused={focused} />,
+            title: t('tab.settings'),
+            tabBarIcon: ({ color, focused }) => <TabIcon name={tabIcons.admin} color={color} focused={focused} />,
           }}
         />
         <Tabs.Screen name="focus" options={{ href: null }} />
@@ -138,7 +127,11 @@ function AppContent() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <I18nProvider>
+        <ProtectionProvider>
+          <AppContent />
+        </ProtectionProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }
@@ -156,22 +149,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0,
     marginBottom: 5,
-  },
-  badge: {
-    alignItems: 'center',
-    borderRadius: radius.full,
-    height: 14,
-    justifyContent: 'center',
-    minWidth: 14,
-    paddingHorizontal: 3,
-    position: 'absolute',
-    right: -2,
-    top: -2,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    fontWeight: '700',
-    lineHeight: 10,
   },
 });

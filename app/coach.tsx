@@ -9,6 +9,7 @@ import { UrgeSurfingSheet } from '@/components/UrgeSurfingSheet';
 import { getDailyCoachingNudge } from '@/services/coaching';
 import { getTodaysMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
+import { useTranslation } from '@/i18n';
 import { useGamification } from '@/store/useGamification';
 import { emotionalStateLabels, triggerLabels, useRecovery } from '@/store/useRecovery';
 import type { EmotionalState, TriggerSituation } from '@/store/useRecovery';
@@ -19,11 +20,12 @@ const triggerOptions = Object.keys(triggerLabels) as TriggerSituation[];
 
 export default function CoachScreen() {
   const { colors } = useTheme();
+  const t = useTranslation();
   const recovery = useRecovery();
   const gamification = useGamification();
   const [journalText, setJournalText] = useState('');
   const [journalExpanded, setJournalExpanded] = useState(false);
-  const [tip, setTip] = useState('Notice the first small choice. It is usually enough to change the next one.');
+  const [tip, setTip] = useState(t('coach.defaultTip'));
   const [urgeSheetVisible, setUrgeSheetVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false);
   const [currentMood, setCurrentMood] = useState<MoodCheckIn | null>(null);
@@ -71,12 +73,12 @@ export default function CoachScreen() {
   };
 
   return (
-    <ScreenScaffold title="Coach" subtitle="A quiet place for the next useful step." iconName="coach" collapsibleTitle>
+    <ScreenScaffold title={t('coach.title')} subtitle={t('coach.subtitle')} iconName="coach" collapsibleTitle>
       <View style={[s.tipCard, { backgroundColor: colors.green[50], borderColor: colors.border.green }]}>
         <View style={s.tipCardHeader}>
-          <Text style={[s.tipCardLabel, { color: colors.green[600] }]}>TODAY'S TIP</Text>
+          <Text style={[s.tipCardLabel, { color: colors.green[600] }]}>{t('coach.todaysTip')}</Text>
           <Pressable accessibilityRole="button" onPress={refreshTip} style={s.textLinkButton}>
-            <Text style={[s.swapLink, { color: colors.text.secondary }]}>Refresh</Text>
+            <Text style={[s.swapLink, { color: colors.text.secondary }]}>{t('common.refresh')}</Text>
           </Pressable>
         </View>
         <Text style={[s.tipText, { color: colors.text.primary }]}>
@@ -91,7 +93,7 @@ export default function CoachScreen() {
           style={[s.primaryAction, { backgroundColor: colors.green[500] }]}
         >
           <AppIcon name="coach" size={20} color={colors.text.inverse} />
-          <Text style={[s.actionTitle, { color: colors.text.inverse }]}>I'm struggling</Text>
+          <Text style={[s.actionTitle, { color: colors.text.inverse }]}>{t('coach.imStruggling')}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -99,7 +101,7 @@ export default function CoachScreen() {
           style={[s.secondaryAction, { borderColor: colors.border.subtle, backgroundColor: colors.bg.elevated }]}
         >
           <Feather name="edit-3" size={18} color={colors.green[500]} />
-          <Text style={[s.actionTitle, { color: colors.text.primary }]}>Log a moment</Text>
+          <Text style={[s.actionTitle, { color: colors.text.primary }]}>{t('coach.logMoment')}</Text>
         </Pressable>
       </View>
 
@@ -499,7 +501,7 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
   },
   tipCardLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.6,
   },

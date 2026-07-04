@@ -4,16 +4,22 @@ import android.app.job.JobInfo
 import android.app.job.JobScheduler
 import android.content.ComponentName
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.ProxyInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.provider.Settings
 import java.net.InetAddress
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class FilterVpnService : VpnService() {
   private var vpnInterface: ParcelFileDescriptor? = null
@@ -21,6 +27,10 @@ class FilterVpnService : VpnService() {
   private var localProxy: LocalHttpProxy? = null
   private var dnsWorkers: ExecutorService? = null
   private val outputLock = Any()
+  private var accessibilityObserver: ContentObserver? = null
+  private var privateDnsObserver: ContentObserver? = null
+  @Volatile private var accessibilityTamperFired = false
+  @Volatile private var privateDnsTamperFired = false
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     NotificationHelper.ensureChannel(this)
@@ -103,10 +113,18 @@ class FilterVpnService : VpnService() {
     }
 
     isRunning = true
-    dnsWorkers = Executors.newFixedThreadPool(DNS_WORKER_THREADS)
+    // Same peak parallelism as a fixed pool, but idle workers die after 30s so a
+    // quiet device isn't holding 6 live threads between DNS bursts.
+    dnsWorkers = ThreadPoolExecutor(
+      DNS_WORKER_THREADS, DNS_WORKER_THREADS,
+      DNS_WORKER_IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS,
+      LinkedBlockingQueue()
+    ).apply { allowCoreThreadTimeOut(true) }
     repository.setVpnActive(true)
     repository.setTampered(false)
     VpnRestartJobService.schedulePeriodic(this)
+    registerAccessibilityObserver()
+    registerPrivateDnsObserver()
     repository.recordAuditEvent(
       eventType = "VPN_POLICY_APPLIED",
       severity = if (appliedPolicy.failedPackages.isEmpty()) "high" else "critical",
@@ -207,6 +225,20 @@ class FilterVpnService : VpnService() {
     return modified
   }
 
+  private fun tcpDnsResolverIp(packet: ByteArray, length: Int): String? {
+    if (length < 24) return null
+    val version = (packet[0].toInt() ushr 4) and 0x0f
+    if (version != 4) return null
+    val protocol = packet[9].toInt() and 0xff
+    if (protocol != TCP_PROTOCOL) return null
+    val ipHeaderLength = (packet[0].toInt() and 0x0f) * 4
+    if (length < ipHeaderLength + 4) return null
+    val destPort = readU16(packet, ipHeaderLength + 2)
+    if (destPort != 53) return null
+    val destIp = ipv4AddressString(packet, 16)
+    return destIp.takeIf { it != VPN_DNS_ADDRESS }
+  }
+
   private fun isDoHPacket(packet: ByteArray, length: Int): Boolean {
     if (length < 24) return false
     val version = (packet[0].toInt() ushr 4) and 0x0f
@@ -256,6 +288,14 @@ class FilterVpnService : VpnService() {
           continue
         }
 
+        // Drop TCP DNS (port 53). The engine only answers UDP, so any routed TCP DNS query is a
+        // bypass attempt (or a truncation retry) — dropping it forces the client back to filtered UDP.
+        val tcpDnsResolverIp = tcpDnsResolverIp(buffer, length)
+        if (tcpDnsResolverIp != null) {
+          repository.recordDomainEvent(tcpDnsResolverIp, DomainClassifier.CATEGORY_BYPASS, ACTION_TCP_DNS_BLOCKED)
+          continue
+        }
+
         val plainDnsResolverIp = plainDnsBypassResolverIp(buffer, length)
         val packet = if (plainDnsResolverIp != null) {
           redirectToLocalDns(buffer, length)
@@ -286,6 +326,7 @@ class FilterVpnService : VpnService() {
         TamperMonitor(repository).markVpnStoppedUnexpectedly()
       }
     } finally {
+      engine.shutdown()
       try { input.close() } catch (_: IOException) { }
       try { output.close() } catch (_: IOException) { }
     }
@@ -312,7 +353,7 @@ class FilterVpnService : VpnService() {
     val destIp = "${buffer[16].toInt() and 0xff}.${buffer[17].toInt() and 0xff}" +
       ".${buffer[18].toInt() and 0xff}.${buffer[19].toInt() and 0xff}"
 
-    return destIp.takeIf { it in ENCRYPTED_DNS_RESOLVER_IPV4 }
+    return matchEncryptedDnsTarget(destPort, destIp, ENCRYPTED_DNS_RESOLVER_IPV4)
   }
 
   private fun encryptedDnsIpv6Target(buffer: ByteArray, length: Int): String? {
@@ -325,7 +366,19 @@ class FilterVpnService : VpnService() {
     if (destPort !in ENCRYPTED_DNS_PORTS) return null
 
     val destIp = ipv6Address(buffer, IPV6_DESTINATION_OFFSET)
-    return destIp.takeIf { it in ENCRYPTED_DNS_RESOLVER_IPV6 }
+    return matchEncryptedDnsTarget(destPort, destIp, ENCRYPTED_DNS_RESOLVER_IPV6)
+  }
+
+  // DoT (853) and DoQ (784/8853) carry only DNS and have no plaintext fallback, so blocking
+  // those ports entirely — for any destination — closes every current and future encrypted-DNS
+  // resolver without breaking other traffic. Port 443 is shared with normal HTTPS, so it is only
+  // blocked for known DoH resolver IPs to avoid taking down the whole web.
+  private fun matchEncryptedDnsTarget(destPort: Int, destIp: String, knownResolvers: Set<String>): String? {
+    return when {
+      destPort in DEDICATED_ENCRYPTED_DNS_PORTS -> destIp
+      destIp in knownResolvers -> destIp
+      else -> null
+    }
   }
 
   private fun readU16(buffer: ByteArray, offset: Int): Int {
@@ -372,6 +425,9 @@ class FilterVpnService : VpnService() {
 
     isRunning = false
     repository.setVpnActive(false)
+    unregisterAccessibilityObserver()
+    unregisterPrivateDnsObserver()
+    repository.flushAuditLog()
     worker?.interrupt()
     worker = null
     dnsWorkers?.shutdownNow()
@@ -392,6 +448,105 @@ class FilterVpnService : VpnService() {
       @Suppress("DEPRECATION")
       stopForeground(true)
     }
+  }
+
+  // Detect the accessibility service being switched off the instant it happens, rather than
+  // waiting on a 30-second poll, so the block overlay + guardian alert fire immediately.
+  private fun registerAccessibilityObserver() {
+    if (accessibilityObserver != null) return
+    val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+      override fun onChange(selfChange: Boolean) {
+        handleAccessibilitySettingChanged()
+      }
+    }
+    try {
+      contentResolver.registerContentObserver(
+        Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+        false,
+        observer
+      )
+      accessibilityObserver = observer
+    } catch (_: Exception) {
+      // Some devices restrict observing this setting; the on-demand tamper checks still apply.
+    }
+  }
+
+  private fun unregisterAccessibilityObserver() {
+    accessibilityObserver?.let {
+      try {
+        contentResolver.unregisterContentObserver(it)
+      } catch (_: Exception) {
+      }
+    }
+    accessibilityObserver = null
+  }
+
+  private fun handleAccessibilitySettingChanged() {
+    val repository = PolicyRepository(this)
+    val monitor = TamperMonitor(repository, this)
+    val enabled = monitor.isAccessibilityServiceEnabled(this)
+    if (enabled) {
+      accessibilityTamperFired = false
+      return
+    }
+    if (accessibilityTamperFired) return
+    if (!repository.isProtectionRequested() || !repository.isBehaviorProtectionEnabled()) return
+    accessibilityTamperFired = true
+    monitor.reportAccessibilityDisabled(this)
+  }
+
+  // Strict Private DNS pointed at a non-family host lets netd resolve over DoT outside the
+  // tunnel, bypassing this filter for every app on the system resolver. Watch the setting
+  // and alert the guardian the moment it changes — the same instant-detection pattern as
+  // the accessibility observer above.
+  private fun registerPrivateDnsObserver() {
+    if (privateDnsObserver != null) return
+    val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+      override fun onChange(selfChange: Boolean) {
+        handlePrivateDnsSettingChanged()
+      }
+    }
+    try {
+      contentResolver.registerContentObserver(
+        Settings.Global.getUriFor(PRIVATE_DNS_MODE_SETTING), false, observer
+      )
+      contentResolver.registerContentObserver(
+        Settings.Global.getUriFor(PRIVATE_DNS_SPECIFIER_SETTING), false, observer
+      )
+      privateDnsObserver = observer
+      // The user may have set a bypass resolver before protection started.
+      handlePrivateDnsSettingChanged()
+    } catch (_: Exception) {
+      // Some builds restrict observing global settings; periodic tamper checks still apply.
+    }
+  }
+
+  private fun unregisterPrivateDnsObserver() {
+    privateDnsObserver?.let {
+      try {
+        contentResolver.unregisterContentObserver(it)
+      } catch (_: Exception) {
+      }
+    }
+    privateDnsObserver = null
+  }
+
+  private fun handlePrivateDnsSettingChanged() {
+    val repository = PolicyRepository(this)
+    if (!repository.isProtectionRequested()) return
+    val mode = Settings.Global.getString(contentResolver, PRIVATE_DNS_MODE_SETTING) ?: ""
+    val host = (Settings.Global.getString(contentResolver, PRIVATE_DNS_SPECIFIER_SETTING) ?: "")
+      .trim().lowercase()
+    val suspicious = mode.equals("hostname", ignoreCase = true) &&
+      host.isNotBlank() &&
+      FAMILY_SAFE_DNS_HOST_SUFFIXES.none { host == it || host.endsWith(".$it") }
+    if (!suspicious) {
+      privateDnsTamperFired = false
+      return
+    }
+    if (privateDnsTamperFired) return
+    privateDnsTamperFired = true
+    TamperMonitor(repository, this).reportPrivateDnsChanged(this, host)
   }
 
   private fun scheduleVpnRestart() {
@@ -417,7 +572,9 @@ class FilterVpnService : VpnService() {
     private const val VPN_RESTART_JOB_ID = 8501
     private const val ACTION_ENCRYPTED_DNS_BLOCKED = "encrypted_dns_blocked"
     private const val ACTION_DOH_BLOCKED = "doh_blocked"
+    private const val ACTION_TCP_DNS_BLOCKED = "tcp_dns_blocked"
     private const val DNS_WORKER_THREADS = 6
+    private const val DNS_WORKER_IDLE_TIMEOUT_SECONDS = 30L
 
     private const val VPN_CLIENT_ADDRESS = "10.88.0.2"
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
@@ -427,7 +584,21 @@ class FilterVpnService : VpnService() {
     private const val TCP_PROTOCOL = 6
     private const val UDP_PROTOCOL = 17
 
+    private const val PRIVATE_DNS_MODE_SETTING = "private_dns_mode"
+    private const val PRIVATE_DNS_SPECIFIER_SETTING = "private_dns_specifier"
+
+    // Hostnames whose resolvers filter adult content themselves — a Private DNS entry
+    // pointing at one of these is a protective setting, not a bypass.
+    private val FAMILY_SAFE_DNS_HOST_SUFFIXES = setOf(
+      "family.cloudflare-dns.com",
+      "cleanbrowsing.org",
+      "familyshield.opendns.com",
+      "family.adguard-dns.com"
+    )
+
     private val ENCRYPTED_DNS_PORTS = setOf(443, 784, 853, 8853)
+    // Ports that only ever carry encrypted DNS (DoT/DoQ) — safe to block for any destination IP.
+    private val DEDICATED_ENCRYPTED_DNS_PORTS = setOf(784, 853, 8853)
     private val ENCRYPTED_DNS_PROTOCOLS = setOf(TCP_PROTOCOL, UDP_PROTOCOL)
 
     private val ENCRYPTED_DNS_RESOLVER_IPV4 = setOf(

@@ -1,12 +1,14 @@
 import { AlertCenterCard } from '@/components/AlertCenterCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { useTranslation } from '@/i18n';
 import { useAlertCenter } from '@/store/useAlertCenter';
 
 export default function AlertsScreen() {
+  const t = useTranslation();
   const alertCenter = useAlertCenter();
 
   return (
-    <ScreenScaffold title="Alert Center" subtitle="Violation alerts and notification preferences." iconName="alerts">
+    <ScreenScaffold title={t('alerts.title')} subtitle={t('alerts.subtitle')} iconName="alerts">
       <AlertCenterCard
         alerts={alertCenter.alerts}
         preferences={alertCenter.preferences}

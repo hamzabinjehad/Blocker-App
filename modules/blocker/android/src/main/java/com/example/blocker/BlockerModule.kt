@@ -117,6 +117,10 @@ class BlockerModule : Module() {
       openAccessibilitySettings()
     }
 
+    AsyncFunction("openVpnSettings") {
+      openVpnSettings()
+    }
+
     AsyncFunction("requestDeviceAdminPermission") {
       requestDeviceAdminPermission()
     }
@@ -155,6 +159,10 @@ class BlockerModule : Module() {
 
     AsyncFunction("getAuditEvents") {
       repository().getAuditEvents()
+    }
+
+    AsyncFunction("getRecentBlockedDomains") { limit: Int ->
+      repository().getRecentBlockedDomains(limit)
     }
 
     AsyncFunction("getGuardianAlerts") {
@@ -380,12 +388,11 @@ class BlockerModule : Module() {
     }
     repo.clearFailedPinAttempts()
 
-    val now = System.currentTimeMillis()
-    val existingReadyAt = repo.panicUnlockReadyAt()
-    if (existingReadyAt <= 0L || now < existingReadyAt) {
+    val hadCountdown = repo.panicUnlockReadyAt() > 0L
+    if (!repo.isPanicUnlockReady()) {
       val readyAt = repo.startPanicUnlockCountdown()
-      val remainingMs = (readyAt - now).coerceAtLeast(0L)
-      if (existingReadyAt <= 0L) {
+      val remainingMs = repo.panicUnlockRemainingMs()
+      if (!hadCountdown) {
         val context = reactContext()
         repo.recordAuditEvent(
           eventType = "PANIC_UNLOCK_COUNTDOWN_STARTED",
@@ -570,6 +577,24 @@ class BlockerModule : Module() {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     context.startActivity(intent)
+  }
+
+  // Opens the system VPN settings so the user can turn on "Always-on VPN" and
+  // "Block connections without VPN" for this app — the strongest non-managed defence against
+  // simply switching the protection VPN off. Falls back to general settings if unavailable.
+  private fun openVpnSettings() {
+    val context = reactContext()
+    val intent = Intent("android.net.vpn.SETTINGS").apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val fallback = Intent(Settings.ACTION_SETTINGS).apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+      context.startActivity(intent)
+    } catch (_: Exception) {
+      context.startActivity(fallback)
+    }
   }
 
   private fun requestDeviceAdminPermission(): Map<String, Any?> {

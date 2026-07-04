@@ -4,11 +4,13 @@ import { Switch, Text } from 'react-native-paper';
 
 import { Card } from './Card';
 import { Field } from './controls';
+import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { PolicyUpdate, RiskySettings } from '@/types/blocker';
 
 type PolicyCardProps = {
   adultFilteringEnabled: boolean;
+  blockUnknownSearchEngines: boolean;
   riskySettings: RiskySettings;
   pinConfigured: boolean;
   onUpdatePolicy: (policy: PolicyUpdate) => Promise<void>;
@@ -16,10 +18,12 @@ type PolicyCardProps = {
 
 export function PolicyCard({
   adultFilteringEnabled,
+  blockUnknownSearchEngines,
   riskySettings,
   pinConfigured,
   onUpdatePolicy,
 }: PolicyCardProps) {
+  const t = useTranslation();
   const { colors } = useTheme();
   const [pin, setPin] = useState('');
 
@@ -28,45 +32,51 @@ export function PolicyCard({
   };
 
   return (
-    <Card title="Filters & Safeguards" subtitle="Adult content blocking and bypass prevention.">
+    <Card title={t('policy.title')} subtitle={t('policy.subtitle')}>
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="Parent PIN"
+          label={t('policy.pinLabel')}
           onChangeText={setPin}
-          placeholder="Enter PIN to make changes"
+          placeholder={t('policy.pinPlaceholder')}
           secureTextEntry
           value={pin}
         />
       ) : null}
       <PolicyRow
-        label="Adult content filtering"
-        helper="Blocks adult sites and known bypass domains."
+        label={t('policy.adultFiltering')}
+        helper={t('policy.adultFilteringHelper')}
         value={adultFilteringEnabled}
         onValueChange={(v) => update({ adultFilteringEnabled: v })}
       />
+      <PolicyRow
+        label={t('policy.blockUnmanagedSearch')}
+        helper={t('policy.blockUnmanagedSearchHelper')}
+        value={blockUnknownSearchEngines}
+        onValueChange={(v) => update({ blockUnknownSearchEngines: v })}
+      />
       <View style={[styles.divider, { backgroundColor: colors.border.subtle }]} />
       <PolicyRow
-        label="Block VPN apps"
-        helper="Prevents alternate VPN apps from bypassing protection."
+        label={t('policy.blockVpnApps')}
+        helper={t('policy.blockVpnAppsHelper')}
         value={riskySettings.blockVpnApps}
         onValueChange={(blockVpnApps) => update({ blockVpnApps })}
       />
       <PolicyRow
-        label="Block private browsers"
-        helper="Limits browsers commonly used to avoid filters."
+        label={t('policy.blockPrivateBrowsers')}
+        helper={t('policy.blockPrivateBrowsersHelper')}
         value={riskySettings.blockPrivateBrowsers}
         onValueChange={(blockPrivateBrowsers) => update({ blockPrivateBrowsers })}
       />
       <PolicyRow
-        label="Block bypass tools"
-        helper="Flags tools designed to route around protection."
+        label={t('policy.blockBypassTools')}
+        helper={t('policy.blockBypassToolsHelper')}
         value={riskySettings.blockBypassTools}
         onValueChange={(blockBypassTools) => update({ blockBypassTools })}
       />
       <PolicyRow
-        label="Block sideloaded APKs"
-        helper="Reduces installs from outside approved app stores."
+        label={t('policy.blockSideloaded')}
+        helper={t('policy.blockSideloadedHelper')}
         value={riskySettings.blockSideloadedApps}
         onValueChange={(blockSideloadedApps) => update({ blockSideloadedApps })}
       />

@@ -350,9 +350,13 @@ test("DNS engine logs only enforcement events and supports SafeSearch rewrite ta
   const blocklistStore = readFileSync(join(process.cwd(), "modules", "blocker", "android", "src", "main", "java", "com", "example", "blocker", "BlocklistStore.kt"), "utf8");
 
   assert.match(dnsEngine, /DNS_BYPASS_BLOCKED/);
-  assert.match(dnsEngine, /recordDomainEvent\(classification\.domain, classification\.category, "blocked"\)/);
+  assert.match(dnsEngine, /val blockAction = if \(classification\.heuristic\) ACTION_BLOCKED_HEURISTIC else "blocked"/);
+  assert.match(dnsEngine, /recordDomainEvent\(classification\.domain, classification\.category, blockAction\)/);
   assert.match(dnsEngine, /recordDomainEvent\(classification\.domain, classification\.category, "safe_search"\)/);
-  assert.doesNotMatch(dnsEngine, /DomainClassification\.Action\.ALLOW -> \{[\s\S]*?recordDomainEvent/);
+  // The ALLOW branch must forward without logging a domain event (privacy: only
+  // enforcement is logged). Tempered scan stays inside the branch, unlike a bare
+  // [\s\S]*? which would leak into later, legitimate logging (e.g. blocked_upstream).
+  assert.match(dnsEngine, /DomainClassification\.Action\.ALLOW -> \{(?:(?!recordDomainEvent)[\s\S])*?forwardDnsWithCache/);
   assert.match(dnsEngine, /query\.queryType != DNS_TYPE_A && query\.queryType != DNS_TYPE_AAAA/);
   assert.match(dnsEngine, /buildCnameResponse/);
   assert.match(classifier, /repository\.allowlistedDomains\(\)/);
@@ -369,7 +373,8 @@ test("VPN filter intercepts encrypted DNS resolver routes and checks destination
   assert.match(vpnService, /builder\.addRoute\(resolverIp, 128\)/);
   assert.match(vpnService, /val destPort = readU16\(buffer, ipHeaderLength \+ 2\)/);
   assert.match(vpnService, /val destPort = readU16\(buffer, transportOffset \+ 2\)/);
-  assert.match(vpnService, /ENCRYPTED_DNS_PORTS = setOf\(443, 853\)/);
+  assert.match(vpnService, /ENCRYPTED_DNS_PORTS = setOf\(443, 784, 853, 8853\)/);
+  assert.match(vpnService, /DEDICATED_ENCRYPTED_DNS_PORTS = setOf\(784, 853, 8853\)/);
   assert.match(vpnService, /ENCRYPTED_DNS_PROTOCOLS = setOf\(TCP_PROTOCOL, UDP_PROTOCOL\)/);
   assert.match(vpnService, /ACTION_ENCRYPTED_DNS_BLOCKED/);
 });
@@ -396,15 +401,16 @@ test("adult-domain heuristics, text hardening, and bypass defaults are wired", (
 
   assert.match(classifier, /looksLikeAdultDomain\(domain\)/);
   assert.match(classifier, /ADULT_ONLY_TLDS = setOf\("adult", "porn", "sex", "xxx"\)/);
-  assert.match(classifier, /STRONG_ADULT_DOMAIN_MARKERS = setOf\([\s\S]*"porno"[\s\S]*"xvideos"[\s\S]*"onlyfans"/);
+  assert.match(classifier, /SAFE_SUBSTRING_ADULT_MARKERS = setOf\([\s\S]*"porno"[\s\S]*"xvideos"[\s\S]*"onlyfans"/);
+  assert.match(classifier, /CORE_ADULT_WORDS = setOf/);
   assert.match(classifier, /normalizeAdultSignalLabel/);
   assert.match(keywordMatcher, /compactSubstringKeywords/);
   assert.match(keywordMatcher, /"porno"/);
   assert.match(contextualMatcher, /val normalizedText = KeywordMatcher\.normalize\(screenText\)/);
-  assert.match(policyRepository, /isBlockUnknownSearchEnginesEnabled\(\): Boolean = true/);
-  assert.match(policyRepository, /isBlockVpnAppsEnabled\(\): Boolean = preferences\.getBoolean\(KEY_BLOCK_VPN_APPS, true\)/);
+  assert.match(policyRepository, /isBlockUnknownSearchEnginesEnabled\(\): Boolean = hotPolicy\(\)\.blockUnknownSearchEngines/);
+  assert.match(policyRepository, /isBlockVpnAppsEnabled\(\): Boolean = hotPolicy\(\)\.blockVpnApps/);
   assert.match(policyRepository, /isBlockPrivateBrowsersEnabled\(\): Boolean = preferences\.getBoolean\(KEY_BLOCK_PRIVATE_BROWSERS, true\)/);
-  assert.match(policyRepository, /isBlockBypassToolsEnabled\(\): Boolean = preferences\.getBoolean\(KEY_BLOCK_BYPASS_TOOLS, true\)/);
+  assert.match(policyRepository, /isBlockBypassToolsEnabled\(\): Boolean = hotPolicy\(\)\.blockBypassTools/);
   assert.match(policyRepository, /AppInventory\.isPrivateBrowser\(normalized, label\)/);
   assert.doesNotMatch(policyRepository, /rule\?\.category in setOf\("browser", "private_browser"\)/);
   assert.match(stateStore, /blockUnknownSearchEngines: true/);
@@ -457,26 +463,29 @@ test("app install and usage-limit controls are wired through native policy and U
   assert.doesNotMatch(focusScreen, /ScheduleProfilesCard/);
 });
 
-test("rules screen merges website rules with keywords and keeps search enforcement locked", () => {
+test("rules screen merges website rules with keywords and exposes the search-engine toggle", () => {
   const rulesScreen = readFileSync(join(process.cwd(), "app", "rules.tsx"), "utf8");
   const keywordManager = readFileSync(join(process.cwd(), "src", "components", "behavior", "CustomKeywordManager.tsx"), "utf8");
-  const safeSearchCard = readFileSync(join(process.cwd(), "src", "components", "SafeSearchCard.tsx"), "utf8");
+  const policyCard = readFileSync(join(process.cwd(), "src", "components", "PolicyCard.tsx"), "utf8");
   const stateStore = readFileSync(join(process.cwd(), "src", "store", "useProtectionState.ts"), "utf8");
   const policyRepository = readFileSync(join(process.cwd(), "modules", "blocker", "android", "src", "main", "java", "com", "example", "blocker", "PolicyRepository.kt"), "utf8");
   const screenDetector = readFileSync(join(process.cwd(), "modules", "blocker", "android", "src", "main", "java", "com", "example", "blocker", "behavior", "ScreenContextDetector.kt"), "utf8");
 
   assert.doesNotMatch(rulesScreen, /BlocklistManagerCard/);
   assert.doesNotMatch(rulesScreen, /BehaviorProtectionCard/);
-  assert.doesNotMatch(rulesScreen, /AIProtectionCard/);
+  // AI protection settings moved INTO the rules screen in the 2026-07 redesign.
+  assert.match(rulesScreen, /AIProtectionCard/);
   assert.match(rulesScreen, /CustomKeywordManager/);
-  assert.match(keywordManager, /Keywords and Websites/);
   assert.match(keywordManager, /onAddBlockedDomain/);
   assert.match(keywordManager, /onRemoveBlockedDomain/);
-  assert.match(safeSearchCard, /Search Enforcement/);
-  assert.doesNotMatch(safeSearchCard, /Switch/);
+  assert.match(keywordManager, /onAddAllowlistedDomain/);
+  // Search-engine blocking is deliberately user-adjustable since the 2026-07-03 pass:
+  // PolicyCard exposes a preference-backed toggle instead of a hardcoded lock.
+  assert.match(policyCard, /blockUnknownSearchEngines/);
+  assert.match(policyCard, /Switch/);
   assert.match(stateStore, /googleSafeSearch: true/);
   assert.match(policyRepository, /fun isGoogleSafeSearchEnabled\(\): Boolean = true/);
-  assert.match(policyRepository, /fun isBlockUnknownSearchEnginesEnabled\(\): Boolean = true/);
+  assert.match(policyRepository, /fun isBlockUnknownSearchEnginesEnabled\(\): Boolean = hotPolicy\(\)\.blockUnknownSearchEngines/);
   assert.match(screenDetector, /BlockedFeature\("googleSearch", "Google", "Google Search", "Google Search"\)/);
 });
 
@@ -487,7 +496,7 @@ test("uninstall lock and bypass hardening preserve resolver and suspension enfor
   const uninstallLock = readFileSync(join(process.cwd(), "modules", "blocker", "android", "src", "main", "java", "com", "example", "blocker", "UninstallLockManager.kt"), "utf8");
 
   assert.match(vpnService, /plainDnsBypassResolverIp/);
-  assert.match(vpnService, /engine\.processPacket\(packet, packet\.size, plainDnsResolverIp\)/);
+  assert.match(vpnService, /engine\.processPacket\(packet, packet\.size, resolverIp\)/);
   assert.match(dnsEngine, /originalResolverIp/);
   assert.match(dnsEngine, /PUBLIC_DNS_RESOLVERS/);
   assert.match(managedEnforcer, /val target = targetSuspendedPackages\(\)/);
@@ -525,18 +534,12 @@ test("native bridge exposes Usage Access, Guardian alert, allowlist, and strict 
   assert.match(plugin, /android\.permission\.PACKAGE_USAGE_STATS/);
 });
 
-test("setup checklist wires Android permission prompts into the dashboard", () => {
+test("setup checklist wires Android permission prompts into onboarding", () => {
+  // The permission checklist lives in the onboarding flow; the dashboard keeps only
+  // quick notices for VPN and Accessibility.
   const dashboard = readFileSync(join(process.cwd(), "app", "index.tsx"), "utf8");
-  const checklist = readFileSync(join(process.cwd(), "src", "components", "PermissionChecklistCard.tsx"), "utf8");
+  const onboarding = readFileSync(join(process.cwd(), "src", "components", "OnboardingFlow.tsx"), "utf8");
   const stateStore = readFileSync(join(process.cwd(), "src", "store", "useProtectionState.ts"), "utf8");
-
-  [
-    "onGrantVpnPermission",
-    "onOpenAccessibilitySettings",
-    "onOpenOverlaySettings",
-    "onOpenUsageAccessSettings",
-    "onRequestDeviceAdminPermission",
-  ].forEach((prop) => assert.match(checklist, new RegExp(prop)));
 
   [
     "protection.prepareVpn",
@@ -544,7 +547,7 @@ test("setup checklist wires Android permission prompts into the dashboard", () =
     "protection.openOverlaySettings",
     "protection.openUsageAccessSettings",
     "protection.requestDeviceAdminPermission",
-  ].forEach((handler) => assert.match(dashboard, new RegExp(handler.replace(".", "\\."))));
+  ].forEach((handler) => assert.match(onboarding, new RegExp(handler.replace(".", "\\."))));
 
   [
     "vpnPermissionGranted",
@@ -552,7 +555,11 @@ test("setup checklist wires Android permission prompts into the dashboard", () =
     "overlayPermissionGranted",
     "usageAccessStatus.granted",
     "managedDeviceStatus.deviceAdminActive",
-  ].forEach((statusKey) => assert.match(dashboard, new RegExp(statusKey.replace(".", "\\."))));
+  ].forEach((statusKey) => assert.match(onboarding, new RegExp(statusKey.replace(".", "\\."))));
+
+  ["protection.prepareVpn", "protection.openAccessibilitySettings"].forEach((handler) =>
+    assert.match(dashboard, new RegExp(handler.replace(".", "\\."))),
+  );
 
   assert.match(stateStore, /const prepareVpn = useCallback/);
   assert.match(stateStore, /const requestDeviceAdminPermission = useCallback/);

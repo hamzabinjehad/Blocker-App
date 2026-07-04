@@ -8,6 +8,7 @@ const mockPrepareVpn = jest.fn();
 const mockGetGuardianAlerts = jest.fn();
 const mockGetLaunchableApps = jest.fn();
 const mockRequestDeviceAdminPermission = jest.fn();
+const mockSetImageScanningEnabled = jest.fn();
 
 jest.mock('../../native/BlockerModule', () => ({
   __esModule: true,
@@ -19,15 +20,18 @@ jest.mock('../../native/BlockerModule', () => ({
     startProtection: mockStartProtection,
     stopProtection: mockStopProtection,
     requestDeviceAdminPermission: mockRequestDeviceAdminPermission,
+    setImageScanningEnabled: mockSetImageScanningEnabled,
     setPin: mockSetPin,
-    addListener: jest.fn(() => ({ remove: jest.fn() })),
-    removeListeners: jest.fn(),
+    // Plain functions (not jest.fn) so resetAllMocks can't strip the implementations
+    // that unmount cleanup depends on.
+    addListener: () => ({ remove: () => {} }),
+    removeListeners: () => {},
   },
 }));
 
 jest.mock('react-native', () => ({
   AppState: {
-    addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+    addEventListener: () => ({ remove: () => {} }),
     currentState: 'active',
   },
 }));
@@ -75,10 +79,13 @@ const defaultStatus = {
 
 describe('useProtectionState', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    // resetAllMocks (not clearAllMocks) also drops queued mock*Once values, so a test
+    // that leaves an unconsumed Once can't poison the next test's first getStatus call.
+    jest.resetAllMocks();
     mockGetStatus.mockResolvedValue(defaultStatus);
     mockGetGuardianAlerts.mockResolvedValue([]);
     mockGetLaunchableApps.mockResolvedValue([]);
+    mockSetImageScanningEnabled.mockResolvedValue(undefined);
     mockPrepareVpn.mockResolvedValue({ granted: true, needsPermission: false });
     mockRequestDeviceAdminPermission.mockResolvedValue({
       permissionRequested: true,
@@ -139,7 +146,6 @@ describe('useProtectionState', () => {
 
   it('handles getStatus failure gracefully', async () => {
     mockGetStatus.mockRejectedValueOnce(new Error('Native module error'));
-    mockGetLaunchableApps.mockRejectedValueOnce(new Error('Apps unavailable'));
 
     const { result } = renderHook(() => useProtectionState());
     await waitFor(() => {

@@ -1,10 +1,11 @@
 import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Animated, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
+import { Banner } from '@/components/Banner';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { StreakPopup } from '@/components/streak/StreakPopup';
@@ -18,8 +19,12 @@ import { getTodaysMood, moodOptions, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
 import { useAlertCenter } from '@/store/useAlertCenter';
 import { useGamification } from '@/store/useGamification';
-import { useProtectionState } from '@/store/useProtectionState';
+import { useProtection } from '@/store/ProtectionContext';
+import { formatFullDate, formatShortDate, levelNameKey, useI18n, useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { radius, spacing, typography, useTheme } from '@/theme';
+
+type Translate = ReturnType<typeof useTranslation>;
 
 const PROTECTION_SESSION_KEY = 'home_protection_session_started_at';
 const DISABLE_PROTECTION_COUNTDOWN_SECONDS = 5;
@@ -41,26 +46,18 @@ function mapGuardianSeverity(severity: string): 'info' | 'warning' | 'critical' 
   return 'warning';
 }
 
-function getGreeting(): string {
+function getGreetingKey(): TranslationKey {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function getDateLabel(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-}
-
-function levelNameShort(level: number): string {
-  const names = ['Starting', 'Aware', 'Steady', 'Resilient', 'Grounded', 'Strong'];
-  return names[Math.min(level, names.length - 1)] ?? 'Resilient';
+  if (h < 12) return 'home.goodMorning';
+  if (h < 17) return 'home.goodAfternoon';
+  return 'home.goodEvening';
 }
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const { t, language } = useI18n();
   const router = useRouter();
-  const protection = useProtectionState();
+  const protection = useProtection();
   const gamification = useGamification();
   const alertCenter = useAlertCenter();
   const appStartedAtRef = useRef(Date.now());
@@ -159,9 +156,9 @@ export default function HomeScreen() {
   }, [alertCenter, protection.guardianAlerts]);
 
   const statusLine = useMemo(() => {
-    if (!isProtected) return 'Protection is disabled';
-    return `VPN on · ${gamification.blocksToday} blocks today`;
-  }, [gamification.blocksToday, isProtected]);
+    if (!isProtected) return t('home.protectionDisabled');
+    return t('home.statusLine', { count: gamification.blocksToday });
+  }, [gamification.blocksToday, isProtected, t]);
 
   const showXpGain = () => {
     setShowXp(true);
@@ -217,8 +214,15 @@ export default function HomeScreen() {
 
   return (
     <ScreenScaffold
-      title={getGreeting()}
-      subtitle={getDateLabel()}
+      title={t(getGreetingKey())}
+      subtitle={formatFullDate(Date.now(), language)}
+      headerRight={
+        <AlertsBell
+          unreadCount={alertCenter.unreadCount}
+          label={t('home.quickAlerts')}
+          onPress={() => router.push('/alerts')}
+        />
+      }
       floatingContent={
         <>
           <XpPopup amount={10} visible={showXp} />
@@ -294,14 +298,20 @@ export default function HomeScreen() {
         >
           <View style={s.heroCardTop}>
             <View style={[s.heroIconCircle, { backgroundColor: isProtected ? 'rgba(255,255,255,0.18)' : colors.bg.tertiary }]}>
-              <AppIcon name="shield" size={18} color={isProtected ? colors.text.inverse : colors.text.muted} />
+              {protection.loading ? (
+                <ActivityIndicator size="small" color={isProtected ? colors.text.inverse : colors.text.muted} />
+              ) : (
+                <AppIcon name="shield" size={18} color={isProtected ? colors.text.inverse : colors.text.muted} />
+              )}
             </View>
             <View style={s.heroCardCenter}>
               <Text style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.muted }]}>
-                {isProtected ? 'PROTECTED' : 'OFF'}
+                {isProtected ? t('home.protected') : t('home.notProtected')}
               </Text>
               <Text style={[s.heroSub, { color: isProtected ? 'rgba(255,255,255,0.7)' : colors.text.muted }]}>
-                {isProtected ? statusLine : 'Tap to start protection'}
+                {protection.loading
+                  ? (isProtected ? t('home.stopping') : t('home.starting'))
+                  : (isProtected ? statusLine : t('home.tapToProtect'))}
               </Text>
             </View>
             <View style={s.heroBlocksRight}>
@@ -309,7 +319,7 @@ export default function HomeScreen() {
                 {gamification.blocksToday}
               </Text>
               <Text style={[s.heroBlocksLabel, { color: isProtected ? 'rgba(255,255,255,0.65)' : colors.text.muted }]}>
-                blocks
+                {t('home.blocksLabel')}
               </Text>
             </View>
           </View>
@@ -317,17 +327,17 @@ export default function HomeScreen() {
             <View style={[s.heroStatsRow, { borderTopColor: 'rgba(255,255,255,0.15)' }]}>
               <View style={s.heroStat}>
                 <Text style={s.heroStatVal}>{gamification.currentStreak}</Text>
-                <Text style={s.heroStatLabel}>day streak</Text>
+                <Text style={s.heroStatLabel}>{t('home.dayStreak')}</Text>
               </View>
               <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
               <View style={s.heroStat}>
-                <Text style={s.heroStatVal}>{formatCleanTime(cleanMinutes)}</Text>
-                <Text style={s.heroStatLabel}>clean today</Text>
+                <Text style={s.heroStatVal}>{formatCleanTime(cleanMinutes, t)}</Text>
+                <Text style={s.heroStatLabel}>{t('home.cleanToday')}</Text>
               </View>
               <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
               <View style={s.heroStat}>
-                <Text style={s.heroStatVal}>Lv {gamification.level}</Text>
-                <Text style={s.heroStatLabel}>{levelNameShort(gamification.level)}</Text>
+                <Text style={s.heroStatVal}>{t('home.levelShort', { level: gamification.level })}</Text>
+                <Text style={s.heroStatLabel}>{t(levelNameKey(gamification.level))}</Text>
               </View>
             </View>
           ) : null}
@@ -338,45 +348,30 @@ export default function HomeScreen() {
       <MoodStrip mood={mood} onPress={openMoodModal} />
 
       {!protection.vpnPermissionGranted ? (
-        <Pressable
-          accessibilityRole="button"
+        <Banner
+          icon="alert-triangle"
+          title={t('home.vpnNeededTitle')}
+          subtitle={t('home.vpnNeededSubtitle')}
+          trailing="chevron"
           onPress={() => void protection.prepareVpn()}
-          style={[s.permNotice, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
-        >
-          <Feather name="alert-triangle" size={14} color={colors.amber[700]} />
-          <View style={{ flex: 1 }}>
-            <Text style={[s.permNoticeTitle, { color: colors.amber[700] }]}>VPN permission needed</Text>
-            <Text style={[s.permNoticeSub, { color: colors.amber[600] }]}>Tap to enable DNS filtering</Text>
-          </View>
-          <Feather name="chevron-right" size={14} color={colors.amber[700]} />
-        </Pressable>
+        />
       ) : null}
       {!protection.accessibilityServiceEnabled ? (
-        <Pressable
-          accessibilityRole="button"
+        <Banner
+          icon="eye-off"
+          title={t('home.behaviorInactiveTitle')}
+          subtitle={t('home.behaviorInactiveSubtitle')}
+          trailing="chevron"
           onPress={() => void protection.openAccessibilitySettings()}
-          style={[s.permNotice, { backgroundColor: colors.amber[50], borderColor: colors.amber[200] }]}
-        >
-          <Feather name="eye-off" size={14} color={colors.amber[700]} />
-          <View style={{ flex: 1 }}>
-            <Text style={[s.permNoticeTitle, { color: colors.amber[700] }]}>Behavior blocking inactive</Text>
-            <Text style={[s.permNoticeSub, { color: colors.amber[600] }]}>Tap to enable Accessibility — needed for app-level blocking</Text>
-          </View>
-          <Feather name="chevron-right" size={14} color={colors.amber[700]} />
-        </Pressable>
+        />
       ) : null}
       <View style={s.quickActionsGrid}>
         <View style={s.quickActionsRow}>
-          <QuickAction icon="sliders" label="Rules" onPress={() => router.push('/rules')} colors={colors} />
-          <QuickAction icon="moon" label="Focus" onPress={() => router.push('/focus')} colors={colors} />
-        </View>
-        <View style={s.quickActionsRow}>
-          <QuickAction icon="users" label="Guardian" onPress={() => router.push('/guardian')} colors={colors} />
-          <QuickAction icon="bell" label="Alerts" onPress={() => router.push('/alerts')} colors={colors} />
+          <QuickAction icon="moon" label={t('home.quickFocus')} onPress={() => router.push('/focus')} colors={colors} />
+          <QuickAction icon="users" label={t('home.quickGuardian')} onPress={() => router.push('/guardian')} colors={colors} />
         </View>
       </View>
 
-      {protection.error ? <Text style={[s.notice, { color: colors.red[500] }]}>{protection.error}</Text> : null}
     </ScreenScaffold>
   );
 }
@@ -389,13 +384,18 @@ function MoodStrip({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale(0.97);
 
   return (
     <Animated.View style={animatedStyle}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={mood ? `Today's mood: ${moodOptions.find((o) => o.value === mood)?.label ?? ''}` : 'Log your mood'}
+        accessibilityLabel={
+          mood
+            ? t('home.moodTodayA11y', { mood: moodOptions.find((o) => o.value === mood)?.label ?? '' })
+            : t('home.logMoodA11y')
+        }
         onPress={onPress}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
@@ -411,7 +411,7 @@ function MoodStrip({
         {mood ? (
           <>
             <View style={s.moodEmptyLeft}>
-              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>Today's mood</Text>
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>{t('home.todaysMood')}</Text>
             </View>
             <View style={s.completedMoodRight}>
               <MoodFace mood={mood} size={26} />
@@ -425,7 +425,7 @@ function MoodStrip({
           <>
             <View style={s.moodEmptyLeft}>
               <Feather name="smile" size={15} color={colors.text.muted} />
-              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>How are you feeling?</Text>
+              <Text style={[s.moodTitle, { color: colors.text.secondary }]}>{t('home.howAreYouFeeling')}</Text>
             </View>
             <Feather name="chevron-right" size={14} color={colors.text.muted} />
           </>
@@ -463,6 +463,28 @@ function QuickAction({
   );
 }
 
+function AlertsBell({
+  unreadCount,
+  label,
+  onPress,
+}: {
+  unreadCount: number;
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={8} onPress={onPress} style={s.bellButton}>
+      <Feather name="bell" size={20} color={colors.text.secondary} />
+      {unreadCount > 0 ? (
+        <View style={[s.bellBadge, { backgroundColor: colors.red[500], borderColor: colors.bg.primary }]}>
+          <Text style={s.bellBadgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
 function DisableProtectionSheet({
   countdown,
   locked,
@@ -487,39 +509,37 @@ function DisableProtectionSheet({
   onPinChange: (pin: string) => void;
 }) {
   const { colors } = useTheme();
+  const { t, language } = useI18n();
   const pinInputRef = useRef<TextInput>(null);
   const canConfirm = !locked && (!pinConfigured || pin.length >= 4) && countdown <= 0;
 
   const lockCopy = useMemo(() => {
     if (!locked) return null;
-    if (!lockExpiresAt || lockExpiresAt <= 0) return 'Protection is time-locked and cannot be turned off right now.';
-    const remaining = lockExpiresAt - Date.now();
-    const days = Math.max(0, Math.ceil(remaining / 86_400_000));
-    const date = new Date(lockExpiresAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
-    return `Protection is locked until ${date} · ${days} day${days === 1 ? '' : 's'} remaining.`;
-  }, [locked, lockExpiresAt]);
+    if (!lockExpiresAt || lockExpiresAt <= 0) return t('disable.lockedNoExpiry');
+    return t('disable.lockedUntil', { date: formatShortDate(lockExpiresAt, language) });
+  }, [locked, lockExpiresAt, t, language]);
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onCancel}>
       <Pressable style={s.sheetBackdrop} onPress={onCancel}>
         <Pressable style={[s.sheet, { backgroundColor: colors.bg.elevated }]}>
           <View style={[s.sheetHandle, { backgroundColor: colors.border.default }]} />
-          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>Turn protection off?</Text>
+          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>{t('disable.title')}</Text>
           <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>
             {locked
               ? lockCopy
               : pinConfigured
-                ? 'Enter your parent PIN to turn protection off.'
-                : `Wait ${DISABLE_PROTECTION_COUNTDOWN_SECONDS} seconds, then confirm only if this is intentional.`}
+                ? t('disable.enterPin')
+                : t('disable.wait', { seconds: DISABLE_PROTECTION_COUNTDOWN_SECONDS })}
           </Text>
           {pinConfigured && !locked ? (
             <TextInput
               ref={pinInputRef}
-              accessibilityLabel="Parent PIN"
+              accessibilityLabel={t('policy.pinLabel')}
               autoFocus
               keyboardType="number-pad"
               maxLength={12}
-              placeholder="Enter PIN"
+              placeholder={t('common.enterPin')}
               placeholderTextColor={colors.text.muted}
               secureTextEntry
               style={[
@@ -536,10 +556,10 @@ function DisableProtectionSheet({
             />
           ) : null}
           {pinError ? (
-            <Text style={[s.pinError, { color: colors.red[500] }]}>Incorrect PIN. Try again.</Text>
+            <Text style={[s.pinError, { color: colors.red[500] }]}>{t('disable.incorrectPin')}</Text>
           ) : null}
           <Pressable accessibilityRole="button" onPress={onCancel} style={[s.sheetButton, { backgroundColor: colors.green[500] }]}>
-            <Text style={[s.sheetButtonText, { color: colors.text.inverse }]}>Stay protected</Text>
+            <Text style={[s.sheetButtonText, { color: colors.text.inverse }]}>{t('disable.stayProtected')}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -553,7 +573,9 @@ function DisableProtectionSheet({
                 { color: canConfirm ? colors.red[500] : colors.text.muted },
               ]}
             >
-              {countdown > 0 && !locked && !pinConfigured ? `Confirm in ${countdown}s` : 'Turn off protection'}
+              {countdown > 0 && !locked && !pinConfigured
+                ? t('disable.confirmIn', { seconds: countdown })
+                : t('disable.turnOff')}
             </Text>
           </Pressable>
         </Pressable>
@@ -562,11 +584,13 @@ function DisableProtectionSheet({
   );
 }
 
-function formatCleanTime(minutes: number) {
+function formatCleanTime(minutes: number, t: Translate) {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  if (hours <= 0) return remainingMinutes === 0 ? '—' : `${remainingMinutes} min`;
-  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
+  if (hours <= 0) return remainingMinutes === 0 ? t('time.empty') : t('time.minutesShort', { count: remainingMinutes });
+  return remainingMinutes === 0
+    ? t('time.hoursShort', { count: hours })
+    : t('time.hoursMinutesShort', { hours, minutes: remainingMinutes });
 }
 
 function isSameDay(first: number, second: number) {
@@ -624,7 +648,7 @@ const s = StyleSheet.create({
     lineHeight: 34,
   },
   heroBlocksLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '400',
   },
   heroStatsRow: {
@@ -645,7 +669,7 @@ const s = StyleSheet.create({
   },
   heroStatLabel: {
     color: 'rgba(255,255,255,0.65)',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '400',
   },
   heroStatDivider: {
@@ -710,24 +734,30 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // VPN permission notice
-  permNotice: {
+  // Header alerts bell
+  bellButton: {
     alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
-  permNoticeTitle: {
-    fontSize: 13,
-    fontWeight: '600',
+  bellBadge: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    height: 16,
+    justifyContent: 'center',
+    minWidth: 16,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: 2,
+    top: 2,
   },
-  permNoticeSub: {
-    fontSize: 11,
-    fontWeight: '400',
-    marginTop: 1,
+  bellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 11,
   },
 
   // Disable sheet

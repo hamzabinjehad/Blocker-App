@@ -5,10 +5,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 import kotlin.math.min
 
 class DnsFilterEngine(
@@ -18,7 +15,15 @@ class DnsFilterEngine(
   private val safeSearchOverrides: Map<String, String> = emptyMap()
 ) {
   private val classifier = DomainClassifier(vpnService.applicationContext, repository)
+  private val dotPool = DotConnectionPool(vpnService)
   private val dnsCache = ConcurrentHashMap<String, DnsCacheEntry>(256)
+  // Short-lived record of query keys where every upstream just failed, so a page that
+  // fires many lookups during a transient outage doesn't wait the full timeout chain each time.
+  private val negativeCache = ConcurrentHashMap<String, Long>(64)
+
+  fun shutdown() {
+    dotPool.closeAll()
+  }
 
   private fun recordPlainDnsBypassIfNeeded(query: DnsQuery, originalResolverIp: String? = null) {
     val resolverIp = (originalResolverIp ?: query.destinationIpText).lowercase()
@@ -64,7 +69,8 @@ class DnsFilterEngine(
 
     val dnsResponse = when (classification.action) {
       DomainClassification.Action.BLOCK -> {
-        val recorded = repository.recordDomainEvent(classification.domain, classification.category, "blocked")
+        val blockAction = if (classification.heuristic) ACTION_BLOCKED_HEURISTIC else "blocked"
+        val recorded = repository.recordDomainEvent(classification.domain, classification.category, blockAction)
         if (classification.category == DomainClassifier.CATEGORY_BYPASS && recorded) {
           GuardianNotifier.notify(
             vpnService.applicationContext,
@@ -82,10 +88,14 @@ class DnsFilterEngine(
         buildSafeSearchResponse(packet, query, classification.rewriteTarget)
       }
       DomainClassification.Action.ALLOW -> {
+        // Domains the user explicitly allowlisted must resolve even if the family
+        // upstream would filter them, so route those through an unfiltered resolver.
+        val unfiltered = classification.category == DomainClassifier.CATEGORY_ALLOWLIST
         forwardDnsWithCache(
           packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength),
           query.domain,
-          query.queryType
+          query.queryType,
+          unfiltered
         ) ?: buildServfailDnsResponse(packet, query.dnsOffset, query.dnsLength)
       }
     }
@@ -140,6 +150,12 @@ class DnsFilterEngine(
   }
 
   private fun buildSafeSearchResponse(packet: ByteArray, query: DnsQuery, rewriteTarget: String?): ByteArray {
+    // HTTPS/SVCB answers carry address hints and ECH keys that let a browser connect straight
+    // to the engine's real servers, sidestepping the forced safe-search address entirely.
+    // Answer NODATA so clients fall back to the rewritten A/AAAA path.
+    if (query.queryType in ECH_ADVERTISING_DNS_TYPES) {
+      return buildNoDataDnsResponse(packet, query.dnsOffset, query.dnsLength)
+    }
     if (query.queryType != DNS_TYPE_A && query.queryType != DNS_TYPE_AAAA) {
       return forwardDns(packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength))
         ?: buildBlockedDnsResponse(packet, query.dnsOffset, query.dnsLength)
@@ -151,9 +167,22 @@ class DnsFilterEngine(
       query.domain.contains("google") -> GOOGLE_SAFE_SEARCH_IP
       query.domain.contains("bing") -> BING_SAFE_SEARCH_IP
       query.domain.contains("youtube") || query.domain.contains("googlevideo") -> YOUTUBE_RESTRICTED_IP
-      else -> GOOGLE_SAFE_SEARCH_IP
+      else -> null
     }
-    return buildAAnswerResponse(packet, query.dnsOffset, query.dnsLength, safeIp)
+    // Only inject a known safe-search IP for recognised engines. For any other domain,
+    // forward normally instead of pointing it at Google's safe-search IP (which would break it).
+    return if (safeIp != null) {
+      if (query.queryType == DNS_TYPE_AAAA) {
+        // The pinned safe-search addresses are IPv4; NODATA pushes the client onto the A query
+        // instead of handing it an untouched IPv6 route to the unfiltered engine.
+        buildNoDataDnsResponse(packet, query.dnsOffset, query.dnsLength)
+      } else {
+        buildAAnswerResponse(packet, query.dnsOffset, query.dnsLength, safeIp)
+      }
+    } else {
+      forwardDns(packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength))
+        ?: buildBlockedDnsResponse(packet, query.dnsOffset, query.dnsLength)
+    }
   }
 
   private fun buildCnameResponse(packet: ByteArray, dnsOffset: Int, dnsLength: Int, target: String): ByteArray {
@@ -400,8 +429,13 @@ class DnsFilterEngine(
     return min(offset + 4, query.size)
   }
 
-  private fun forwardDnsWithCache(query: ByteArray, domain: String, queryType: Int): ByteArray? {
-    val cacheKey = "$domain:$queryType"
+  private fun forwardDnsWithCache(
+    query: ByteArray,
+    domain: String,
+    queryType: Int,
+    unfiltered: Boolean = false
+  ): ByteArray? {
+    val cacheKey = "${if (unfiltered) "u" else "f"}:$domain:$queryType"
     val now = System.currentTimeMillis()
 
     val cached = dnsCache[cacheKey]
@@ -415,17 +449,40 @@ class DnsFilterEngine(
       return response
     }
 
-    val response = forwardDns(query) ?: return null
+    val negativeUntil = negativeCache[cacheKey]
+    if (negativeUntil != null) {
+      if (now < negativeUntil) return null
+      negativeCache.remove(cacheKey)
+    }
 
-    // Cache NOERROR and NXDOMAIN — not SERVFAIL or other transient errors
-    if (response.size >= DNS_HEADER_LENGTH) {
-      val rcode = response[3].toInt() and 0x0f
-      if (rcode == 0 || rcode == 3) {
-        if (dnsCache.size >= DNS_CACHE_MAX_SIZE) {
-          dnsCache.keys.firstOrNull()?.let { dnsCache.remove(it) }
-        }
-        dnsCache[cacheKey] = DnsCacheEntry(response.copyOf(), now + DNS_CACHE_TTL_MS)
+    val resolvers = if (unfiltered) UNFILTERED_UPSTREAM_RESOLVERS else upstreamResolvers
+    val response = forwardDns(query, resolvers)
+    if (response == null) {
+      if (negativeCache.size >= DNS_CACHE_MAX_SIZE) {
+        negativeCache.keys.firstOrNull()?.let { negativeCache.remove(it) }
       }
+      negativeCache[cacheKey] = now + NEGATIVE_CACHE_TTL_MS
+      return null
+    }
+
+    val summary = DnsResponseParser.summarize(response)
+
+    // The family upstream filtered this domain itself (all-zero addresses). Record it so it
+    // shows up in Recently Blocked with a one-tap allow, instead of failing invisibly.
+    if (!unfiltered && summary?.looksUpstreamFiltered == true) {
+      repository.recordDomainEvent(domain, DomainClassifier.CATEGORY_ADULT, ACTION_BLOCKED_UPSTREAM)
+    }
+
+    // Cache NOERROR and NXDOMAIN — not SERVFAIL or other transient errors. Honouring the
+    // upstream TTL (clamped) keeps hot domains out of the network path far longer than the
+    // old fixed 60 s, which cuts both latency and radio wake-ups.
+    if (summary != null && (summary.rcode == 0 || summary.rcode == 3)) {
+      val ttlSeconds = (summary.minAnswerTtlSeconds ?: DEFAULT_CACHE_TTL_SECONDS)
+        .coerceIn(MIN_CACHE_TTL_SECONDS, MAX_CACHE_TTL_SECONDS)
+      if (dnsCache.size >= DNS_CACHE_MAX_SIZE) {
+        dnsCache.keys.firstOrNull()?.let { dnsCache.remove(it) }
+      }
+      dnsCache[cacheKey] = DnsCacheEntry(response.copyOf(), now + ttlSeconds * 1000L)
     }
 
     return response
@@ -449,8 +506,8 @@ class DnsFilterEngine(
     return response
   }
 
-  private fun forwardDns(query: ByteArray): ByteArray? {
-    for (resolver in upstreamResolvers) {
+  private fun forwardDns(query: ByteArray, resolvers: List<InetSocketAddress> = upstreamResolvers): ByteArray? {
+    for (resolver in resolvers) {
       val response = if (resolver.port == DOT_PORT) forwardDot(query, resolver) else forwardDnsUdp(query, resolver)
       if (response != null) return response
     }
@@ -475,47 +532,10 @@ class DnsFilterEngine(
   }
 
   // DNS-over-TLS (RFC 7858): bypasses ISP port-53 blocking by using an encrypted TCP connection
-  // on port 853. The underlying socket is protected via vpnService.protect() so it escapes the
-  // VPN tunnel entirely before the TLS handshake begins.
+  // on port 853. Sockets are protected via vpnService.protect() (inside the pool) so they escape
+  // the VPN tunnel, and kept warm between queries to avoid a TLS handshake per lookup.
   private fun forwardDot(query: ByteArray, resolver: InetSocketAddress): ByteArray? {
-    val rawSocket = Socket()
-    return try {
-      if (!vpnService.protect(rawSocket)) {
-        rawSocket.close()
-        return null
-      }
-      rawSocket.connect(resolver, DOT_TIMEOUT_MS)
-      val hostAddress = resolver.address?.hostAddress ?: run { rawSocket.close(); return null }
-      val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-      (factory.createSocket(rawSocket, hostAddress, resolver.port, true) as SSLSocket).use { ssl ->
-        ssl.soTimeout = DOT_TIMEOUT_MS
-        ssl.startHandshake()
-        val out = ssl.outputStream
-        val inp = ssl.inputStream
-        // 2-byte length prefix required by RFC 7858
-        out.write((query.size ushr 8) and 0xff)
-        out.write(query.size and 0xff)
-        out.write(query)
-        out.flush()
-        val lenHigh = inp.read()
-        val lenLow = inp.read()
-        if (lenHigh < 0 || lenLow < 0) return@use null
-        val respLen = (lenHigh shl 8) or lenLow
-        if (respLen <= 0 || respLen > MAX_DNS_RESPONSE_SIZE) return@use null
-        val buf = ByteArray(respLen)
-        var totalRead = 0
-        while (totalRead < respLen) {
-          val n = inp.read(buf, totalRead, respLen - totalRead)
-          if (n < 0) break
-          totalRead += n
-        }
-        if (totalRead == respLen) buf else null
-      }
-    } catch (_: Exception) {
-      null
-    } finally {
-      try { rawSocket.close() } catch (_: Exception) { }
-    }
+    return dotPool.query(resolver, query, DOT_TIMEOUT_MS)
   }
 
   private fun buildIpv4UdpPacket(
@@ -622,12 +642,17 @@ class DnsFilterEngine(
     private const val VPN_DNS_ADDRESS = "10.88.0.1"
     private const val DNS_READ_TIMEOUT_MS = 1500
     private const val DOT_PORT = 853
-    private const val DOT_TIMEOUT_MS = 4000
+    private const val DOT_TIMEOUT_MS = 2500
     private const val MAX_DNS_RESPONSE_SIZE = 4096
-    private const val DNS_CACHE_TTL_MS = 60_000L
+    private const val DEFAULT_CACHE_TTL_SECONDS = 60L
+    private const val MIN_CACHE_TTL_SECONDS = 30L
+    private const val MAX_CACHE_TTL_SECONDS = 3600L
     private const val DNS_CACHE_MAX_SIZE = 512
+    private const val NEGATIVE_CACHE_TTL_MS = 3_000L
     private const val ACTION_PLAIN_DNS_BYPASS_INTERCEPTED = "plain_dns_bypass_intercepted"
     private const val ACTION_ECH_HINT_STRIPPED = "ech_hint_stripped"
+    private const val ACTION_BLOCKED_UPSTREAM = "blocked_upstream"
+    private const val ACTION_BLOCKED_HEURISTIC = "blocked_heuristic"
 
     private const val GOOGLE_SAFE_SEARCH_IP = "216.239.38.120"
     private const val BING_SAFE_SEARCH_IP = "204.79.197.220"
@@ -638,11 +663,21 @@ class DnsFilterEngine(
     // Primary resolvers use DoT (port 853) to avoid ISP port-53 blocking and DNS tampering.
     // All three are family-safe: they block adult content and malware at the resolver level,
     // adding a second layer on top of the app's own domain classifier.
-    // Worst-case latency: 2 × 4 000 ms (DoT) + 1 × 1 500 ms (UDP fallback) = 9.5 s.
+    // Worst-case latency: 2 × 2 500 ms (DoT) + 1 × 1 500 ms (UDP fallback) = 6.5 s, after which
+    // the key is negatively cached for NEGATIVE_CACHE_TTL_MS so repeats return fast.
     private val DEFAULT_UPSTREAM_RESOLVERS = listOf(
       InetSocketAddress("1.1.1.3", DOT_PORT),          // Cloudflare Family — fastest, adult+malware filter
       InetSocketAddress("185.228.168.168", DOT_PORT),  // CleanBrowsing Family — strict family filter
       InetSocketAddress("1.1.1.3", DNS_PORT)           // Cloudflare Family UDP — fallback if DoT blocked
+    )
+
+    // Non-content-filtering resolvers used only for user-allowlisted domains, so an
+    // explicit "allow this site" actually resolves instead of being blocked upstream.
+    // (9.9.9.9 still blocks malware but never adult content.)
+    private val UNFILTERED_UPSTREAM_RESOLVERS = listOf(
+      InetSocketAddress("1.1.1.1", DOT_PORT),          // Cloudflare — unfiltered
+      InetSocketAddress("9.9.9.9", DOT_PORT),          // Quad9 — malware-only, no content filter
+      InetSocketAddress("1.1.1.1", DNS_PORT)           // Cloudflare UDP — fallback if DoT blocked
     )
 
     private val PUBLIC_DNS_RESOLVER_IPV4 = setOf(

@@ -3,6 +3,7 @@ package com.example.blocker
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
+import android.os.SystemClock
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -25,7 +26,39 @@ class PolicyRepository(context: Context) {
     migratePolicyIfNeeded()
   }
 
-  fun isAdultFilteringEnabled(): Boolean = preferences.getBoolean(KEY_ADULT_FILTERING, true)
+  // In-memory snapshot of the fields DomainClassifier consults on every DNS query, so the
+  // hot path never touches EncryptedSharedPreferences (each get pays an AES decrypt).
+  // Invalidated on every policy mutation; the TTL is only a safety net.
+  private class HotPolicy(
+    val adultFilteringEnabled: Boolean,
+    val strictModeEnabled: Boolean,
+    val blockVpnApps: Boolean,
+    val blockBypassTools: Boolean,
+    val blockUnknownSearchEngines: Boolean,
+    val allowlistedDomains: Set<String>,
+    val blockedDomains: Set<String>,
+    val loadedAtElapsedMs: Long
+  )
+
+  private fun hotPolicy(): HotPolicy {
+    val cached = hotPolicyCache
+    val now = SystemClock.elapsedRealtime()
+    if (cached != null && now - cached.loadedAtElapsedMs < HOT_POLICY_TTL_MS) return cached
+    val fresh = HotPolicy(
+      adultFilteringEnabled = preferences.getBoolean(KEY_ADULT_FILTERING, true),
+      strictModeEnabled = preferences.getBoolean(KEY_STRICT_MODE_ENABLED, false),
+      blockVpnApps = preferences.getBoolean(KEY_BLOCK_VPN_APPS, true),
+      blockBypassTools = preferences.getBoolean(KEY_BLOCK_BYPASS_TOOLS, true),
+      blockUnknownSearchEngines = preferences.getBoolean(KEY_BLOCK_UNKNOWN_SEARCH, true),
+      allowlistedDomains = getSet(KEY_ALLOWLISTED_DOMAINS),
+      blockedDomains = getSet(KEY_BLOCKED_DOMAINS),
+      loadedAtElapsedMs = now
+    )
+    hotPolicyCache = fresh
+    return fresh
+  }
+
+  fun isAdultFilteringEnabled(): Boolean = hotPolicy().adultFilteringEnabled
 
   fun isGoogleSafeSearchEnabled(): Boolean = true
 
@@ -52,8 +85,34 @@ class PolicyRepository(context: Context) {
   fun panicUnlockReadyAt(): Long = preferences.getLong(KEY_PANIC_UNLOCK_READY_AT, 0L)
 
   fun isPanicUnlockCountdownActive(): Boolean {
+    return panicUnlockReadyAt() > 0L && !isPanicUnlockReady()
+  }
+
+  // The countdown is only "ready" when BOTH the wall clock and the monotonic clock have elapsed,
+  // so rolling the device clock forward can't skip the anti-impulse wait. A reboot resets the
+  // monotonic clock, which we detect and treat as "not ready" (the countdown must be restarted).
+  fun isPanicUnlockReady(): Boolean {
     val readyAt = panicUnlockReadyAt()
-    return readyAt > 0L && System.currentTimeMillis() < readyAt
+    if (readyAt <= 0L) return false
+    val elapsedNow = SystemClock.elapsedRealtime()
+    val startedElapsed = preferences.getLong(KEY_PANIC_UNLOCK_STARTED_ELAPSED, 0L)
+    val readyElapsed = preferences.getLong(KEY_PANIC_UNLOCK_READY_ELAPSED, 0L)
+    if (elapsedNow < startedElapsed) return false // reboot since start → monotonic reference invalid
+    val monotonicReady = readyElapsed > 0L && elapsedNow >= readyElapsed
+    val wallReady = System.currentTimeMillis() >= readyAt
+    return monotonicReady && wallReady
+  }
+
+  fun panicUnlockRemainingMs(): Long {
+    val readyAt = panicUnlockReadyAt()
+    if (readyAt <= 0L) return 0L
+    val elapsedNow = SystemClock.elapsedRealtime()
+    val startedElapsed = preferences.getLong(KEY_PANIC_UNLOCK_STARTED_ELAPSED, 0L)
+    val readyElapsed = preferences.getLong(KEY_PANIC_UNLOCK_READY_ELAPSED, 0L)
+    if (elapsedNow < startedElapsed) return panicUnlockDelaySeconds() * 1000L
+    val wallRemaining = (readyAt - System.currentTimeMillis()).coerceAtLeast(0L)
+    val monotonicRemaining = (readyElapsed - elapsedNow).coerceAtLeast(0L)
+    return maxOf(wallRemaining, monotonicRemaining)
   }
 
   fun panicUnlockDelaySeconds(): Int =
@@ -69,12 +128,23 @@ class PolicyRepository(context: Context) {
 
   fun startPanicUnlockCountdown(): Long {
     val now = System.currentTimeMillis()
-    val existingReadyAt = panicUnlockReadyAt()
-    if (existingReadyAt > now) return existingReadyAt
-    val readyAt = now + panicUnlockDelaySeconds() * 1000L
+    val elapsedNow = SystemClock.elapsedRealtime()
+    // Keep an already-running countdown that is still pending on the monotonic clock, so a
+    // forward clock change can't force it to restart at a more convenient wall time either.
+    val existingStartedElapsed = preferences.getLong(KEY_PANIC_UNLOCK_STARTED_ELAPSED, 0L)
+    val existingReadyElapsed = preferences.getLong(KEY_PANIC_UNLOCK_READY_ELAPSED, 0L)
+    val monotonicPending = existingReadyElapsed > 0L &&
+      elapsedNow >= existingStartedElapsed &&
+      elapsedNow < existingReadyElapsed
+    if (monotonicPending) return panicUnlockReadyAt()
+
+    val delayMs = panicUnlockDelaySeconds() * 1000L
+    val readyAt = now + delayMs
     preferences.edit()
       .putLong(KEY_PANIC_UNLOCK_STARTED_AT, now)
       .putLong(KEY_PANIC_UNLOCK_READY_AT, readyAt)
+      .putLong(KEY_PANIC_UNLOCK_STARTED_ELAPSED, elapsedNow)
+      .putLong(KEY_PANIC_UNLOCK_READY_ELAPSED, elapsedNow + delayMs)
       .apply()
     return readyAt
   }
@@ -83,6 +153,8 @@ class PolicyRepository(context: Context) {
     preferences.edit()
       .remove(KEY_PANIC_UNLOCK_STARTED_AT)
       .remove(KEY_PANIC_UNLOCK_READY_AT)
+      .remove(KEY_PANIC_UNLOCK_STARTED_ELAPSED)
+      .remove(KEY_PANIC_UNLOCK_READY_ELAPSED)
       .apply()
   }
 
@@ -157,7 +229,7 @@ class PolicyRepository(context: Context) {
     )
   }
 
-  fun blockedDomains(): Set<String> = getSet(KEY_BLOCKED_DOMAINS)
+  fun blockedDomains(): Set<String> = hotPolicy().blockedDomains
 
   fun addAllowlistedDomain(domain: String, pin: String? = null) {
     assertCanChangePolicy(pin)
@@ -187,7 +259,7 @@ class PolicyRepository(context: Context) {
     )
   }
 
-  fun allowlistedDomains(): Set<String> = getSet(KEY_ALLOWLISTED_DOMAINS)
+  fun allowlistedDomains(): Set<String> = hotPolicy().allowlistedDomains
 
   fun blockedDomainCount(): Int = BlocklistStore.get(appContext).adultDomainCount + blockedDomains().size
 
@@ -311,15 +383,21 @@ class PolicyRepository(context: Context) {
     preferences.edit().putString(KEY_LAST_BLOCKLIST_UPDATE, label).apply()
   }
 
-  fun isBlockVpnAppsEnabled(): Boolean = preferences.getBoolean(KEY_BLOCK_VPN_APPS, true)
+  fun isBlockVpnAppsEnabled(): Boolean = hotPolicy().blockVpnApps
 
   fun isBlockPrivateBrowsersEnabled(): Boolean = preferences.getBoolean(KEY_BLOCK_PRIVATE_BROWSERS, true)
 
-  fun isBlockBypassToolsEnabled(): Boolean = preferences.getBoolean(KEY_BLOCK_BYPASS_TOOLS, true)
+  fun isBlockBypassToolsEnabled(): Boolean = hotPolicy().blockBypassTools
 
   fun isBlockSideloadedAppsEnabled(): Boolean = preferences.getBoolean(KEY_BLOCK_SIDELOADED_APPS, true)
 
-  fun isBlockUnknownSearchEnginesEnabled(): Boolean = true
+  // Default ON: engines without an enforceable safe-search mode are an image-search loophole.
+  // Still user-controllable (PIN-gated like the other filter toggles) so someone who needs
+  // e.g. Ecosia or Kagi isn't blocked from non-adult tools they rely on.
+  fun isBlockUnknownSearchEnginesEnabled(): Boolean = hotPolicy().blockUnknownSearchEngines
+
+  fun isBlockedSiteNotificationsEnabled(): Boolean =
+    preferences.getBoolean(KEY_BLOCKED_SITE_NOTIFICATIONS, true)
 
   fun shouldBlockBypassDomains(): Boolean = isBlockVpnAppsEnabled() || isBlockBypassToolsEnabled()
 
@@ -503,11 +581,12 @@ class PolicyRepository(context: Context) {
     )
   }
 
-  fun isStrictModeEnabled(): Boolean = preferences.getBoolean(KEY_STRICT_MODE_ENABLED, false)
+  fun isStrictModeEnabled(): Boolean = hotPolicy().strictModeEnabled
 
   fun setStrictModeEnabled(enabled: Boolean, pin: String? = null) {
     assertCanChangePolicy(pin)
     preferences.edit().putBoolean(KEY_STRICT_MODE_ENABLED, enabled).apply()
+    hotPolicyCache = null
     recordAuditEvent(
       eventType = "STRICT_MODE_CHANGED",
       severity = if (enabled) "high" else "critical",
@@ -762,13 +841,18 @@ class PolicyRepository(context: Context) {
     policy.booleanOrNull(KEY_NOTIFICATION_FILTERING_ENABLED)?.let {
       editor.putBoolean(KEY_NOTIFICATION_FILTERING_ENABLED, it)
     }
+    policy.booleanOrNull(KEY_BLOCKED_SITE_NOTIFICATIONS)?.let {
+      editor.putBoolean(KEY_BLOCKED_SITE_NOTIFICATIONS, it)
+    }
+    // Engine safe-search stays always-on; blockUnknownSearchEngines is deliberately NOT
+    // forced here — it is a real (PIN-gated) toggle handled above.
     editor
       .putBoolean(KEY_GOOGLE_SAFESEARCH, true)
       .putBoolean(KEY_BING_SAFESEARCH, true)
       .putBoolean(KEY_DUCKDUCKGO_SAFESEARCH, true)
       .putBoolean(KEY_YOUTUBE_RESTRICTED, true)
-      .putBoolean(KEY_BLOCK_UNKNOWN_SEARCH, true)
     editor.apply()
+    hotPolicyCache = null
 
     if (changesSensitivePolicy) {
       recordAuditEvent(
@@ -785,25 +869,15 @@ class PolicyRepository(context: Context) {
     // Keep logs minimal by design: no full URLs, no page titles, no message content.
     val normalized = normalizeDomain(domain)
     val now = System.currentTimeMillis()
-    val previousDomain = preferences.getString(KEY_LAST_EVENT_DOMAIN, "")
-    val previousCategory = preferences.getString(KEY_LAST_EVENT_CATEGORY, "")
-    val previousAction = preferences.getString(KEY_LAST_EVENT_ACTION, "")
-    val previousTimestamp = preferences.getLong(KEY_LAST_EVENT_TIMESTAMP, 0)
-    if (
-      previousDomain == normalized &&
-      previousCategory == category &&
-      previousAction == action &&
-      now - previousTimestamp < DOMAIN_EVENT_RATE_LIMIT_MS
-    ) {
+    // Dedupe state lives in memory (not prefs): this runs on the DNS hot path, and a
+    // process restart merely resetting the dedupe window is harmless.
+    val eventKey = "$normalized|$category|$action"
+    if (eventKey == lastDomainEventKey && now - lastDomainEventAtMs < DOMAIN_EVENT_RATE_LIMIT_MS) {
       return false
     }
+    lastDomainEventKey = eventKey
+    lastDomainEventAtMs = now
 
-    preferences.edit()
-      .putString(KEY_LAST_EVENT_DOMAIN, normalized)
-      .putString(KEY_LAST_EVENT_CATEGORY, category)
-      .putString(KEY_LAST_EVENT_ACTION, action)
-      .putLong(KEY_LAST_EVENT_TIMESTAMP, now)
-      .apply()
     recordAuditEvent(
       eventType = "DOMAIN_EVENT",
       severity = if (category == "tamper" || category == "bypass") "high" else "medium",
@@ -811,6 +885,9 @@ class PolicyRepository(context: Context) {
       subject = normalized,
       action = action
     )
+    if (action.startsWith("blocked") && isBlockedSiteNotificationsEnabled()) {
+      BlockedSiteNotifier.maybeNotify(appContext, normalized, category)
+    }
     return true
   }
 
@@ -863,16 +940,18 @@ class PolicyRepository(context: Context) {
       next.put("metadata", meta)
     }
 
-    val previous = auditEventsJson()
-    val compact = JSONArray().put(next)
-    for (index in 0 until minOf(previous.length(), MAX_AUDIT_EVENTS - 1)) {
-      compact.put(previous.optJSONObject(index))
-    }
-    preferences.edit().putString(KEY_AUDIT_EVENTS, compact.toString()).apply()
+    // Buffered: critical events hit disk immediately, the rest flush in batches so the
+    // DNS hot path never pays a full read-rebuild-encrypt-write cycle per event.
+    AuditLog.record(preferences, next, urgent = severity == "critical")
+  }
+
+  // Persists any buffered audit events; call from service shutdown paths.
+  fun flushAuditLog() {
+    AuditLog.flush(preferences)
   }
 
   fun getAuditEvents(): List<Map<String, Any?>> {
-    val events = auditEventsJson()
+    val events = AuditLog.snapshot(preferences)
     return (0 until events.length()).mapNotNull { index ->
       val item = events.optJSONObject(index) ?: return@mapNotNull null
       mapOf(
@@ -887,6 +966,10 @@ class PolicyRepository(context: Context) {
       )
     }
   }
+
+  // Aggregated "Recently Blocked" list; keeps the full audit log off the RN bridge.
+  fun getRecentBlockedDomains(limit: Int): List<Map<String, Any?>> =
+    RecentBlockedAggregator.aggregate(AuditLog.snapshot(preferences), allowlistedDomains(), limit)
 
   fun recordGuardianAlert(
     eventType: String,
@@ -1225,6 +1308,8 @@ class PolicyRepository(context: Context) {
 
   private fun putSet(key: String, values: Set<String>) {
     preferences.edit().putStringSet(key, values).apply()
+    // Covers allow/block list mutations; invalidating for unrelated sets is harmless.
+    hotPolicyCache = null
   }
 
   private fun normalizeDomain(domain: String): String {
@@ -1425,14 +1510,6 @@ class PolicyRepository(context: Context) {
     }
   }
 
-  private fun auditEventsJson(): JSONArray {
-    return try {
-      JSONArray(preferences.getString(KEY_AUDIT_EVENTS, "[]") ?: "[]")
-    } catch (_: Exception) {
-      JSONArray()
-    }
-  }
-
   private fun guardianAlertsJson(): JSONArray {
     return try {
       JSONArray(preferences.getString(KEY_GUARDIAN_ALERTS, "[]") ?: "[]")
@@ -1529,6 +1606,8 @@ class PolicyRepository(context: Context) {
     private const val KEY_VPN_ACTIVE = "vpnActive"
     private const val KEY_PANIC_UNLOCK_STARTED_AT = "panicUnlockStartedAt"
     private const val KEY_PANIC_UNLOCK_READY_AT = "panicUnlockReadyAt"
+    private const val KEY_PANIC_UNLOCK_STARTED_ELAPSED = "panicUnlockStartedElapsed"
+    private const val KEY_PANIC_UNLOCK_READY_ELAPSED = "panicUnlockReadyElapsed"
     private const val KEY_TAMPERED = "tampered"
     private const val KEY_BLOCKED_DOMAINS = "blockedDomains"
     private const val KEY_ALLOWLISTED_DOMAINS = "allowlistedDomains"
@@ -1584,10 +1663,13 @@ class PolicyRepository(context: Context) {
     private const val KEY_USAGE_APP_LIMITS = "usageAppLimits"
     private const val KEY_USAGE_CATEGORY_LIMITS = "usageCategoryLimits"
     private const val KEY_LAST_SUSPENDED_PACKAGES = "lastSuspendedPackages"
-    private const val KEY_LAST_EVENT_DOMAIN = "lastEventDomain"
-    private const val KEY_LAST_EVENT_CATEGORY = "lastEventCategory"
-    private const val KEY_LAST_EVENT_ACTION = "lastEventAction"
-    private const val KEY_LAST_EVENT_TIMESTAMP = "lastEventTimestamp"
+    private const val KEY_BLOCKED_SITE_NOTIFICATIONS = "blockedSiteNotificationsEnabled"
+    private const val HOT_POLICY_TTL_MS = 30_000L
+
+    // Shared across PolicyRepository instances (they all wrap the same prefs file).
+    @Volatile private var hotPolicyCache: HotPolicy? = null
+    @Volatile private var lastDomainEventKey: String = ""
+    @Volatile private var lastDomainEventAtMs: Long = 0L
     private const val KEY_CUSTOM_BLOCKED_KEYWORDS = "customBlockedKeywords"
     private const val KEY_BEHAVIOR_PROTECTION_ENABLED = "behaviorProtectionEnabled"
     private const val KEY_BEHAVIOR_BLOCK_DURATION_SECONDS = "behaviorBlockDurationSeconds"
@@ -1639,7 +1721,6 @@ class PolicyRepository(context: Context) {
     private const val KEY_CURRENT_CONTEXT_TIMESTAMP = "currentContextTimestamp"
     private const val KEY_LAST_BOOT_SAFE_MODE = "lastBootWasSafeMode"
     private const val KEY_ACCESSIBILITY_SERVICE_WAS_ENABLED = "accessibilityServiceWasEnabled"
-    private const val KEY_AUDIT_EVENTS = "auditEvents"
     private const val KEY_GUARDIAN_ALERTS = "guardianAlerts"
     private const val DEPRECATED_KEY_TRIGGER_HISTORY = "behaviorTriggerHistory"
     private const val DEPRECATED_KEY_LAST_BEHAVIOR_EVENT_ID = "lastBehaviorEventId"
@@ -1649,7 +1730,6 @@ class PolicyRepository(context: Context) {
     private const val KEY_LAST_INTEGRITY_CHECK_AT = "lastIntegrityCheckAt"
     private const val KEY_NOTIFICATION_FILTERING_ENABLED = "notificationFilteringEnabled"
     private const val KEY_NOTIFICATION_LISTENER_CONNECTED = "notificationListenerConnected"
-    private const val MAX_AUDIT_EVENTS = 100
     private const val MAX_GUARDIAN_ALERTS = 100
     private const val MAX_CUSTOM_DOMAIN_IMPORT = 5_000
     private const val MINUTES_PER_DAY = 24 * 60

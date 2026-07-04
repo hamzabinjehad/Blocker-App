@@ -12,7 +12,7 @@ import java.util.Locale
 import java.security.MessageDigest
 
 data class BlocklistSnapshot(
-  val adultDomains: Set<String>,
+  val adultMatcher: DomainMatcher,
   val bypassDomains: Set<String>,
   val allowDomains: Set<String>,
   val dnsRewriteRules: List<DnsRewriteRule>,
@@ -113,7 +113,9 @@ object BlocklistStore {
   }
 
   fun updateAdultDomains(context: Context): Map<String, Any?> {
-    val current = get(context).adultDomains
+    // Read the current domains as strings directly from disk (transient, background worker) so the
+    // runtime snapshot can keep only the compact hash index instead of the full string set.
+    val current = readLineSet(context, "adult_domains.txt")
     val fetched = mutableSetOf<String>()
     val errors = mutableListOf<String>()
     var updatedSources = 0
@@ -159,7 +161,9 @@ object BlocklistStore {
   }
 
   private fun load(context: Context): BlocklistSnapshot {
-    val adultDomains = readLineSet(context, "adult_domains.txt")
+    // The adult list can hold ~1M entries; keep it off-heap as a sorted hash index (~8 MB)
+    // instead of a Set<String> (~100 MB). Smaller lists stay as plain sets.
+    val adultMatcher = loadAdultMatcher(context)
     val bypassDomains = readLineSet(context, "bypass_domains.txt")
     val allowDomains = readLineSet(context, "allow_domains.txt")
     val dnsRewriteRules = readDnsRewriteRules(context)
@@ -168,18 +172,25 @@ object BlocklistStore {
     val generatedAt = readGeneratedAt(context)
 
     return BlocklistSnapshot(
-      adultDomains = adultDomains,
+      adultMatcher = adultMatcher,
       bypassDomains = bypassDomains,
       allowDomains = allowDomains,
       dnsRewriteRules = dnsRewriteRules,
       activeKeywords = keywords,
       activeKeywordRules = keywordRules,
       generatedAt = generatedAt,
-      adultDomainCount = adultDomains.size,
+      adultDomainCount = adultMatcher.size,
       bypassDomainCount = bypassDomains.size,
       allowDomainCount = allowDomains.size,
       activeKeywordCount = keywords.size
     )
+  }
+
+  private fun loadAdultMatcher(context: Context): DomainMatcher {
+    val dir = File(context.filesDir, BLOCKLISTS_DIR)
+    val idxFile = File(dir, "adult_domains.idx")
+    val (tag, openReader) = DomainHashIndex.sourceTagAndReader(context, dir, "adult_domains.txt")
+    return DomainHashIndex.loadOrBuild(idxFile, tag, openReader)
   }
 
   private fun readLineSet(context: Context, assetName: String): Set<String> {

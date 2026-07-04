@@ -82,7 +82,13 @@ class TamperMonitor(
 
   private fun onAccessibilityDisabled(context: Context) {
     if (!repository.wasAccessibilityServiceEnabled()) return
+    reportAccessibilityDisabled(context)
+  }
 
+  // Records the tamper, alerts the guardian, and shows the block overlay. Callers that observe
+  // the accessibility setting directly (e.g. FilterVpnService's ContentObserver) are responsible
+  // for their own de-duplication so this doesn't fire repeatedly.
+  fun reportAccessibilityDisabled(context: Context) {
     TamperDetector(context, repository).evaluateAndRecord(FilterVpnService.isRunning)
     repository.setTampered(true)
     repository.recordAuditEvent(
@@ -103,6 +109,26 @@ class TamperMonitor(
       context,
       "Protection disabled",
       "Behavior protection was disabled. Parent PIN required to continue."
+    )
+  }
+
+  // A custom (non-family) Private DNS host lets netd do DoT outside the VPN tunnel,
+  // bypassing the filter for every app that uses the system resolver — so treat it
+  // like any other tamper surface. Caller (FilterVpnService observer) de-duplicates.
+  fun reportPrivateDnsChanged(context: Context, host: String) {
+    repository.recordAuditEvent(
+      eventType = "PRIVATE_DNS_TAMPER",
+      severity = "critical",
+      category = "tamper",
+      subject = host.take(120),
+      action = "custom_resolver_set"
+    )
+    GuardianNotifier.notify(
+      context = context,
+      eventType = "PRIVATE_DNS_TAMPER",
+      severity = "critical",
+      subject = host.take(120),
+      action = "custom_resolver_set"
     )
   }
 

@@ -438,6 +438,7 @@ export type PolicyUpdate = Partial<SafeSearchSettings & RiskySettings & FeatureB
   screenshotAuditEnabled?: boolean;
   screenshotAuditIntervalMinutes?: number;
   notificationFilteringEnabled?: boolean;
+  blockedSiteNotificationsEnabled?: boolean;
   adminPin?: string;
   currentPin?: string;
   newPin?: string;
@@ -604,6 +605,7 @@ export type BlockerNativeModule = {
   updateKeywordList(keywords: string[], pin: string): Promise<void>;
   verifyParentPin(pin: string): Promise<{ verified: boolean }>;
   openAccessibilitySettings(): Promise<void>;
+  openVpnSettings(): Promise<void>;
   requestDeviceAdminPermission(): Promise<{ permissionRequested: boolean; managedDeviceStatus: ManagedDeviceStatus }>;
   setUninstallProtectionEnabled(
     enabled: boolean,
@@ -614,6 +616,8 @@ export type BlockerNativeModule = {
   applyStrictDeviceOwnerPolicy(pin?: string): Promise<{ applied: boolean; reason?: string; failedPolicies?: string[]; deviceOwnerPolicyStatus: DeviceOwnerPolicyStatus; managedEnforcementStatus: ManagedEnforcementStatus }>;
   getTamperReport(): Promise<TamperSignal[]>;
   getAuditEvents(): Promise<Record<string, unknown>[]>;
+  // Optional: absent on native builds older than the aggregated recently-blocked API.
+  getRecentBlockedDomains?(limit: number): Promise<RecentBlockedDomain[]>;
   getGuardianAlerts(): Promise<GuardianAlert[]>;
   clearGuardianAlert(alertId: string): Promise<void>;
   getAppRuleSnapshot(): Promise<Record<string, unknown>[]>;
@@ -889,3 +893,12 @@ export type AllowlistEntry = {
 };
 
 export type BlocklistCategory = 'adult' | 'gambling' | 'social_media' | 'gaming' | 'bypass' | 'custom';
+
+// A domain that was recently blocked, aggregated from the audit log for the
+// "recently blocked → allow" review flow.
+export type RecentBlockedDomain = {
+  domain: string;
+  category: string;
+  lastBlockedAt: number;
+  count: number;
+};

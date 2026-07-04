@@ -23,6 +23,7 @@ import type {
   PolicyUpdate,
   PrivateDnsStatus,
   ProtectionStatus,
+  RecentBlockedDomain,
   RiskySettings,
   SafeSearchSettings,
   SafeSearchStatus,
@@ -452,9 +453,8 @@ export function useProtectionState() {
     }
   }, []);
 
-  useEffect(() => {
-    void refreshInstalledApps();
-  }, [refreshInstalledApps]);
+  // Installed apps are NOT auto-loaded: getLaunchableApps is a heavy bridge call and only
+  // the Focus and Rules→Apps screens need it. They call refreshInstalledApps on demand.
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -499,6 +499,8 @@ export function useProtectionState() {
 
     return () => subscription?.remove();
   }, []);
+
+  const dismissError = useCallback(() => setError(undefined), []);
 
   const prepareVpn = useCallback(async () => {
     setLoading(true);
@@ -825,7 +827,8 @@ export function useProtectionState() {
         eventCount: events.length,
         events,
       };
-      const result = await BlockerModule.copyTextToClipboard('Parent Blocker audit log', JSON.stringify(payload, null, 2));
+      // Compact JSON: pretty-printing a large audit log ties up the JS thread for no benefit.
+      const result = await BlockerModule.copyTextToClipboard('Parent Blocker audit log', JSON.stringify(payload));
       setError(result.copied ? undefined : 'Unable to copy audit log.');
       return Boolean(result.copied);
     } catch (cause) {
@@ -833,6 +836,54 @@ export function useProtectionState() {
       return false;
     }
   }, []);
+
+  // Aggregates recently blocked domains from the audit log so the user can review and
+  // un-block a legitimate site that was caught by mistake (false positive).
+  const getRecentBlockedDomains = useCallback(
+    async (limit = 20): Promise<RecentBlockedDomain[]> => {
+      try {
+        // Preferred path: native aggregation ships only the capped list over the bridge.
+        if (typeof BlockerModule.getRecentBlockedDomains === 'function') {
+          const entries = await BlockerModule.getRecentBlockedDomains(limit);
+          return entries.filter((entry) => !allowlistedDomains.includes(entry.domain));
+        }
+        // Fallback for native builds that predate the aggregated API.
+        const events = await BlockerModule.getAuditEvents();
+        const seen = new Map<string, RecentBlockedDomain>();
+        for (const event of events) {
+          const record = event as Record<string, unknown>;
+          if (String(record.eventType ?? '') !== 'DOMAIN_EVENT') continue;
+          // 'blocked' = blocklist hit; 'blocked_heuristic' = name heuristic;
+          // 'blocked_upstream' = filtered by the family DNS resolver. All reviewable here.
+          const action = String(record.action ?? '');
+          if (!action.startsWith('blocked')) continue;
+          const domain = String(record.subject ?? '').trim().toLowerCase();
+          if (!domain || !domain.includes('.')) continue;
+          const timestamp = Number(record.timestamp ?? 0);
+          const existing = seen.get(domain);
+          if (existing) {
+            existing.count += 1;
+            existing.lastBlockedAt = Math.max(existing.lastBlockedAt, timestamp);
+          } else {
+            seen.set(domain, {
+              domain,
+              category: String(record.category ?? 'adult'),
+              lastBlockedAt: timestamp,
+              count: 1,
+            });
+          }
+        }
+        return [...seen.values()]
+          .filter((entry) => !allowlistedDomains.includes(entry.domain))
+          .sort((a, b) => b.lastBlockedAt - a.lastBlockedAt)
+          .slice(0, limit);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to load recent blocks.');
+        return [];
+      }
+    },
+    [allowlistedDomains],
+  );
 
   const setParentPin = useCallback(
     async (newPin: string, currentPin?: string) => {
@@ -922,6 +973,14 @@ export function useProtectionState() {
       await BlockerModule.openAccessibilitySettings();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to open Android Accessibility settings.');
+    }
+  }, []);
+
+  const openVpnSettings = useCallback(async () => {
+    try {
+      await BlockerModule.openVpnSettings();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to open Android VPN settings.');
     }
   }, []);
 
@@ -1221,6 +1280,7 @@ export function useProtectionState() {
     loading,
     refreshing,
     error,
+    dismissError,
     refreshStatus,
     prepareVpn,
     startProtection,
@@ -1237,12 +1297,14 @@ export function useProtectionState() {
     refreshGuardianAlerts,
     clearGuardianAlert,
     exportAuditEventsToClipboard,
+    getRecentBlockedDomains,
     setParentPin,
     updateKeywordList,
     detectText,
     registerScreenContext,
     dismissBlockEvent,
     openAccessibilitySettings,
+    openVpnSettings,
     requestDeviceAdminPermission,
     setUninstallProtectionEnabled,
     configureManagedPrivateDns,

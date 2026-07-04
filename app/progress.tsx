@@ -5,12 +5,13 @@ import { AnimatedCard } from '@/components/AnimatedCard';
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { formatShortDate, levelNameKey, useI18n, useTranslation, weekdayShort } from '@/i18n';
+import type { Language } from '@/i18n';
 import { useGamification } from '@/store/useGamification';
 import type { DayRecord } from '@/store/useGamification';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
 const JOURNEY_DAYS = 90;
-const WEEK_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -23,9 +24,10 @@ function daysBetween(a: string, b: string): number {
   return Math.round(ms / 86400000);
 }
 
-function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// Journey dates are 'YYYY-MM-DD' strings; parse at local midnight before formatting
+// so the day never shifts under the device's timezone.
+function formatJourneyDate(dateStr: string, language: Language): string {
+  return formatShortDate(new Date(dateStr + 'T00:00:00'), language);
 }
 
 // ─── Journey Banner ───────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ function JourneyBanner({
   goalDateStr: string;
 }) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -58,14 +61,14 @@ function JourneyBanner({
     <View style={[sjb.card, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
       <View style={sjb.topRow}>
         <View style={sjb.textCol}>
-          <Text style={[sjb.label, { color: colors.text.muted }]}>90-DAY JOURNEY</Text>
+          <Text style={[sjb.label, { color: colors.text.muted }]}>{t('progress.journeyLabel')}</Text>
           <Text style={[sjb.pct, { color: colors.text.primary }]}>{pct}%</Text>
         </View>
         <View style={sjb.statsCol}>
-          <Text style={[sjb.statVal, { color: colors.green[500] }]}>Day {daysElapsed}</Text>
-          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>of 90</Text>
-          <Text style={[sjb.statVal, { color: colors.text.secondary, marginTop: 6 }]}>{daysRemaining}d</Text>
-          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>remaining</Text>
+          <Text style={[sjb.statVal, { color: colors.green[500] }]}>{t('progress.dayOf', { day: daysElapsed })}</Text>
+          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>{t('progress.of90')}</Text>
+          <Text style={[sjb.statVal, { color: colors.text.secondary, marginTop: 6 }]}>{t('progress.daysRemainingValue', { days: daysRemaining })}</Text>
+          <Text style={[sjb.statLabel, { color: colors.text.muted }]}>{t('progress.remainingLabel')}</Text>
         </View>
       </View>
       <View style={[sjb.track, { backgroundColor: colors.border.subtle }]}>
@@ -79,7 +82,7 @@ function JourneyBanner({
           ]}
         />
       </View>
-      <Text style={[sjb.goal, { color: colors.text.muted }]}>Goal: {goalDateStr}</Text>
+      <Text style={[sjb.goal, { color: colors.text.muted }]}>{t('progress.goal', { date: goalDateStr })}</Text>
     </View>
   );
 }
@@ -100,7 +103,7 @@ const sjb = StyleSheet.create({
     gap: 2,
   },
   label: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '600',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
@@ -118,7 +121,7 @@ const sjb = StyleSheet.create({
     fontWeight: '500',
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '400',
   },
   track: {
@@ -145,6 +148,7 @@ function WeekCalendarSection({
   days: DayRecord[];
 }) {
   const { colors } = useTheme();
+  const { t, language } = useI18n();
   const today = new Date().toISOString().split('T')[0]!;
 
   const now = new Date();
@@ -160,8 +164,8 @@ function WeekCalendarSection({
       <Card>
         <View style={sw.header}>
           <View style={sw.headerText}>
-            <Text style={[sw.title, { color: colors.text.primary }]}>This week</Text>
-            <Text style={[sw.sub, { color: colors.text.secondary }]}>Your daily activity at a glance.</Text>
+            <Text style={[sw.title, { color: colors.text.primary }]}>{t('progress.thisWeek')}</Text>
+            <Text style={[sw.sub, { color: colors.text.secondary }]}>{t('progress.thisWeekSub')}</Text>
           </View>
         </View>
 
@@ -177,7 +181,7 @@ function WeekCalendarSection({
             return (
               <View key={dateStr} style={sw.dayCell}>
                 <Text style={[sw.dayLabel, { color: colors.text.muted }]}>
-                  {WEEK_DAY_LABELS[i]!.toUpperCase().slice(0, 3)}
+                  {weekdayShort(language, i)}
                 </Text>
                 <View
                   style={[
@@ -210,15 +214,15 @@ function WeekCalendarSection({
         <View style={sw.legend}>
           <View style={sw.legendItem}>
             <View style={[sw.legendDot, { backgroundColor: colors.green[400] }]} />
-            <Text style={[sw.legendText, { color: colors.text.muted }]}>Clean day</Text>
+            <Text style={[sw.legendText, { color: colors.text.muted }]}>{t('progress.legendClean')}</Text>
           </View>
           <View style={sw.legendItem}>
             <View style={[sw.legendDot, { backgroundColor: '#D9A441' }]} />
-            <Text style={[sw.legendText, { color: colors.text.muted }]}>Moment logged</Text>
+            <Text style={[sw.legendText, { color: colors.text.muted }]}>{t('progress.legendMoment')}</Text>
           </View>
           <View style={sw.legendItem}>
             <View style={[sw.legendDot, { borderWidth: 1.5, borderColor: colors.border.default, backgroundColor: 'transparent' }]} />
-            <Text style={[sw.legendText, { color: colors.text.muted }]}>No data</Text>
+            <Text style={[sw.legendText, { color: colors.text.muted }]}>{t('progress.legendNoData')}</Text>
           </View>
         </View>
       </Card>
@@ -312,6 +316,7 @@ const sw = StyleSheet.create({
 
 export default function ProgressScreen() {
   const { colors } = useTheme();
+  const { t, language } = useI18n();
   const gamification = useGamification();
   const [milestoneVisible, setMilestoneVisible] = useState(Boolean(gamification.latestMilestoneBadge));
 
@@ -341,14 +346,14 @@ export default function ProgressScreen() {
   }, [progressRatio, xpBarAnim]);
 
   return (
-    <ScreenScaffold title="Your Progress" subtitle="One day at a time." iconName="progress" collapsibleTitle>
+    <ScreenScaffold title={t('progress.title')} subtitle={t('progress.subtitle')} iconName="progress" collapsibleTitle>
       {/* Journey banner */}
       <AnimatedCard delay={0}>
         <JourneyBanner
           progress={journeyProgress}
           daysElapsed={daysElapsed}
           daysRemaining={daysRemaining}
-          goalDateStr={formatShortDate(goalDate)}
+          goalDateStr={formatJourneyDate(goalDate, language)}
         />
       </AnimatedCard>
 
@@ -360,10 +365,10 @@ export default function ProgressScreen() {
         <Card>
           <View style={s.levelHeader}>
             <View>
-              <Text style={[s.cardTitle, { color: colors.text.primary }]}>Level {gamification.level}</Text>
-              <Text style={[s.cardMeta, { color: colors.text.secondary }]}>{levelName(gamification.level)}</Text>
+              <Text style={[s.cardTitle, { color: colors.text.primary }]}>{t('progress.level', { level: gamification.level })}</Text>
+              <Text style={[s.cardMeta, { color: colors.text.secondary }]}>{t(levelNameKey(gamification.level))}</Text>
               <Text style={[s.cardMeta, { color: colors.text.secondary }]}>
-                {gamification.xpProgress.current} / {gamification.xpProgress.required} XP
+                {t('progress.xpProgress', { current: gamification.xpProgress.current, required: gamification.xpProgress.required })}
               </Text>
             </View>
             <AppIcon name="xp" size={24} color={colors.green[500]} />
@@ -380,7 +385,7 @@ export default function ProgressScreen() {
             />
           </View>
           <Text style={[s.supportCopy, { color: colors.text.secondary }]}>
-            {Math.round(progressRatio * 100)}% to Level {gamification.level + 1}
+            {t('progress.percentToNext', { percent: Math.round(progressRatio * 100), level: gamification.level + 1 })}
           </Text>
         </Card>
       </AnimatedCard>
@@ -408,7 +413,7 @@ export default function ProgressScreen() {
       >
         <View style={s.milestoneBackdrop}>
           <View style={[s.milestoneScreen, { backgroundColor: colors.bg.elevated }]}>
-            <Text style={[s.milestoneTitle, { color: colors.green[600] }]}>Milestone unlocked</Text>
+            <Text style={[s.milestoneTitle, { color: colors.green[600] }]}>{t('progress.milestoneUnlocked')}</Text>
             <Text style={[s.cardTitle, { color: colors.text.primary }]}>
               {gamification.latestMilestoneBadge?.label}
             </Text>
@@ -420,7 +425,7 @@ export default function ProgressScreen() {
               onPress={() => setMilestoneVisible(false)}
               style={[s.milestoneButton, { backgroundColor: colors.green[500] }]}
             >
-              <Text style={[s.milestoneButtonText, { color: colors.text.inverse }]}>Continue</Text>
+              <Text style={[s.milestoneButtonText, { color: colors.text.inverse }]}>{t('progress.continue')}</Text>
             </Pressable>
           </View>
         </View>
@@ -430,8 +435,8 @@ export default function ProgressScreen() {
       <AnimatedCard delay={240}>
         <Card>
           <View style={s.cardHeader}>
-            <Text style={[s.cardTitle, { color: colors.text.primary }]}>Badges</Text>
-            <Text style={[s.cardMeta, { color: colors.text.secondary }]}>{earnedBadges.length} earned</Text>
+            <Text style={[s.cardTitle, { color: colors.text.primary }]}>{t('progress.badges')}</Text>
+            <Text style={[s.cardMeta, { color: colors.text.secondary }]}>{t('progress.badgesEarned', { count: earnedBadges.length })}</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badgeGrid}>
             {(earnedBadges.length > 0
@@ -585,11 +590,6 @@ function buildFallbackCalendarDays(): DayRecord[] {
       relapseLogged: false,
     };
   });
-}
-
-function levelName(level: number) {
-  const names = ['Starting', 'Aware', 'Steady', 'Resilient', 'Grounded', 'Strong'];
-  return names[Math.min(level, names.length - 1)] ?? 'Resilient';
 }
 
 function milestoneMessage(id: string) {
