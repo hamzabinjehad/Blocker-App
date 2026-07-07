@@ -4,7 +4,10 @@ import { Badge, Chip, Divider, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Card } from './Card';
+import { EmptyState } from './EmptyState';
 import { Button } from './controls';
+import { relativeTimeLabel, useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { AlertPreferences, AlertSeverity, ViolationAlert } from '@/types/blocker';
 
@@ -47,16 +50,21 @@ const SEVERITY_WEIGHT: Record<AlertSeverity, number> = {
   critical: 2,
 };
 
-function formatTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+const SEVERITY_LABEL_KEYS: Record<AlertSeverity, TranslationKey> = {
+  info: 'alertsCard.sevInfo',
+  warning: 'alertsCard.sevWarning',
+  critical: 'alertsCard.sevCritical',
+};
+
+const TYPE_LABEL_KEYS: Record<ViolationAlert['type'], TranslationKey> = {
+  domain_blocked: 'alertsCard.typeDomainBlocked',
+  keyword_detected: 'alertsCard.typeKeywordDetected',
+  app_blocked: 'alertsCard.typeAppBlocked',
+  tamper_attempt: 'alertsCard.typeTamperAttempt',
+  vpn_disconnected: 'alertsCard.typeVpnDisconnected',
+  bypass_attempt: 'alertsCard.typeBypassAttempt',
+  unlock_request: 'alertsCard.typeUnlockRequest',
+};
 
 export function AlertCenterCard({
   alerts,
@@ -68,6 +76,7 @@ export function AlertCenterCard({
   onClearAll,
   onUpdatePreferences,
 }: AlertCenterCardProps) {
+  const { t } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | AlertSeverity>('all');
@@ -88,8 +97,14 @@ export function AlertCenterCard({
 
   return (
     <Card
-      title="Alert Center"
-      subtitle={unreadCount > 0 ? `${unreadCount} unread alert${unreadCount === 1 ? '' : 's'} need attention.` : 'Everything is quiet right now.'}
+      title={t('alerts.title')}
+      subtitle={
+        unreadCount > 0
+          ? unreadCount === 1
+            ? t('alertsCard.unreadOne')
+            : t('alertsCard.unreadMany', { count: unreadCount })
+          : t('alertsCard.quiet')
+      }
       accent={criticalCount > 0 ? 'red' : warningCount > 0 ? 'amber' : 'none'}
       action={
         unreadCount > 0 ? (
@@ -107,16 +122,16 @@ export function AlertCenterCard({
             color={unreadCount > 0 ? colors.amber[400] : colors.green[400]}
           />
           <View style={styles.summaryText}>
-            <Text style={styles.summaryTitle}>{unreadCount > 0 ? 'Needs review' : 'All clear'}</Text>
+            <Text style={styles.summaryTitle}>{unreadCount > 0 ? t('alertsCard.needsReview') : t('alertsCard.allClear')}</Text>
             <Text style={styles.summarySubtitle}>
-              {unreadCount > 0 ? 'Review recent protection events.' : 'No bypass, tamper, or block alerts are unread.'}
+              {unreadCount > 0 ? t('alertsCard.reviewRecent') : t('alertsCard.noUnread')}
             </Text>
           </View>
         </View>
         <View style={styles.statsRow}>
-          <StatPill label="Critical" count={criticalCount} color={colors.red[400]} selected={filter === 'critical'} onPress={() => setFilter('critical')} />
-          <StatPill label="Warning" count={warningCount} color={colors.amber[400]} selected={filter === 'warning'} onPress={() => setFilter('warning')} />
-          <StatPill label="Info" count={infoCount} color={colors.blue[400]} selected={filter === 'info'} onPress={() => setFilter('info')} />
+          <StatPill label={t('alertsCard.sevCritical')} count={criticalCount} color={colors.red[400]} selected={filter === 'critical'} onPress={() => setFilter('critical')} />
+          <StatPill label={t('alertsCard.sevWarning')} count={warningCount} color={colors.amber[400]} selected={filter === 'warning'} onPress={() => setFilter('warning')} />
+          <StatPill label={t('alertsCard.sevInfo')} count={infoCount} color={colors.blue[400]} selected={filter === 'info'} onPress={() => setFilter('info')} />
         </View>
       </View>
 
@@ -126,7 +141,7 @@ export function AlertCenterCard({
             key={f}
             selected={filter === f}
             onPress={() => setFilter(f)}
-            label={f}
+            label={f === 'all' ? t('alertsCard.filterAll') : t(SEVERITY_LABEL_KEYS[f])}
           />
         ))}
       </View>
@@ -134,12 +149,12 @@ export function AlertCenterCard({
       <View style={styles.actionsRow}>
         {unreadCount > 0 && (
           <Button icon="check-all" tone="neutral" onPress={() => void onMarkAllAsRead()}>
-            Mark All Read
+            {t('alertsCard.markAllRead')}
           </Button>
         )}
         {alerts.length > 0 && (
           <Button icon="delete-sweep" tone="neutral" onPress={() => void onClearAll()}>
-            Clear All
+            {t('alertsCard.clearAll')}
           </Button>
         )}
         <Button
@@ -147,24 +162,22 @@ export function AlertCenterCard({
           tone="neutral"
           onPress={() => setShowSettings(!showSettings)}
         >
-          {showSettings ? 'Hide preferences' : 'Preferences'}
+          {showSettings ? t('alertsCard.hidePreferences') : t('alertsCard.preferences')}
         </Button>
       </View>
 
       {displayedAlerts.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIconWrap}>
-            <MaterialCommunityIcons name="bell-check-outline" size={34} color={colors.green[400]} />
-          </View>
-          <Text style={styles.emptyTitle}>{filter === 'all' ? 'All clear' : `No ${filter} alerts`}</Text>
-          <Text style={styles.emptyText}>
-            {filter === 'all' ? 'No alerts have been triggered yet. Protection is working quietly.' : 'Nothing in this filter right now.'}
-          </Text>
-          <Pressable accessibilityRole="button" onPress={() => setShowSettings(true)} style={styles.emptyLink}>
-            <MaterialCommunityIcons name="cog-outline" size={16} color={colors.text.secondary} />
-            <Text style={styles.emptyLinkText}>Adjust notification preferences</Text>
-          </Pressable>
-        </View>
+        <EmptyState
+          icon="bell"
+          title={filter === 'all' ? t('alertsCard.allClear') : t('alertsCard.emptyFiltered', { severity: t(SEVERITY_LABEL_KEYS[filter]) })}
+          subtitle={filter === 'all' ? t('alertsCard.emptyAllText') : t('alertsCard.emptyFilterText')}
+          action={
+            <Pressable accessibilityRole="button" onPress={() => setShowSettings(true)} style={styles.emptyLink}>
+              <MaterialCommunityIcons name="cog-outline" size={16} color={colors.text.secondary} />
+              <Text style={styles.emptyLinkText}>{t('alertsCard.adjustPrefs')}</Text>
+            </Pressable>
+          }
+        />
       ) : (
         <View style={styles.alertList}>
           {displayedAlerts.map((alert) => (
@@ -184,7 +197,7 @@ export function AlertCenterCard({
 
       {filteredAlerts.length > 20 && (
         <Text style={styles.moreText}>
-          Showing 20 of {filteredAlerts.length} alerts
+          {t('alertsCard.showingOf', { shown: 20, total: filteredAlerts.length })}
         </Text>
       )}
 
@@ -193,12 +206,12 @@ export function AlertCenterCard({
           <Divider />
           <View style={styles.settingsHeader}>
             <View>
-              <Text style={styles.settingsTitle}>Notification Preferences</Text>
-              <Text style={styles.settingsSubtitle}>Choose a preset, then fine-tune any alert type.</Text>
+              <Text style={styles.settingsTitle}>{t('alertsCard.prefsTitle')}</Text>
+              <Text style={styles.settingsSubtitle}>{t('alertsCard.prefsSubtitle')}</Text>
             </View>
           </View>
           <View style={styles.presetRow}>
-            <PresetPill label="Minimal" active={preferences.minSeverity === 'critical'} onPress={() => void onUpdatePreferences({
+            <PresetPill label={t('alertsCard.presetMinimal')} active={preferences.minSeverity === 'critical'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: false,
               notifyOnTamper: true,
               notifyOnBypass: true,
@@ -206,7 +219,7 @@ export function AlertCenterCard({
               minSeverity: 'critical',
               dailyDigestEnabled: false,
             })} />
-            <PresetPill label="Balanced" active={preferences.minSeverity === 'warning'} onPress={() => void onUpdatePreferences({
+            <PresetPill label={t('alertsCard.presetBalanced')} active={preferences.minSeverity === 'warning'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: true,
               notifyOnTamper: true,
               notifyOnBypass: true,
@@ -214,7 +227,7 @@ export function AlertCenterCard({
               minSeverity: 'warning',
               dailyDigestEnabled: true,
             })} />
-            <PresetPill label="All alerts" active={preferences.minSeverity === 'info'} onPress={() => void onUpdatePreferences({
+            <PresetPill label={t('alertsCard.presetAll')} active={preferences.minSeverity === 'info'} onPress={() => void onUpdatePreferences({
               notifyOnBlock: true,
               notifyOnTamper: true,
               notifyOnBypass: true,
@@ -225,33 +238,33 @@ export function AlertCenterCard({
           </View>
 
           <ToggleRow
-            label="Alerts enabled"
+            label={t('alertsCard.alertsEnabled')}
             value={preferences.enabled}
             onToggle={(v) => void onUpdatePreferences({ enabled: v })}
           />
           <ToggleRow
-            label="Notify on blocked content"
+            label={t('alertsCard.notifyBlock')}
             value={preferences.notifyOnBlock}
             onToggle={(v) => void onUpdatePreferences({ notifyOnBlock: v })}
           />
           <ToggleRow
-            label="Notify on tamper attempts"
+            label={t('alertsCard.notifyTamper')}
             value={preferences.notifyOnTamper}
             onToggle={(v) => void onUpdatePreferences({ notifyOnTamper: v })}
           />
           <ToggleRow
-            label="Notify on bypass attempts"
+            label={t('alertsCard.notifyBypass')}
             value={preferences.notifyOnBypass}
             onToggle={(v) => void onUpdatePreferences({ notifyOnBypass: v })}
           />
           <ToggleRow
-            label="Notify on unlock requests"
+            label={t('alertsCard.notifyUnlock')}
             value={preferences.notifyOnUnlockRequest}
             onToggle={(v) => void onUpdatePreferences({ notifyOnUnlockRequest: v })}
           />
 
           <View style={styles.severityPicker}>
-            <Text style={styles.fieldLabel}>Minimum severity</Text>
+            <Text style={styles.fieldLabel}>{t('alertsCard.minSeverity')}</Text>
             <View style={styles.severityOptions}>
               {(['info', 'warning', 'critical'] as AlertSeverity[]).map((sev) => (
                 <Chip
@@ -264,21 +277,21 @@ export function AlertCenterCard({
                       ? { backgroundColor: SEVERITY_COLORS[sev] + '22' }
                       : undefined
                   }
-                  textStyle={{ fontSize: 11, textTransform: 'capitalize' }}
+                  textStyle={{ fontSize: 11 }}
                 >
-                  {sev}
+                  {t(SEVERITY_LABEL_KEYS[sev])}
                 </Chip>
               ))}
             </View>
           </View>
 
           <ToggleRow
-            label="Quiet hours"
+            label={t('alertsCard.quietHours')}
             value={preferences.quietHoursEnabled}
             onToggle={(v) => void onUpdatePreferences({ quietHoursEnabled: v })}
           />
           <ToggleRow
-            label="Daily digest"
+            label={t('alertsCard.dailyDigest')}
             value={preferences.dailyDigestEnabled}
             onToggle={(v) => void onUpdatePreferences({ dailyDigestEnabled: v })}
           />
@@ -299,6 +312,7 @@ function AlertRow({
   onPress: () => void;
   onDelete: () => void;
 }) {
+  const { language, t } = useI18n();
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.alertRow, !alert.read && styles.alertUnread]}>
@@ -309,7 +323,7 @@ function AlertRow({
               {alert.title}
             </Text>
             <Text style={styles.alertTime}>
-              {[alert.app, formatTimeAgo(alert.timestamp)].filter(Boolean).join(' · ')}
+              {[alert.app, relativeTimeLabel(language, alert.timestamp)].filter(Boolean).join(' · ')}
             </Text>
           </View>
           {!alert.read && <View style={styles.unreadDot} />}
@@ -319,22 +333,22 @@ function AlertRow({
           <View style={styles.alertExpanded}>
             <Text style={styles.alertDescription}>{alert.description}</Text>
             {alert.app && (
-              <Text style={styles.alertMeta}>App: {alert.app}</Text>
+              <Text style={styles.alertMeta}>{t('alertsCard.metaApp', { app: alert.app })}</Text>
             )}
             {alert.domain && (
-              <Text style={styles.alertMeta}>Domain: {alert.domain}</Text>
+              <Text style={styles.alertMeta}>{t('alertsCard.metaDomain', { domain: alert.domain })}</Text>
             )}
-            <Text style={styles.alertMeta}>Action taken: {alert.type.replace(/_/g, ' ')}</Text>
-            <Text style={styles.alertMeta}>Device state: captured at alert time</Text>
+            <Text style={styles.alertMeta}>{t('alertsCard.metaAction', { action: t(TYPE_LABEL_KEYS[alert.type]) })}</Text>
+            <Text style={styles.alertMeta}>{t('alertsCard.metaDevice')}</Text>
             <View style={styles.alertActions}>
               <Chip compact icon={SEVERITY_ICONS[alert.severity]} style={{ backgroundColor: SEVERITY_COLORS[alert.severity] + '22' }}>
-                {alert.severity}
+                {t(SEVERITY_LABEL_KEYS[alert.severity])}
               </Chip>
               <Chip compact icon={TYPE_ICONS[alert.type] as any}>
-                {alert.type.replace(/_/g, ' ')}
+                {t(TYPE_LABEL_KEYS[alert.type])}
               </Chip>
               <Button icon="delete" tone="danger" onPress={onDelete}>
-                Delete
+                {t('common.delete')}
               </Button>
             </View>
           </View>
@@ -554,33 +568,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.text.muted,
-    textAlign: 'center',
-    maxWidth: 260,
-  },
-  emptyTitle: {
-    ...typography.h3,
-    color: colors.text.primary,
-    textAlign: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    minHeight: 300,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing['2xl'],
-  },
-  emptyIconWrap: {
-    alignItems: 'center',
-    backgroundColor: colors.green[50],
-    borderRadius: radius.full,
-    height: 64,
-    justifyContent: 'center',
-    width: 64,
   },
   emptyLink: {
     alignItems: 'center',

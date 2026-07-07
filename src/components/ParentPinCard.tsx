@@ -4,6 +4,7 @@ import { Text } from 'react-native-paper';
 
 import { Card } from './Card';
 import { Button, Field } from './controls';
+import { useTranslation } from '@/i18n';
 import { radius, spacing, useTheme, typography } from '@/theme';
 
 type ParentPinCardProps = {
@@ -14,6 +15,7 @@ type ParentPinCardProps = {
 
 export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCardProps) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -22,11 +24,11 @@ export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCar
 
   const submit = () => {
     if (newPin.length < 4) {
-      setLocalError('Use at least 4 digits for the demo PIN.');
+      setLocalError(t('pin.errTooShort'));
       return;
     }
     if (newPin !== confirmPin) {
-      setLocalError('PINs do not match. Try again.');
+      setLocalError(t('pin.errMismatch'));
       setNewPin('');
       setConfirmPin('');
       setStep('create');
@@ -47,22 +49,22 @@ export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCar
 
   return (
     <Card
-      title="Parent PIN"
-      subtitle="Used before stopping protection or changing important settings."
-      action={<StatusChip label={pinConfigured ? 'Set' : 'Not set'} tone={pinConfigured ? 'success' : 'warning'} />}
+      title={t('pin.title')}
+      subtitle={t('pin.subtitle')}
+      action={<StatusChip label={pinConfigured ? t('pin.chipSet') : t('pin.chipNotSet')} tone={pinConfigured ? 'success' : 'warning'} />}
     >
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="Current PIN"
+          label={t('pin.currentLabel')}
           onChangeText={setCurrentPin}
-          placeholder="Enter current PIN"
+          placeholder={t('pin.currentPlaceholder')}
           secureTextEntry
           value={currentPin}
         />
       ) : null}
       <Text style={[styles.prompt, { color: colors.text.primary }]}>
-        {step === 'create' ? 'Enter your new PIN' : 'Confirm your PIN'}
+        {step === 'create' ? t('pin.promptNew') : t('pin.promptConfirm')}
       </Text>
       <PinEntry value={currentEntry} onChange={setCurrentEntry} />
       <Button
@@ -77,7 +79,7 @@ export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCar
           submit();
         }}
       >
-        {step === 'create' ? 'Continue' : pinConfigured ? 'Update PIN' : 'Set PIN'}
+        {step === 'create' ? t('onboarding.continue') : pinConfigured ? t('pin.update') : t('pin.set')}
       </Button>
       {localError ? <Text style={[styles.error, { color: colors.red[500] }]}>{localError}</Text> : null}
     </Card>

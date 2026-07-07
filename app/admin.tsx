@@ -7,6 +7,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 
 import { Banner } from '@/components/Banner';
+import { Chevron } from '@/components/Chevron';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { useTranslation } from '@/i18n';
 import { useAlertCenter } from '@/store/useAlertCenter';
@@ -234,7 +235,7 @@ function SettingsRow({
           </Text>
         ) : null}
       </View>
-      {value ? <ValueChip value={value} tone={valueTone} /> : interactive ? <Feather name="chevron-right" size={20} color={colors.text.muted} /> : null}
+      {value ? <ValueChip value={value} tone={valueTone} /> : interactive ? <Chevron size={20} color={colors.text.muted} /> : null}
     </Pressable>
   );
 }

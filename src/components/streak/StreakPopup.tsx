@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTranslation } from '@/i18n';
 import type { DayRecord } from '@/store/useGamification';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
 import { FlameCanvas } from './FlameCanvas';
 import { WeekRow } from './WeekRow';
 import {
-  getStreakButtonLabel,
-  getStreakMotivation,
-  getStreakStatusLabel,
+  getStreakButtonKey,
+  getStreakMotivationKey,
+  getStreakStatusKey,
   type StreakPopupState,
 } from './streakCopy';
 
@@ -34,6 +35,7 @@ export function StreakPopup({
   onContinue,
 }: StreakPopupProps) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const insets = useSafeAreaInsets();
   const entrance = useRef(new Animated.Value(0)).current;
   const [displayedStreak, setDisplayedStreak] = useState(currentStreak);
@@ -99,7 +101,7 @@ export function StreakPopup({
           <View style={[s.badge, { backgroundColor: colors.bg.tertiary, borderColor: colors.border.subtle }]}>
             <View style={[s.badgeDot, { backgroundColor: accent }]} />
             <Text selectable style={[s.badgeText, { color: colors.text.secondary }]}>
-              {getStreakStatusLabel(state)}
+              {t(getStreakStatusKey(state))}
             </Text>
           </View>
 
@@ -112,18 +114,18 @@ export function StreakPopup({
               {displayedStreak}
             </Text>
             <Text selectable style={[s.numberLabel, { color: colors.text.secondary }]}>
-              Day streak
+              {t('streak.dayStreak')}
             </Text>
           </View>
 
           <Text selectable style={[s.motivation, { color: colors.text.primary }]}>
-            {getStreakMotivation(currentStreak, state)}
+            {t(getStreakMotivationKey(currentStreak, state))}
           </Text>
 
           <View style={s.weekBlock}>
             <WeekRow days={dayHistory} todayState={state} />
             <Text selectable style={[s.bestText, { color: colors.text.muted }]}>
-              Best streak: {longestStreak} days
+              {t('streak.best', { days: longestStreak })}
             </Text>
           </View>
 
@@ -139,7 +141,7 @@ export function StreakPopup({
             ]}
           >
             <Text selectable={false} style={[s.buttonText, { color: colors.text.inverse }]}>
-              {getStreakButtonLabel(state)}
+              {t(getStreakButtonKey(state))}
             </Text>
           </Pressable>
         </Animated.View>

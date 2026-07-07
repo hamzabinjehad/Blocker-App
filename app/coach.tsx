@@ -4,12 +4,14 @@ import { Feather } from '@expo/vector-icons';
 
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
+import { Chevron } from '@/components/Chevron';
+import { EmptyState } from '@/components/EmptyState';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { UrgeSurfingSheet } from '@/components/UrgeSurfingSheet';
 import { getDailyCoachingNudge } from '@/services/coaching';
 import { getTodaysMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
-import { useTranslation } from '@/i18n';
+import { useI18n } from '@/i18n';
 import { useGamification } from '@/store/useGamification';
 import { emotionalStateLabels, triggerLabels, useRecovery } from '@/store/useRecovery';
 import type { EmotionalState, TriggerSituation } from '@/store/useRecovery';
@@ -20,7 +22,7 @@ const triggerOptions = Object.keys(triggerLabels) as TriggerSituation[];
 
 export default function CoachScreen() {
   const { colors } = useTheme();
-  const t = useTranslation();
+  const { t, language } = useI18n();
   const recovery = useRecovery();
   const gamification = useGamification();
   const [journalText, setJournalText] = useState('');
@@ -50,12 +52,12 @@ export default function CoachScreen() {
   });
 
   useEffect(() => {
-    void getDailyCoachingNudge(buildCoachingStats()).then(setTip);
+    void getDailyCoachingNudge(buildCoachingStats(), language).then(setTip);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentMood]);
+  }, [currentMood, language]);
 
   const refreshTip = () => {
-    void getDailyCoachingNudge(buildCoachingStats(), true).then(setTip);
+    void getDailyCoachingNudge(buildCoachingStats(), language, true).then(setTip);
   };
 
   const saveJournal = () => {
@@ -124,7 +126,7 @@ export default function CoachScreen() {
           <Pressable accessibilityRole="button" onPress={() => setJournalExpanded(true)} style={s.journalRow}>
             <Feather name="edit-3" size={16} color={colors.text.secondary} />
             <Text style={[s.entryText, { color: colors.text.secondary }]}>Write a private note...</Text>
-            <Feather name="chevron-right" size={18} color={colors.text.muted} />
+            <Chevron size={18} color={colors.text.muted} />
           </Pressable>
         )}
       </Card>
@@ -157,7 +159,7 @@ export default function CoachScreen() {
 
       <Card>
         <View style={s.cardHeader}>
-          <Text style={[s.cardTitle, { color: colors.text.primary }]}>Recent journal</Text>
+          <Text style={[s.cardTitle, { color: colors.text.primary }]}>{t('coach.recentJournal')}</Text>
         </View>
         {recovery.journalEntries.slice(0, 2).length > 0 ? (
           recovery.journalEntries.slice(0, 2).map((entry) => (
@@ -171,10 +173,7 @@ export default function CoachScreen() {
             </View>
           ))
         ) : (
-          <View style={s.emptyJournal}>
-            <Feather name="book-open" size={24} color={colors.text.muted} />
-            <Text style={[s.emptyText, { color: colors.text.secondary }]}>Your private entries will appear here.</Text>
-          </View>
+          <EmptyState icon="book-open" title={t('coach.journalEmpty')} />
         )}
       </Card>
 
@@ -379,15 +378,6 @@ const s = StyleSheet.create({
   },
   challengeTitle: {
     ...typography.h3,
-  },
-  emptyText: {
-    ...typography.body,
-    textAlign: 'center',
-  },
-  emptyJournal: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
   },
   entryDate: {
     ...typography.caption,

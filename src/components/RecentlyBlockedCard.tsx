@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { Card } from './Card';
+import { EmptyState } from './EmptyState';
+import { Skeleton } from './Skeleton';
 import { Button, Field } from './controls';
 import { relativeTimeLabel, useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -115,10 +117,18 @@ export function RecentlyBlockedCard({
             );
           })}
         </View>
+      ) : loading ? (
+        <View style={styles.list}>
+          <Skeleton height={58} radius={radius.md} />
+          <Skeleton height={58} radius={radius.md} />
+          <Skeleton height={58} radius={radius.md} />
+        </View>
       ) : (
-        <Text style={styles.emptyText}>
-          {loading ? t('recentlyBlocked.loading') : t('recentlyBlocked.empty')}
-        </Text>
+        <EmptyState
+          icon="shield"
+          title={t('recentlyBlocked.emptyTitle')}
+          subtitle={t('recentlyBlocked.emptySubtitle')}
+        />
       )}
 
       <Button icon="refresh" tone="neutral" loading={loading} onPress={() => void load()}>
@@ -168,10 +178,5 @@ const styles = StyleSheet.create({
   meta: {
     color: colors.text.secondary,
     fontSize: 12,
-  },
-  emptyText: {
-    color: colors.text.secondary,
-    fontSize: 13,
-    lineHeight: 19,
   },
 });

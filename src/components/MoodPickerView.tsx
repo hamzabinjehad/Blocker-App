@@ -4,24 +4,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 
 import { MoodFace } from '@/components/MoodFace';
+import { moodLabelKey, useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { MoodCheckIn } from '@/services/mood';
 
 type Bubble = {
   value: MoodCheckIn;
-  label: string;
   xRatio: number; // center x as fraction of screen width
   y: number;      // center y in dp within the bubble area
   size: number;
 };
 
 const BUBBLES: Bubble[] = [
-  { value: 'terrible', label: 'Terrible', xRatio: 0.40, y: 88,  size: 82 },
-  { value: 'excellent', label: 'Excellent', xRatio: 0.72, y: 65,  size: 70 },
-  { value: 'bad',      label: 'Bad',       xRatio: 0.13, y: 196, size: 66 },
-  { value: 'great',    label: 'Great',     xRatio: 0.86, y: 188, size: 74 },
-  { value: 'down',     label: 'Down',      xRatio: 0.34, y: 325, size: 80 },
-  { value: 'neutral',  label: 'Neutral',   xRatio: 0.67, y: 340, size: 72 },
+  { value: 'terrible', xRatio: 0.40, y: 88,  size: 82 },
+  { value: 'excellent', xRatio: 0.72, y: 65,  size: 70 },
+  { value: 'bad',      xRatio: 0.13, y: 196, size: 66 },
+  { value: 'great',    xRatio: 0.86, y: 188, size: 74 },
+  { value: 'down',     xRatio: 0.34, y: 325, size: 80 },
+  { value: 'neutral',  xRatio: 0.67, y: 340, size: 72 },
 ];
 
 type Props = {
@@ -31,6 +31,7 @@ type Props = {
 
 export function MoodPickerView({ onSelect, onClose }: Props) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -68,21 +69,21 @@ export function MoodPickerView({ onSelect, onClose }: Props) {
                 style={{ alignItems: 'center', width: '100%' }}
               >
                 <MoodFace mood={bubble.value} size={bubble.size} />
-                <Text style={[s.bubbleLabel, { color: colors.text.primary }]}>{bubble.label}</Text>
+                <Text style={[s.bubbleLabel, { color: colors.text.primary }]}>{t(moodLabelKey(bubble.value))}</Text>
               </Pressable>
             </Animated.View>
           );
         })}
 
         <View style={s.questionWrap} pointerEvents="none">
-          <Text style={[s.question, { color: colors.text.primary }]}>How are you{'\n'}feeling?</Text>
+          <Text style={[s.question, { color: colors.text.primary }]}>{t('mood.question')}</Text>
         </View>
       </View>
 
       <View style={s.closeRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t('common.close')}
           onPress={onClose}
           style={[s.closeBtn, { borderColor: colors.border.default }]}
         >

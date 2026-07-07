@@ -48,14 +48,17 @@ export function I18nProvider({ children }: PropsWithChildren) {
 
   const setLanguage = useCallback((next: Language) => {
     setLanguageState(next);
-    void AsyncStorage.setItem(LANGUAGE_KEY, next);
-    // Align the native layout direction. This takes full effect on the next app launch;
-    // we avoid forcing an immediate reload so the running session's layouts don't break.
-    const wantRTL = next === 'ar';
-    I18nManager.allowRTL(wantRTL);
-    if (I18nManager.isRTL !== wantRTL) {
-      I18nManager.forceRTL(wantRTL);
-    }
+    // Persist the choice BEFORE touching layout direction: forceRTL() can trigger a
+    // native reload, and a fire-and-forget write can lose the race (the preference
+    // then reverts on the next launch). Await the write, then align direction.
+    void (async () => {
+      await AsyncStorage.setItem(LANGUAGE_KEY, next);
+      const wantRTL = next === 'ar';
+      I18nManager.allowRTL(wantRTL);
+      if (I18nManager.isRTL !== wantRTL) {
+        I18nManager.forceRTL(wantRTL);
+      }
+    })();
   }, []);
 
   const t = useCallback(

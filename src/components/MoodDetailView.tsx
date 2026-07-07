@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 
 import { MoodFace } from '@/components/MoodFace';
-import { moodOptions } from '@/services/mood';
+import { formatShortDate, moodLabelKey, useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { MoodCheckIn } from '@/services/mood';
 
@@ -26,18 +26,19 @@ type Props = {
 
 export function MoodDetailView({ mood, note, onNoteChange, onSave, onClose }: Props) {
   const { colors } = useTheme();
+  const { t, language } = useI18n();
   const insets = useSafeAreaInsets();
-  const label = moodOptions.find((o) => o.value === mood)?.label ?? 'Mood';
+  const label = t(moodLabelKey(mood));
   const highlight = MOOD_HIGHLIGHT[mood] ?? 'rgba(136,197,232,0.30)';
 
-  const dateLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const dateLabel = formatShortDate(Date.now(), language);
 
   return (
     <View style={[s.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16), backgroundColor: colors.bg.primary }]}>
       <View style={s.header}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t('common.close')}
           onPress={onClose}
           style={s.headerClose}
         >
@@ -57,7 +58,7 @@ export function MoodDetailView({ mood, note, onNoteChange, onSave, onClose }: Pr
 
         <TextInput
           multiline
-          placeholder="What's on your mind?"
+          placeholder={t('mood.notePlaceholder')}
           placeholderTextColor={colors.text.muted}
           style={[s.input, { color: colors.text.primary }]}
           value={note}
@@ -72,7 +73,7 @@ export function MoodDetailView({ mood, note, onNoteChange, onSave, onClose }: Pr
           onPress={onSave}
           style={[s.saveBtn, { backgroundColor: colors.green[500] }]}
         >
-          <Text style={[s.saveBtnText, { color: colors.text.inverse }]}>Save</Text>
+          <Text style={[s.saveBtnText, { color: colors.text.inverse }]}>{t('common.save')}</Text>
         </Pressable>
       </View>
     </View>

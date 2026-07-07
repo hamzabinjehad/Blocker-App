@@ -4,6 +4,7 @@ import { Switch, Text } from 'react-native-paper';
 
 import { Card } from '@/components/Card';
 import { Field } from '@/components/controls';
+import { useTranslation } from '@/i18n';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { AnomalyDetectionStatus, GalleryScanResult, MediaScanningStatus, PolicyUpdate } from '@/types/blocker';
 
@@ -24,6 +25,7 @@ export function AIProtectionCard({
   onRequestGalleryScanPermission,
   onScanGalleryForExplicitContent,
 }: AIProtectionCardProps) {
+  const t = useTranslation();
   const [pin, setPin] = useState('');
   const [imageScanningEnabled, setImageScanningEnabled] = useState(mediaScanning.enabled);
   const [fallbackEnabled, setFallbackEnabled] = useState(mediaScanning.cloudFallbackEnabled);
@@ -52,27 +54,29 @@ export function AIProtectionCard({
       setGalleryFeedback(null);
       void onScanGalleryForExplicitContent(24)
         .then((result) => {
-          if (result) setGalleryFeedback(`${result.flaggedCount} flagged`);
+          if (result) setGalleryFeedback(t('smart.galleryFlagged', { count: result.flaggedCount }));
         })
         .finally(() => setGalleryAction(null));
     }
   };
 
   const galleryStatusText = () => {
-    if (!mediaScanning.galleryScanPermissionGranted) return 'Tap Allow to grant permission';
+    if (!mediaScanning.galleryScanPermissionGranted) return t('smart.galleryTapAllow');
     if (galleryFeedback) return galleryFeedback;
-    if (mediaScanning.galleryScanLastAt > 0) return `${mediaScanning.galleryScanFlaggedCount} flagged · last scan`;
-    return 'Ready to scan';
+    if (mediaScanning.galleryScanLastAt > 0) {
+      return t('smart.galleryFlaggedLast', { count: mediaScanning.galleryScanFlaggedCount });
+    }
+    return t('smart.galleryReady');
   };
 
   return (
-    <Card title="Smart Detection" subtitle="On-device scanning and anomaly monitoring.">
+    <Card title={t('smart.title')} subtitle={t('smart.subtitle')}>
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="PIN"
+          label={t('policy.pinLabel')}
           onChangeText={setPin}
-          placeholder="Enter PIN to make changes"
+          placeholder={t('policy.pinPlaceholder')}
           secureTextEntry
           value={pin}
         />
@@ -80,8 +84,8 @@ export function AIProtectionCard({
 
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={styles.label}>Real-time image scanning</Text>
-          <Text style={styles.caption}>On-device, runs while protection is active.</Text>
+          <Text style={styles.label}>{t('smart.imageScanning')}</Text>
+          <Text style={styles.caption}>{t('smart.imageScanningHelper')}</Text>
         </View>
         <Switch
           onValueChange={(enabled) => {
@@ -94,8 +98,8 @@ export function AIProtectionCard({
 
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={styles.label}>Cloud fallback</Text>
-          <Text style={styles.caption}>Sends label metadata only for ambiguous images.</Text>
+          <Text style={styles.label}>{t('smart.cloudFallback')}</Text>
+          <Text style={styles.caption}>{t('smart.cloudFallbackHelper')}</Text>
         </View>
         <Switch
           onValueChange={(v) => {
@@ -108,7 +112,7 @@ export function AIProtectionCard({
 
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={styles.label}>Gallery scan</Text>
+          <Text style={styles.label}>{t('smart.galleryScan')}</Text>
           <Text style={styles.caption}>{galleryStatusText()}</Text>
         </View>
         <Pressable
@@ -118,7 +122,7 @@ export function AIProtectionCard({
           style={styles.scanBtn}
         >
           <Text style={styles.scanBtnText}>
-            {galleryAction !== null ? '…' : mediaScanning.galleryScanPermissionGranted ? 'Scan' : 'Allow'}
+            {galleryAction !== null ? '…' : mediaScanning.galleryScanPermissionGranted ? t('smart.scan') : t('common.allow')}
           </Text>
         </Pressable>
       </View>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  I18nManager,
   Pressable,
   StyleSheet,
   Text,
@@ -75,6 +76,9 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     [step, fadeAnim, slideAnim],
   );
 
+  // Only the two permissions protection cannot start without. Everything else
+  // moved to contextual prompts: Usage → Focus screen, Overlay → App Rules,
+  // Battery → Home (after the first protected day), Device Admin → Guardian.
   const permissions: PermissionItem[] = [
     {
       key: 'vpn',
@@ -92,45 +96,14 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       ready: protection.accessibilityServiceEnabled,
       onPress: protection.openAccessibilitySettings,
     },
-    {
-      key: 'overlay',
-      title: t('onboarding.permOverlayTitle'),
-      description: t('onboarding.permOverlayDesc'),
-      icon: 'layers',
-      ready: protection.overlayPermissionGranted,
-      onPress: protection.openOverlaySettings,
-    },
-    {
-      key: 'usage',
-      title: t('onboarding.permUsageTitle'),
-      description: t('onboarding.permUsageDesc'),
-      icon: 'chart-bar',
-      ready: protection.usageAccessStatus.granted,
-      onPress: protection.openUsageAccessSettings,
-    },
-    {
-      key: 'battery',
-      title: t('onboarding.permBatteryTitle'),
-      description: t('onboarding.permBatteryDesc'),
-      icon: 'battery-charging',
-      ready: protection.batteryOptimizationStatus.ignored,
-      onPress: protection.requestIgnoreBatteryOptimizations,
-    },
-    {
-      key: 'device-admin',
-      title: t('onboarding.permDeviceAdminTitle'),
-      description: t('onboarding.permDeviceAdminDesc'),
-      icon: 'shield-lock',
-      ready: protection.managedDeviceStatus.deviceAdminActive,
-      onPress: protection.requestDeviceAdminPermission,
-      optional: true,
-    },
   ];
 
   const readyCount = permissions.filter((p) => p.ready).length;
   const requiredReady = permissions.filter((p) => !p.optional && p.ready).length;
   const requiredTotal = permissions.filter((p) => !p.optional).length;
-  const canProceed = requiredReady >= requiredTotal - 1;
+  // Both critical permissions (VPN + Accessibility) must be granted — no silent skip.
+  // The rest are optional here and surface as contextual prompts later.
+  const canProceed = requiredReady >= requiredTotal;
 
   const renderWelcome = () => (
     <View style={[s.stepContent, { alignItems: 'center' }]}>
@@ -415,7 +388,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       <View style={s.footer}>
         {step > 0 ? (
           <Pressable onPress={() => animateToStep(step - 1)} style={s.backLink}>
-            <Text style={[s.backLinkText, { color: colors.text.secondary }]}>← {t('onboarding.back')}</Text>
+            <Text style={[s.backLinkText, { color: colors.text.secondary }]}>{I18nManager.isRTL ? '→' : '←'} {t('onboarding.back')}</Text>
           </Pressable>
         ) : null}
         <Pressable

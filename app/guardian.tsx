@@ -509,7 +509,7 @@ const s = StyleSheet.create({
   },
   testTimestamp: {
     ...typography.caption,
-    marginLeft: spacing.sm,
+    marginStart: spacing.sm,
   },
   testRow: {
     alignItems: 'center',

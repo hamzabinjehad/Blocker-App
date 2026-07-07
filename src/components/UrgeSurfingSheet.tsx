@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useTranslation } from '@/i18n';
 import { useGamification } from '@/store/useGamification';
 import { useRecovery } from '@/store/useRecovery';
 import { radius, spacing, typography, useTheme } from '@/theme';
@@ -15,6 +16,7 @@ type UrgeSurfingSheetProps = {
 
 export function UrgeSurfingSheet({ visible, onClose }: UrgeSurfingSheetProps) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const recovery = useRecovery();
   const gamification = useGamification();
   const [remainingSeconds, setRemainingSeconds] = useState(URGE_SECONDS);
@@ -49,7 +51,7 @@ export function UrgeSurfingSheet({ visible, onClose }: UrgeSurfingSheetProps) {
 
   const elapsed = URGE_SECONDS - remainingSeconds;
   const cycleSecond = elapsed % BREATH_CYCLE_SECONDS;
-  const breathLabel = cycleSecond < 4 ? 'Breathe in' : cycleSecond < 8 ? 'Hold' : 'Breathe out';
+  const breathLabel = cycleSecond < 4 ? t('urge.breatheIn') : cycleSecond < 8 ? t('urge.hold') : t('urge.breatheOut');
   const breathCount = cycleSecond < 4 ? 4 - cycleSecond : cycleSecond < 8 ? 8 - cycleSecond : 14 - cycleSecond;
   const ringScale = cycleSecond < 4 ? 1 + cycleSecond * 0.06 : cycleSecond < 8 ? 1.24 : 1.24 - (cycleSecond - 8) * 0.04;
 
@@ -58,9 +60,9 @@ export function UrgeSurfingSheet({ visible, onClose }: UrgeSurfingSheetProps) {
       <Pressable style={s.sheetBackdrop} onPress={onClose}>
         <Pressable style={[s.sheet, { backgroundColor: colors.bg.elevated }]}>
           <View style={[s.sheetHandle, { backgroundColor: colors.border.default }]} />
-          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>Urge surfing</Text>
+          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>{t('urge.title')}</Text>
           <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>
-            Stay with the next breath. Seven minutes is enough for the wave to move.
+            {t('urge.copy')}
           </Text>
 
           <View style={s.timerPanel}>
@@ -74,31 +76,31 @@ export function UrgeSurfingSheet({ visible, onClose }: UrgeSurfingSheetProps) {
               ]}
             >
               <Text style={[s.breathLabel, { color: colors.green[600] }]}>
-                {completed ? 'Done' : started ? breathLabel : 'Ready'}
+                {completed ? t('urge.done') : started ? breathLabel : t('urge.ready')}
               </Text>
               <Text style={[s.breathCount, { color: colors.text.secondary }]}>
-                {completed ? '+50 XP' : started ? breathCount : '7 min'}
+                {completed ? t('urge.reward') : started ? breathCount : t('urge.duration')}
               </Text>
             </View>
             <Text style={[s.timer, { color: colors.text.primary }]}>
-              {completed ? 'You made it.' : timerLabel}
+              {completed ? t('urge.madeIt') : timerLabel}
             </Text>
             <Text style={[s.privateText, { color: colors.text.secondary }]}>
-              Surfed urges are tracked privately in Progress.
+              {t('urge.trackedPrivately')}
             </Text>
           </View>
 
           {completed ? (
             <Pressable accessibilityRole="button" onPress={onClose} style={[s.primaryButton, { backgroundColor: colors.green[500] }]}>
-              <Text style={[s.primaryButtonText, { color: colors.text.inverse }]}>Close</Text>
+              <Text style={[s.primaryButtonText, { color: colors.text.inverse }]}>{t('common.close')}</Text>
             </Pressable>
           ) : started ? (
             <Pressable accessibilityRole="button" onPress={onClose} style={s.textButton}>
-              <Text style={[s.textButtonLabel, { color: colors.text.secondary }]}>Keep protection on</Text>
+              <Text style={[s.textButtonLabel, { color: colors.text.secondary }]}>{t('urge.keepOn')}</Text>
             </Pressable>
           ) : (
             <Pressable accessibilityRole="button" onPress={() => setStarted(true)} style={[s.primaryButton, { backgroundColor: colors.green[500] }]}>
-              <Text style={[s.primaryButtonText, { color: colors.text.inverse }]}>Start 7 minutes</Text>
+              <Text style={[s.primaryButtonText, { color: colors.text.inverse }]}>{t('urge.start')}</Text>
             </Pressable>
           )}
         </Pressable>

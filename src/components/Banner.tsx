@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
+import { Chevron } from '@/components/Chevron';
 import { useTheme } from '@/theme';
 import { radius, spacing, typography } from '@/theme';
 
@@ -61,7 +62,7 @@ export function Banner({
         {subtitle ? <Text style={[s.subtitle, { color: palette.subtitle }]}>{subtitle}</Text> : null}
       </View>
       {trailing === 'chevron' ? (
-        <Feather name="chevron-right" size={16} color={palette.title} />
+        <Chevron size={16} color={palette.title} />
       ) : (
         trailing ?? null
       )}

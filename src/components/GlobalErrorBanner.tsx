@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTranslation } from '@/i18n';
 import { useProtection } from '@/store/ProtectionContext';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -11,6 +12,7 @@ const AUTO_DISMISS_MS = 6000;
 // protection.error themselves; any failed action surfaces here, on every screen.
 export function GlobalErrorBanner() {
   const { colors } = useTheme();
+  const t = useTranslation();
   const insets = useSafeAreaInsets();
   const { error, dismissError } = useProtection();
   const opacity = useRef(new Animated.Value(0)).current;
@@ -29,7 +31,7 @@ export function GlobalErrorBanner() {
     <Animated.View pointerEvents="box-none" style={[s.wrap, { top: insets.top + spacing.sm, opacity }]}>
       <Pressable
         accessibilityRole="alert"
-        accessibilityHint="Tap to dismiss"
+        accessibilityHint={t('error.dismissHint')}
         onPress={dismissError}
         style={[s.banner, { backgroundColor: colors.red[500] }]}
       >

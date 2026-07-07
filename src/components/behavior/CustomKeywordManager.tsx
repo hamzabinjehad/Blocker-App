@@ -5,6 +5,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 
 import { Card } from '../Card';
+import { useTranslation } from '@/i18n';
 import { radius, spacing, typography, useTheme } from '@/theme';
 import type { BlocklistImportResult } from '@/types/blocker';
 
@@ -40,6 +41,7 @@ export function CustomKeywordManager({
   onRemoveAllowlistedDomain,
 }: CustomKeywordManagerProps) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const [keyword, setKeyword] = useState('');
   const [domain, setDomain] = useState('');
   const [pin, setPin] = useState('');
@@ -98,15 +100,15 @@ export function CustomKeywordManager({
       const content = await FileSystem.readAsStringAsync(asset.uri);
       const parsed = parseDomainImport(content);
       if (parsed.length === 0) {
-        setImportMessage('No valid sites found in that file.');
+        setImportMessage(t('keywords.importNoValid'));
         return;
       }
       const imported = await onImportBlockedDomains(parsed, suppliedPin);
       if (imported) {
-        setImportMessage(`Imported ${imported.imported} sites. ${imported.ignored} duplicates.`);
+        setImportMessage(t('keywords.importResult', { imported: imported.imported, ignored: imported.ignored }));
       }
     } catch (cause) {
-      setImportMessage(cause instanceof Error ? cause.message : 'Unable to import that file.');
+      setImportMessage(cause instanceof Error ? cause.message : t('keywords.importFailed'));
     } finally {
       setImporting(false);
     }
@@ -116,18 +118,20 @@ export function CustomKeywordManager({
 
   return (
     <Card
-      title="Keywords & Websites"
-      subtitle="Manage blocked terms and custom website rules."
+      title={t('keywords.title')}
+      subtitle={t('keywords.subtitle')}
       action={
         <View style={[s.badge, { backgroundColor: colors.green[50] }]}>
-          <Text style={[s.badgeText, { color: colors.green[600] }]}>{blockedDomainCount.toLocaleString()} domains</Text>
+          <Text style={[s.badgeText, { color: colors.green[600] }]}>
+            {t('keywords.domainsBadge', { count: blockedDomainCount.toLocaleString() })}
+          </Text>
         </View>
       }
     >
       {pinConfigured ? (
         <TextInput
           keyboardType="number-pad"
-          placeholder="Enter PIN to make changes"
+          placeholder={t('policy.pinPlaceholder')}
           placeholderTextColor={colors.text.muted}
           secureTextEntry
           style={inputStyle}
@@ -138,12 +142,12 @@ export function CustomKeywordManager({
 
       {/* Keywords */}
       <View style={s.section}>
-        <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>Keywords</Text>
+        <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>{t('keywords.sectionKeywords')}</Text>
         <View style={s.inputRow}>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder="Add a blocked keyword"
+            placeholder={t('keywords.addPlaceholder')}
             placeholderTextColor={colors.text.muted}
             returnKeyType="done"
             style={inputStyle}
@@ -171,7 +175,7 @@ export function CustomKeywordManager({
               <Feather name="x" size={11} color={colors.green[600]} />
             </Pressable>
           )) : (
-            <Text style={[s.emptyText, { color: colors.text.muted }]}>No keywords yet.</Text>
+            <Text style={[s.emptyText, { color: colors.text.muted }]}>{t('keywords.empty')}</Text>
           )}
         </View>
       </View>
@@ -179,9 +183,9 @@ export function CustomKeywordManager({
       {/* Websites */}
       <View style={s.section}>
         <View style={s.sectionHeader}>
-          <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>Websites</Text>
+          <Text style={[s.sectionLabel, { color: colors.text.secondary }]}>{t('keywords.sectionWebsites')}</Text>
           <View style={s.sectionMeta}>
-            <Text style={[s.metaText, { color: colors.text.muted }]}>{formatLastUpdate(lastBlocklistUpdate)}</Text>
+            <Text style={[s.metaText, { color: colors.text.muted }]}>{formatLastUpdate(lastBlocklistUpdate, t)}</Text>
             {websiteTab === 'blocked' ? (
               <Pressable
                 accessibilityRole="button"
@@ -191,7 +195,7 @@ export function CustomKeywordManager({
               >
                 <Feather name="upload" size={13} color={importing ? colors.text.muted : colors.text.secondary} />
                 <Text style={[s.importText, { color: importing ? colors.text.muted : colors.text.secondary }]}>
-                  {importing ? 'Importing…' : 'Import'}
+                  {importing ? t('keywords.importing') : t('keywords.import')}
                 </Text>
               </Pressable>
             ) : null}
@@ -211,7 +215,7 @@ export function CustomKeywordManager({
                 style={[s.segBtn, selected && { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}
               >
                 <Text style={[s.segLabel, { color: selected ? colors.text.primary : colors.text.muted }]}>
-                  {tab === 'blocked' ? 'Blocked' : 'Allowed'}{count > 0 ? ` (${count})` : ''}
+                  {tab === 'blocked' ? t('keywords.tabBlocked') : t('keywords.tabAllowed')}{count > 0 ? ` (${count})` : ''}
                 </Text>
               </Pressable>
             );
@@ -223,7 +227,7 @@ export function CustomKeywordManager({
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder={`Search ${websiteTab} sites`}
+            placeholder={websiteTab === 'blocked' ? t('keywords.searchBlocked') : t('keywords.searchAllowed')}
             placeholderTextColor={colors.text.muted}
             style={[s.searchInput, { color: colors.text.primary }]}
             onChangeText={setWebsiteSearch}
@@ -240,7 +244,7 @@ export function CustomKeywordManager({
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder="example.com"
+            placeholder={t('keywords.domainPlaceholder')}
             placeholderTextColor={colors.text.muted}
             returnKeyType="done"
             style={inputStyle}
@@ -259,7 +263,7 @@ export function CustomKeywordManager({
             ]}
           >
             <Text style={[s.actionBtnText, { color: websiteTab === 'blocked' ? colors.red[500] : colors.green[600] }]}>
-              {websiteTab === 'blocked' ? 'Block' : 'Allow'}
+              {websiteTab === 'blocked' ? t('keywords.actionBlock') : t('keywords.actionAllow')}
             </Text>
           </Pressable>
         </View>
@@ -284,14 +288,16 @@ export function CustomKeywordManager({
             </Pressable>
           )) : (
             <Text style={[s.emptyText, { color: colors.text.muted }]}>
-              {websiteSearch ? `No sites matching "${websiteSearch}"` : `No ${websiteTab} sites yet.`}
+              {websiteSearch
+                ? t('keywords.noMatches', { query: websiteSearch })
+                : websiteTab === 'blocked' ? t('keywords.noBlockedYet') : t('keywords.noAllowedYet')}
             </Text>
           )}
         </View>
 
         {filteredDomains.length > 48 ? (
           <Text style={[s.helpText, { color: colors.text.secondary }]}>
-            Showing 48 of {filteredDomains.length}
+            {t('keywords.showingOf', { shown: 48, total: filteredDomains.length })}
           </Text>
         ) : null}
         {importMessage ? (
@@ -302,13 +308,13 @@ export function CustomKeywordManager({
   );
 }
 
-function formatLastUpdate(value: string): string {
+function formatLastUpdate(value: string, t: ReturnType<typeof useTranslation>): string {
   const ts = Date.parse(value);
   if (!Number.isFinite(ts)) return '';
   const days = Math.floor((Date.now() - ts) / 86_400_000);
-  if (days < 1) return 'Updated today';
-  if (days === 1) return 'Updated yesterday';
-  return `Updated ${days}d ago`;
+  if (days < 1) return t('keywords.updatedToday');
+  if (days === 1) return t('keywords.updatedYesterday');
+  return t('keywords.updatedDaysAgo', { days });
 }
 
 function parseDomainImport(content: string): string[] {

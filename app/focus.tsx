@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { AnimatedCard } from '@/components/AnimatedCard';
+import { Banner } from '@/components/Banner';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { FocusModeCard } from '@/components/behavior/FocusModeCard';
 import { UsageLimitsCard } from '@/components/behavior/UsageLimitsCard';
@@ -18,6 +19,16 @@ export default function FocusScreen() {
 
   return (
     <ScreenScaffold title={t('focus.title')} subtitle={t('focus.subtitle')} iconName="focus">
+      {/* Usage access is requested here, where limits actually need it — not in onboarding. */}
+      {protection.hydrated && !protection.usageAccessStatus.granted ? (
+        <Banner
+          icon="bar-chart-2"
+          title={t('ctx.usageTitle')}
+          subtitle={t('ctx.usageSubtitle')}
+          trailing="chevron"
+          onPress={() => void protection.openUsageAccessSettings()}
+        />
+      ) : null}
       <AnimatedCard>
         <FocusModeCard
           installedApps={protection.installedApps}

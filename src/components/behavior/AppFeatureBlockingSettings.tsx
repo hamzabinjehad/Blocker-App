@@ -4,6 +4,8 @@ import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
 import { Field } from '../controls';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import BlockerModule from '@/native/BlockerModule';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { FeatureBlockSettings, InstalledApp, PolicyUpdate } from '@/types/blocker';
@@ -19,12 +21,15 @@ type AppFeatureBlockingSettingsProps = {
 
 type FeatureToggle = {
   key: FeatureBlockKey;
-  label: string;
+  labelKey: TranslationKey;
 };
 
 type FeatureGroup = {
+  // Stable identifier; brand-name groups render it as-is, translatable groups
+  // carry a titleKey instead.
   title: string;
-  description?: string;
+  titleKey?: TranslationKey;
+  descriptionKey?: TranslationKey;
   items: FeatureToggle[];
   packages?: string[];
 };
@@ -34,21 +39,21 @@ const featureGroups: FeatureGroup[] = [
     title: 'Instagram',
     packages: ['com.instagram.android'],
     items: [
-      { key: 'instagramDm', label: 'DM' },
-      { key: 'instagramStories', label: 'Stories' },
-      { key: 'instagramSearch', label: 'Search' },
-      { key: 'instagramExplore', label: 'Explore' },
-      { key: 'instagramReels', label: 'Reels' },
+      { key: 'instagramDm', labelKey: 'appRules.fDm' },
+      { key: 'instagramStories', labelKey: 'appRules.fStories' },
+      { key: 'instagramSearch', labelKey: 'appRules.fSearch' },
+      { key: 'instagramExplore', labelKey: 'appRules.fExplore' },
+      { key: 'instagramReels', labelKey: 'appRules.fReels' },
     ],
   },
   {
     title: 'YouTube',
     packages: ['com.google.android.youtube'],
     items: [
-      { key: 'youtubeSearch', label: 'Search' },
-      { key: 'youtubeShorts', label: 'Shorts' },
-      { key: 'youtubeComments', label: 'Comments' },
-      { key: 'pictureInPicture', label: 'Picture-in-picture' },
+      { key: 'youtubeSearch', labelKey: 'appRules.fSearch' },
+      { key: 'youtubeShorts', labelKey: 'appRules.fShorts' },
+      { key: 'youtubeComments', labelKey: 'appRules.fComments' },
+      { key: 'pictureInPicture', labelKey: 'appRules.fPip' },
     ],
   },
   {
@@ -60,83 +65,86 @@ const featureGroups: FeatureGroup[] = [
       'org.thunderdog.challegram',
     ],
     items: [
-      { key: 'telegramSearch', label: 'Search' },
-      { key: 'telegramSearchHistory', label: 'Search history' },
-      { key: 'telegramChannels', label: 'Channels' },
-      { key: 'telegramGroups', label: 'Groups' },
-      { key: 'telegramBlockedAccounts', label: 'Blocked accounts' },
+      { key: 'telegramSearch', labelKey: 'appRules.fSearch' },
+      { key: 'telegramSearchHistory', labelKey: 'appRules.fSearchHistory' },
+      { key: 'telegramChannels', labelKey: 'appRules.fChannels' },
+      { key: 'telegramGroups', labelKey: 'appRules.fGroups' },
+      { key: 'telegramBlockedAccounts', labelKey: 'appRules.fBlockedAccounts' },
     ],
   },
   {
     title: 'Snapchat',
     packages: ['com.snapchat.android'],
     items: [
-      { key: 'snapchatQuickAdd', label: 'Quick Add' },
-      { key: 'snapchatSearch', label: 'Search' },
-      { key: 'snapchatDiscover', label: 'Discover' },
-      { key: 'snapchatStories', label: 'Stories' },
-      { key: 'snapchatSpotlight', label: 'Spotlight' },
-      { key: 'snapchatMaps', label: 'Maps' },
+      { key: 'snapchatQuickAdd', labelKey: 'appRules.fQuickAdd' },
+      { key: 'snapchatSearch', labelKey: 'appRules.fSearch' },
+      { key: 'snapchatDiscover', labelKey: 'appRules.fDiscover' },
+      { key: 'snapchatStories', labelKey: 'appRules.fStories' },
+      { key: 'snapchatSpotlight', labelKey: 'appRules.fSpotlight' },
+      { key: 'snapchatMaps', labelKey: 'appRules.fMaps' },
     ],
   },
   {
     title: 'X / Twitter',
     packages: ['com.twitter.android', 'com.twitter.android.lite'],
     items: [
-      { key: 'twitterEraseAll', label: 'Block all X/Twitter surfaces' },
-      { key: 'twitterBlockApp', label: 'Block X/Twitter app' },
-      { key: 'twitterSearchMediaTrends', label: 'Search, videos, images, and trends' },
-      { key: 'twitterForYou', label: 'For You page' },
+      { key: 'twitterEraseAll', labelKey: 'appRules.fTwitterAll' },
+      { key: 'twitterBlockApp', labelKey: 'appRules.fTwitterApp' },
+      { key: 'twitterSearchMediaTrends', labelKey: 'appRules.fTwitterSearchMedia' },
+      { key: 'twitterForYou', labelKey: 'appRules.fForYou' },
     ],
   },
   {
     title: 'Discord',
     packages: ['com.discord'],
-    items: [{ key: 'discordBlockApp', label: 'Block Discord app' }],
+    items: [{ key: 'discordBlockApp', labelKey: 'appRules.fDiscordApp' }],
   },
   {
     title: 'Facebook',
     packages: ['com.facebook.katana', 'com.facebook.lite'],
     items: [
-      { key: 'facebookBlockApp', label: 'Block Facebook app' },
-      { key: 'facebookReels', label: 'Reels' },
-      { key: 'facebookStories', label: 'Stories' },
-      { key: 'facebookSearch', label: 'Search' },
-      { key: 'facebookGroups', label: 'Groups' },
+      { key: 'facebookBlockApp', labelKey: 'appRules.fFacebookApp' },
+      { key: 'facebookReels', labelKey: 'appRules.fReels' },
+      { key: 'facebookStories', labelKey: 'appRules.fStories' },
+      { key: 'facebookSearch', labelKey: 'appRules.fSearch' },
+      { key: 'facebookGroups', labelKey: 'appRules.fGroups' },
     ],
   },
   {
     title: 'Reddit and Pinterest',
+    titleKey: 'appRules.groupRedditPinterest',
     packages: ['com.reddit.frontpage', 'com.pinterest'],
     items: [
-      { key: 'redditSearch', label: 'Reddit Search' },
-      { key: 'redditSubreddits', label: 'Reddit subreddits' },
-      { key: 'pinterestSearch', label: 'Pinterest Search' },
+      { key: 'redditSearch', labelKey: 'appRules.fRedditSearch' },
+      { key: 'redditSubreddits', labelKey: 'appRules.fRedditSubs' },
+      { key: 'pinterestSearch', labelKey: 'appRules.fPinterestSearch' },
     ],
   },
   {
     title: 'TikTok',
     packages: ['com.zhiliaoapp.musically', 'com.ss.android.ugc.trill'],
     items: [
-      { key: 'tiktokShorts', label: 'TikTok short-form feed' },
-      { key: 'tiktokSearch', label: 'TikTok Search' },
+      { key: 'tiktokShorts', labelKey: 'appRules.fTiktokFeed' },
+      { key: 'tiktokSearch', labelKey: 'appRules.fTiktokSearch' },
     ],
   },
   {
     title: 'Streaming and browsers',
+    titleKey: 'appRules.groupStreaming',
     items: [
-      { key: 'liveStreamingApps', label: 'Live-streaming apps' },
-      { key: 'browserUnsafeModes', label: 'Browser private or unsafe modes' },
+      { key: 'liveStreamingApps', labelKey: 'appRules.fLiveStreaming' },
+      { key: 'browserUnsafeModes', labelKey: 'appRules.fBrowserUnsafe' },
     ],
   },
   {
     title: 'System safeguards',
-    description: 'Blocks common protection bypass, uninstall, and APK install surfaces when Accessibility is enabled.',
+    titleKey: 'appRules.groupSafeguards',
+    descriptionKey: 'appRules.groupSafeguardsDesc',
     items: [
-      { key: 'androidTamperSettings', label: 'Android protection settings' },
-      { key: 'playStoreUninstallControls', label: 'Play Store uninstall controls' },
-      { key: 'playStoreAdultInstallControls', label: 'Play Store adult-rated installs' },
-      { key: 'packageInstallerControls', label: 'APK installer prompts' },
+      { key: 'androidTamperSettings', labelKey: 'appRules.fTamperSettings' },
+      { key: 'playStoreUninstallControls', labelKey: 'appRules.fPlayUninstall' },
+      { key: 'playStoreAdultInstallControls', labelKey: 'appRules.fPlayAdultInstalls' },
+      { key: 'packageInstallerControls', labelKey: 'appRules.fApkPrompts' },
     ],
   },
 ];
@@ -178,6 +186,7 @@ export function AppFeatureBlockingSettings({
   installedApps,
   onChange,
 }: AppFeatureBlockingSettingsProps) {
+  const t = useTranslation();
   const [pin, setPin] = useState('');
   const [appIcons, setAppIcons] = useState<Record<string, string>>({});
   const fetchedRef = useRef<Set<string>>(new Set());
@@ -270,16 +279,20 @@ export function AppFeatureBlockingSettings({
 
   return (
     <Card
-      title="App Rules"
-      subtitle="Limit risky features in social, video, and browser apps."
-      action={<Chip compact icon="shield-check-outline">{featureCount.enabled}/{featureCount.total} on</Chip>}
+      title={t('appRules.title')}
+      subtitle={t('appRules.subtitle')}
+      action={
+        <Chip compact icon="shield-check-outline">
+          {t('appRules.onCount', { enabled: featureCount.enabled, total: featureCount.total })}
+        </Chip>
+      }
     >
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="PIN"
+          label={t('policy.pinLabel')}
           onChangeText={setPin}
-          placeholder="Enter PIN to make changes"
+          placeholder={t('policy.pinPlaceholder')}
           secureTextEntry
           value={pin}
         />
@@ -287,10 +300,10 @@ export function AppFeatureBlockingSettings({
 
       <View style={styles.quickRow}>
         <Pressable accessibilityRole="button" onPress={() => updateKeys(searchFeatureKeys, true)} style={styles.quickChip}>
-          <Text style={styles.quickChipText}>Block all search</Text>
+          <Text style={styles.quickChipText}>{t('appRules.blockAllSearch')}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => updateKeys(highRiskFeatureKeys, true)} style={styles.quickChip}>
-          <Text style={styles.quickChipText}>Block high-risk</Text>
+          <Text style={styles.quickChipText}>{t('appRules.blockHighRisk')}</Text>
         </Pressable>
       </View>
 
@@ -325,6 +338,7 @@ function FeatureGroupSection({
   onToggle: (key: FeatureBlockKey, value: boolean) => void;
   iconBase64?: string;
 }) {
+  const t = useTranslation();
   const enabledCount = group.items.filter((item) => settings[item.key]).length;
   const allEnabled = enabledCount === group.items.length;
 
@@ -338,8 +352,8 @@ function FeatureGroupSection({
           />
         ) : null}
         <View style={styles.groupText}>
-          <Text style={styles.groupTitle}>{group.title}</Text>
-          {group.description ? <Text style={styles.groupDescription}>{group.description}</Text> : null}
+          <Text style={styles.groupTitle}>{group.titleKey ? t(group.titleKey) : group.title}</Text>
+          {group.descriptionKey ? <Text style={styles.groupDescription}>{t(group.descriptionKey)}</Text> : null}
         </View>
         <Text style={styles.groupCount}>{enabledCount}/{group.items.length}</Text>
         <Switch value={allEnabled} onValueChange={(value) => onApplyGroup(group, value)} />
@@ -347,7 +361,7 @@ function FeatureGroupSection({
       {group.items.map((item) => (
         <ToggleRow
           key={item.key}
-          label={item.label}
+          label={t(item.labelKey)}
           value={settings[item.key]}
           onValueChange={(value) => onToggle(item.key, value)}
         />

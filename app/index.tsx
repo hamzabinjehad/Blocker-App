@@ -6,8 +6,10 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
 import { Banner } from '@/components/Banner';
+import { Chevron } from '@/components/Chevron';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { Skeleton } from '@/components/Skeleton';
 import { StreakPopup } from '@/components/streak/StreakPopup';
 import { useDailyStreakPopup } from '@/components/streak/useDailyStreakPopup';
 import { usePressScale } from '@/components/usePressScale';
@@ -15,12 +17,12 @@ import { XpPopup } from '@/components/XpPopup';
 import { MoodDetailView } from '@/components/MoodDetailView';
 import { MoodFace } from '@/components/MoodFace';
 import { MoodPickerView } from '@/components/MoodPickerView';
-import { getTodaysMood, moodOptions, saveMood } from '@/services/mood';
+import { getTodaysMood, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
 import { useAlertCenter } from '@/store/useAlertCenter';
 import { useGamification } from '@/store/useGamification';
 import { useProtection } from '@/store/ProtectionContext';
-import { formatFullDate, formatShortDate, levelNameKey, useI18n, useTranslation } from '@/i18n';
+import { formatFullDate, formatShortDate, levelNameKey, moodLabelKey, useI18n, useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
@@ -281,7 +283,11 @@ export default function HomeScreen() {
       }
       contentContainerStyle={s.screenContent}
     >
-      {/* Hero card */}
+      {/* Hero card — skeleton until the first bridge status lands, so a cold
+          start never flashes deceptive "Not protected · 0 blocks" copy. */}
+      {!protection.hydrated ? (
+        <Skeleton height={96} radius={radius.lg} />
+      ) : (
       <Animated.View style={heroAnimStyle}>
         <Pressable
           accessibilityRole="button"
@@ -343,11 +349,12 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       </Animated.View>
+      )}
 
       {/* Mood check-in */}
       <MoodStrip mood={mood} onPress={openMoodModal} />
 
-      {!protection.vpnPermissionGranted ? (
+      {protection.hydrated && !protection.vpnPermissionGranted ? (
         <Banner
           icon="alert-triangle"
           title={t('home.vpnNeededTitle')}
@@ -356,13 +363,26 @@ export default function HomeScreen() {
           onPress={() => void protection.prepareVpn()}
         />
       ) : null}
-      {!protection.accessibilityServiceEnabled ? (
+      {protection.hydrated && !protection.accessibilityServiceEnabled ? (
         <Banner
           icon="eye-off"
           title={t('home.behaviorInactiveTitle')}
           subtitle={t('home.behaviorInactiveSubtitle')}
           trailing="chevron"
           onPress={() => void protection.openAccessibilitySettings()}
+        />
+      ) : null}
+      {/* Battery exemption is only pitched once protection has proven itself
+          for a day — an onboarding ask would be noise. */}
+      {protection.hydrated &&
+      !protection.batteryOptimizationStatus.ignored &&
+      gamification.currentStreak >= 1 ? (
+        <Banner
+          icon="battery-charging"
+          title={t('ctx.batteryTitle')}
+          subtitle={t('ctx.batterySubtitle')}
+          trailing="chevron"
+          onPress={() => void protection.requestIgnoreBatteryOptimizations()}
         />
       ) : null}
       <View style={s.quickActionsGrid}>
@@ -393,7 +413,7 @@ function MoodStrip({
         accessibilityRole="button"
         accessibilityLabel={
           mood
-            ? t('home.moodTodayA11y', { mood: moodOptions.find((o) => o.value === mood)?.label ?? '' })
+            ? t('home.moodTodayA11y', { mood: t(moodLabelKey(mood)) })
             : t('home.logMoodA11y')
         }
         onPress={onPress}
@@ -404,7 +424,7 @@ function MoodStrip({
           {
             backgroundColor: colors.bg.elevated,
             borderColor: mood ? colors.border.green : colors.border.subtle,
-            borderLeftColor: mood ? colors.green[500] : colors.border.subtle,
+            borderStartColor: mood ? colors.green[500] : colors.border.subtle,
           },
         ]}
       >
@@ -416,9 +436,9 @@ function MoodStrip({
             <View style={s.completedMoodRight}>
               <MoodFace mood={mood} size={26} />
               <Text style={[s.moodLabel, { color: colors.text.primary }]}>
-                {moodOptions.find((o) => o.value === mood)?.label ?? ''}
+                {t(moodLabelKey(mood))}
               </Text>
-              <Feather name="chevron-right" size={13} color={colors.text.muted} />
+              <Chevron size={13} color={colors.text.muted} />
             </View>
           </>
         ) : (
@@ -427,7 +447,7 @@ function MoodStrip({
               <Feather name="smile" size={15} color={colors.text.muted} />
               <Text style={[s.moodTitle, { color: colors.text.secondary }]}>{t('home.howAreYouFeeling')}</Text>
             </View>
-            <Feather name="chevron-right" size={14} color={colors.text.muted} />
+            <Chevron size={14} color={colors.text.muted} />
           </>
         )}
       </Pressable>
@@ -683,7 +703,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderLeftWidth: 3,
+    borderStartWidth: 3,
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: 52,
@@ -750,7 +770,7 @@ const s = StyleSheet.create({
     minWidth: 16,
     paddingHorizontal: 3,
     position: 'absolute',
-    right: 2,
+    end: 2,
     top: 2,
   },
   bellBadgeText: {

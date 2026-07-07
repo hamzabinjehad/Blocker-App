@@ -4,8 +4,11 @@ import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
 import { Button, Field } from '../controls';
+import { useI18n, weekdayShort } from '@/i18n';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { FocusPolicy, FocusPolicyUpdate, FocusState, InstalledApp } from '@/types/blocker';
+
+type Translate = ReturnType<typeof useI18n>['t'];
 
 type FocusModeCardProps = {
   policy: FocusPolicy;
@@ -24,6 +27,7 @@ export function FocusModeCard({
   onChange,
   onRefreshApps,
 }: FocusModeCardProps) {
+  const { language, t } = useI18n();
   const schedule = policy.schedules[0] ?? defaultSchedule;
   const [pin, setPin] = useState('');
   const [startTime, setStartTime] = useState(minutesToTime(schedule.startMinutes));
@@ -91,27 +95,27 @@ export function FocusModeCard({
 
   return (
     <Card
-      title="Focus Schedule"
-      subtitle="Block apps during specific hours."
+      title={t('focusCard.title')}
+      subtitle={t('focusCard.subtitle')}
       action={
         <Chip compact icon={state.active ? 'timer-lock-outline' : 'timer-outline'}>
-          {state.active ? 'Active' : 'Schedule off'}
+          {state.active ? t('focusCard.chipActive') : t('focusCard.chipOff')}
         </Chip>
       }
     >
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="Parent PIN for Focus changes"
+          label={t('focusCard.pinLabel')}
           onChangeText={setPin}
-          placeholder="Enter PIN"
+          placeholder={t('common.enterPin')}
           secureTextEntry
           value={pin}
         />
       ) : null}
 
       <View style={styles.row}>
-        <Text style={styles.label}>Focus Mode</Text>
+        <Text style={styles.label}>{t('focusCard.focusMode')}</Text>
         <Switch onValueChange={(focusModeEnabled) => update({ focusModeEnabled })} value={policy.focusModeEnabled} />
       </View>
 
@@ -125,7 +129,7 @@ export function FocusModeCard({
             applySchedule(next, endTime, selectedDays);
           }}
         />
-        <Text style={styles.timeArrow}>to</Text>
+        <Text style={styles.timeArrow}>{t('focusCard.to')}</Text>
         <TimeChip
           icon="weather-sunset-up"
           label={endTime}
@@ -137,7 +141,7 @@ export function FocusModeCard({
         />
       </View>
       <View style={styles.timeSummary}>
-        <Text style={styles.empty}>{focusDurationLabel(startTime, endTime)} · {daySummary(selectedDays)}</Text>
+        <Text style={styles.empty}>{focusDurationLabel(startTime, endTime, t)} · {daySummary(selectedDays, t)}</Text>
       </View>
       <View style={styles.dayRow}>
         {dayOptions.map((day) => (
@@ -151,19 +155,19 @@ export function FocusModeCard({
               applySchedule(startTime, endTime, nextDays);
             }}
           >
-            {day.label}
+            {weekdayShort(language, day.value % 7)}
           </Chip>
         ))}
       </View>
       <PackageChips
-        emptyLabel="No extra allowed apps."
+        emptyLabel={t('focusCard.noAllowedApps')}
         icon="check"
         packages={policy.allowedPackages}
         tone="allow"
         onRemove={(packageName) => removePackage('allow', packageName)}
       />
       <PackageChips
-        emptyLabel="No always-blocked apps."
+        emptyLabel={t('focusCard.noBlockedApps')}
         icon="block-helper"
         packages={policy.blockedPackages}
         tone="block"
@@ -171,15 +175,15 @@ export function FocusModeCard({
       />
 
       <View style={styles.appListHeader}>
-        <Text style={styles.label}>Add an app</Text>
+        <Text style={styles.label}>{t('focusCard.addApp')}</Text>
         <Button icon="refresh" tone="neutral" onPress={() => void onRefreshApps()}>
-          Refresh
+          {t('common.refresh')}
         </Button>
       </View>
       <Field
-        label="Search installed apps"
+        label={t('focusCard.searchLabel')}
         onChangeText={setAppSearch}
-        placeholder="App name or package"
+        placeholder={t('focusCard.searchPlaceholder')}
         value={appSearch}
       />
       <View style={styles.appList}>
@@ -196,13 +200,13 @@ export function FocusModeCard({
             <View style={styles.appNameGroup}>
               <Text style={styles.appLabel}>{app.label}</Text>
               <Text style={styles.packageName} numberOfLines={1}>
-                {appStatusLabel(app.packageName, policy.allowedPackages, policy.blockedPackages)}
+                {appStatusLabel(app.packageName, policy.allowedPackages, policy.blockedPackages, t)}
               </Text>
             </View>
-            <Text style={styles.selectHint}>Select</Text>
+            <Text style={styles.selectHint}>{t('focusCard.select')}</Text>
           </Pressable>
         )) : (
-          <Text style={styles.empty}>No installed apps match this filter.</Text>
+          <Text style={styles.empty}>{t('focusCard.noAppsMatch')}</Text>
         )}
       </View>
 
@@ -210,20 +214,20 @@ export function FocusModeCard({
         <View style={styles.selectionPanel}>
           <View style={styles.appNameGroup}>
             <Text style={styles.appLabel}>{selectedApp.label}</Text>
-            <Text style={styles.empty}>{appStatusLabel(selectedApp.packageName, policy.allowedPackages, policy.blockedPackages)}</Text>
+            <Text style={styles.empty}>{appStatusLabel(selectedApp.packageName, policy.allowedPackages, policy.blockedPackages, t)}</Text>
           </View>
           <View style={styles.appActions}>
             <Button icon="check" tone="neutral" onPress={() => addPackage('allow', selectedApp.packageName)}>
-              Allow during focus
+              {t('focusCard.allowDuringFocus')}
             </Button>
             <Button icon="block-helper" tone="danger" onPress={() => addPackage('block', selectedApp.packageName)}>
-              Block during focus
+              {t('focusCard.blockDuringFocus')}
             </Button>
           </View>
         </View>
       ) : null}
 
-      <Text style={styles.note}>Core phone, SMS, launcher, System UI, and this app stay available automatically.</Text>
+      <Text style={styles.note}>{t('focusCard.coreNote')}</Text>
     </Card>
   );
 }
@@ -280,14 +284,16 @@ const defaultSchedule = {
   daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
 };
 
+// Schedule day values: 1 = Monday … 7 = Sunday. `value % 7` maps onto the
+// 0-Sunday-based weekdayShort table.
 const dayOptions = [
-  { label: 'Mon', value: 1 },
-  { label: 'Tue', value: 2 },
-  { label: 'Wed', value: 3 },
-  { label: 'Thu', value: 4 },
-  { label: 'Fri', value: 5 },
-  { label: 'Sat', value: 6 },
-  { label: 'Sun', value: 7 },
+  { value: 1 },
+  { value: 2 },
+  { value: 3 },
+  { value: 4 },
+  { value: 5 },
+  { value: 6 },
+  { value: 7 },
 ];
 
 function toggleDay(current: number[], day: number) {
@@ -295,12 +301,12 @@ function toggleDay(current: number[], day: number) {
   return [...current, day].sort((left, right) => left - right);
 }
 
-function daySummary(days: number[]) {
-  if (days.length === 7) return 'every day';
-  if (days.length === 5 && days.every((day) => day >= 1 && day <= 5)) return 'weekdays';
-  if (days.length === 2 && days.includes(6) && days.includes(7)) return 'weekends';
-  if (days.length === 0) return 'no days selected';
-  return `${days.length} days`;
+function daySummary(days: number[], t: Translate) {
+  if (days.length === 7) return t('focusCard.everyDay');
+  if (days.length === 5 && days.every((day) => day >= 1 && day <= 5)) return t('focusCard.weekdays');
+  if (days.length === 2 && days.includes(6) && days.includes(7)) return t('focusCard.weekends');
+  if (days.length === 0) return t('focusCard.noDays');
+  return t('focusCard.daysCount', { count: days.length });
 }
 
 function normalizePackage(value: string) {
@@ -323,20 +329,20 @@ function timeToMinutes(value: string, fallback: number) {
   return hour * 60 + minute;
 }
 
-function focusDurationLabel(start: string, end: string) {
+function focusDurationLabel(start: string, end: string, t: Translate) {
   const startMinutes = timeToMinutes(start, 22 * 60);
   const endMinutes = timeToMinutes(end, 6 * 60);
   const duration = endMinutes > startMinutes ? endMinutes - startMinutes : 1440 - startMinutes + endMinutes;
   const hours = Math.floor(duration / 60);
   const minutes = duration % 60;
-  if (minutes === 0) return `${hours} hours`;
-  return `${hours}h ${minutes}m`;
+  if (minutes === 0) return t('focusCard.hours', { hours });
+  return t('time.hoursMinutesShort', { hours, minutes });
 }
 
-function appStatusLabel(packageName: string, allowedPackages: string[], blockedPackages: string[]) {
-  if (allowedPackages.includes(packageName)) return 'Allowed during focus';
-  if (blockedPackages.includes(packageName)) return 'Blocked during focus';
-  return 'Tap to choose focus behavior';
+function appStatusLabel(packageName: string, allowedPackages: string[], blockedPackages: string[], t: Translate) {
+  if (allowedPackages.includes(packageName)) return t('focusCard.statusAllowed');
+  if (blockedPackages.includes(packageName)) return t('focusCard.statusBlocked');
+  return t('focusCard.statusTap');
 }
 
 const styles = StyleSheet.create({

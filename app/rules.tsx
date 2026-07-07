@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { Banner } from '@/components/Banner';
 import { PolicyCard } from '@/components/PolicyCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { Skeleton } from '@/components/Skeleton';
 import { AIProtectionCard } from '@/components/behavior/AIProtectionCard';
 import { AppFeatureBlockingSettings } from '@/components/behavior/AppFeatureBlockingSettings';
 import { CustomKeywordManager } from '@/components/behavior/CustomKeywordManager';
@@ -60,13 +61,23 @@ export default function RulesScreen() {
           </View>
         </View>
         <View style={s.metricRow}>
-          <Metric label={t('rules.metricDomainsBlocked')} value={protection.blockedDomainCount.toLocaleString()} tone="success" />
-          <Metric label={t('rules.metricAppRules')} value={String(Object.values(protection.behaviorPolicy.featureBlocks).filter(Boolean).length)} />
-          <Metric label={t('rules.metricCustomEntries')} value={String(
-            protection.behaviorPolicy.customKeywords.length +
-            protection.blockedDomains.length +
-            protection.allowlistedDomains.length
-          )} />
+          {protection.hydrated ? (
+            <>
+              <Metric label={t('rules.metricDomainsBlocked')} value={protection.blockedDomainCount.toLocaleString()} tone="success" />
+              <Metric label={t('rules.metricAppRules')} value={String(Object.values(protection.behaviorPolicy.featureBlocks).filter(Boolean).length)} />
+              <Metric label={t('rules.metricCustomEntries')} value={String(
+                protection.behaviorPolicy.customKeywords.length +
+                protection.blockedDomains.length +
+                protection.allowlistedDomains.length
+              )} />
+            </>
+          ) : (
+            <>
+              <Skeleton height={62} radius={radius.md} style={s.metricSkeleton} />
+              <Skeleton height={62} radius={radius.md} style={s.metricSkeleton} />
+              <Skeleton height={62} radius={radius.md} style={s.metricSkeleton} />
+            </>
+          )}
         </View>
         <View style={[s.scopeNote, { backgroundColor: colors.bg.tertiary }]}>
           <Feather name="crosshair" size={13} color={colors.text.muted} style={s.scopeIcon} />
@@ -155,12 +166,27 @@ export default function RulesScreen() {
         ) : null}
 
         {activeSection === 'apps' ? (
-          <AppFeatureBlockingSettings
-            installedApps={protection.installedApps}
-            onChange={protection.updatePolicy}
-            pinConfigured={protection.pinConfigured}
-            settings={protection.behaviorPolicy.featureBlocks}
-          />
+          <>
+            {/* Overlay permission is asked for here — the block screen App Rules
+                rely on cannot draw without it. */}
+            {protection.hydrated &&
+            !protection.overlayPermissionGranted &&
+            Object.values(protection.behaviorPolicy.featureBlocks).some(Boolean) ? (
+              <Banner
+                icon="layers"
+                title={t('ctx.overlayTitle')}
+                subtitle={t('ctx.overlaySubtitle')}
+                trailing="chevron"
+                onPress={() => void protection.openOverlaySettings()}
+              />
+            ) : null}
+            <AppFeatureBlockingSettings
+              installedApps={protection.installedApps}
+              onChange={protection.updatePolicy}
+              pinConfigured={protection.pinConfigured}
+              settings={protection.behaviorPolicy.featureBlocks}
+            />
+          </>
         ) : null}
       </View>
     </ScreenScaffold>
@@ -235,6 +261,9 @@ const s = StyleSheet.create({
   metricRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  metricSkeleton: {
+    flex: 1,
   },
   metricValue: {
     fontSize: 18,

@@ -10,6 +10,7 @@
     "ios": "expo run:ios",
     "update:blocklists": "tsx scripts/update_blocklists.ts",
     "test:blocklists": "node --import tsx --test tests/blocklists.test.ts",
+    "test:i18n": "node --import tsx --test tests/i18n-guard.test.ts",
     "test": "jest"
   },
   "dependencies": {

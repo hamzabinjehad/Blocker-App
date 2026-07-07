@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/AppIcon';
 import { Field } from '@/components/controls';
 import { UrgeSurfingSheet } from '@/components/UrgeSurfingSheet';
+import { useTranslation } from '@/i18n';
 import { radius, spacing, typography, useTheme } from '@/theme';
 import type { BlockEvent } from '@/types/blocker';
 
@@ -17,6 +18,7 @@ type BlockScreenOverlayProps = {
 
 export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDismiss }: BlockScreenOverlayProps) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const [remaining, setRemaining] = useState(durationSeconds);
   const [pin, setPin] = useState('');
   const [pinSheetVisible, setPinSheetVisible] = useState(false);
@@ -45,8 +47,8 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
           <View style={[styles.breathRing, { borderColor: colors.green[500] }]}>
             <AppIcon name="shield" size={48} color={colors.green[500]} />
           </View>
-          <Text style={[styles.title, { color: colors.text.primary }]}>This content is blocked.</Text>
-          <Text style={[styles.copy, { color: colors.text.secondary }]}>You're doing well. Take a moment.</Text>
+          <Text style={[styles.title, { color: colors.text.primary }]}>{t('blockOverlay.title')}</Text>
+          <Text style={[styles.copy, { color: colors.text.secondary }]}>{t('blockOverlay.copy')}</Text>
         </View>
 
         <View style={styles.actions}>
@@ -55,7 +57,7 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
             onPress={() => setUrgeSheetVisible(true)}
             style={[styles.outlineButton, { borderColor: colors.green[500] }]}
           >
-            <Text style={[styles.outlineButtonText, { color: colors.green[600] }]}>I'm struggling</Text>
+            <Text style={[styles.outlineButtonText, { color: colors.green[600] }]}>{t('coach.imStruggling')}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -64,7 +66,11 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
             style={styles.textButton}
           >
             <Text style={[styles.textButtonLabel, { color: canDismiss ? colors.text.secondary : colors.text.muted }]}>
-              {requiresPin ? 'Enter PIN to dismiss' : remaining > 0 ? `Got it in ${remaining}s` : 'Got it'}
+              {requiresPin
+                ? t('blockOverlay.enterPinToDismiss')
+                : remaining > 0
+                  ? t('blockOverlay.gotItIn', { seconds: remaining })
+                  : t('blockOverlay.gotIt')}
             </Text>
           </Pressable>
         </View>
@@ -75,18 +81,18 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
           <Pressable style={styles.sheetBackdrop} onPress={() => setPinSheetVisible(false)}>
             <Pressable style={[styles.sheet, { backgroundColor: colors.bg.elevated }]}>
               <View style={[styles.sheetHandle, { backgroundColor: colors.border.default }]} />
-              <Text style={[styles.sheetTitle, { color: colors.text.primary }]}>Enter PIN</Text>
-              <Text style={[styles.sheetCopy, { color: colors.text.secondary }]}>A guardian PIN is required to dismiss this screen.</Text>
+              <Text style={[styles.sheetTitle, { color: colors.text.primary }]}>{t('blockOverlay.pinTitle')}</Text>
+              <Text style={[styles.sheetCopy, { color: colors.text.secondary }]}>{t('blockOverlay.pinCopy')}</Text>
               <Field
                 keyboardType="number-pad"
                 label="PIN"
                 onChangeText={setPin}
-                placeholder="Enter PIN"
+                placeholder={t('common.enterPin')}
                 secureTextEntry
                 value={pin}
               />
               <Pressable accessibilityRole="button" onPress={() => void onDismiss(pin)} style={[styles.primaryButton, { backgroundColor: colors.green[500] }]}>
-                <Text style={[styles.primaryButtonText, { color: colors.text.inverse }]}>Dismiss</Text>
+                <Text style={[styles.primaryButtonText, { color: colors.text.inverse }]}>{t('blockOverlay.dismiss')}</Text>
               </Pressable>
             </Pressable>
           </Pressable>

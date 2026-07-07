@@ -4,9 +4,10 @@ import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from '
 import { AnimatedCard } from '@/components/AnimatedCard';
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
+import { EmptyState } from '@/components/EmptyState';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { formatShortDate, levelNameKey, useI18n, useTranslation, weekdayShort } from '@/i18n';
-import type { Language } from '@/i18n';
+import type { Language, TranslationKey } from '@/i18n';
 import { useGamification } from '@/store/useGamification';
 import type { DayRecord } from '@/store/useGamification';
 import { radius, spacing, typography, useTheme } from '@/theme';
@@ -399,7 +400,7 @@ export default function ProgressScreen() {
                 {gamification.latestMilestoneBadge.label}
               </Text>
               <Text style={[s.supportCopy, { color: colors.text.secondary }]}>
-                {milestoneMessage(gamification.latestMilestoneBadge.id)}
+                {t(milestoneMessageKey(gamification.latestMilestoneBadge.id))}
               </Text>
             </Card>
           </Pressable>
@@ -418,7 +419,7 @@ export default function ProgressScreen() {
               {gamification.latestMilestoneBadge?.label}
             </Text>
             <Text style={[s.supportCopy, { color: colors.text.secondary, textAlign: 'center' }]}>
-              {milestoneMessage(gamification.latestMilestoneBadge?.id ?? '')}
+              {t(milestoneMessageKey(gamification.latestMilestoneBadge?.id ?? ''))}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -438,30 +439,27 @@ export default function ProgressScreen() {
             <Text style={[s.cardTitle, { color: colors.text.primary }]}>{t('progress.badges')}</Text>
             <Text style={[s.cardMeta, { color: colors.text.secondary }]}>{t('progress.badgesEarned', { count: earnedBadges.length })}</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badgeGrid}>
-            {(earnedBadges.length > 0
-              ? earnedBadges
-              : [
-                  { id: 'locked-7', label: '7-day streak', earned: false },
-                  { id: 'locked-surf', label: 'First surf', earned: false },
-                  { id: 'locked-journal', label: 'Journaler', earned: false },
-                ]
-            ).map((badge) => (
-              <View
-                key={badge.id}
-                style={[s.badge, { borderColor: colors.border.subtle, backgroundColor: colors.bg.tertiary }]}
-              >
-                <AppIcon
-                  name={badge.earned ? 'check' : 'shield'}
-                  size={16}
-                  color={badge.earned ? colors.green[500] : colors.text.muted}
-                />
-                <Text style={[s.badgeLabel, { color: colors.text.secondary }]} numberOfLines={1}>
-                  {badge.label}
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
+          {earnedBadges.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badgeGrid}>
+              {earnedBadges.map((badge) => (
+                <View
+                  key={badge.id}
+                  style={[s.badge, { borderColor: colors.border.subtle, backgroundColor: colors.bg.tertiary }]}
+                >
+                  <AppIcon name="check" size={16} color={colors.green[500]} />
+                  <Text style={[s.badgeLabel, { color: colors.text.secondary }]} numberOfLines={1}>
+                    {badge.label}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <EmptyState
+              icon="award"
+              title={t('progress.noBadgesTitle')}
+              subtitle={t('progress.noBadgesSubtitle')}
+            />
+          )}
         </Card>
       </AnimatedCard>
 
@@ -486,7 +484,7 @@ const s = StyleSheet.create({
   badgeGrid: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingRight: spacing.md,
+    paddingEnd: spacing.md,
   },
   badgeLabel: {
     fontSize: 11,
@@ -592,15 +590,15 @@ function buildFallbackCalendarDays(): DayRecord[] {
   });
 }
 
-function milestoneMessage(id: string) {
-  const messages: Record<string, string> = {
-    milestone_7: '7 days. A full week of repeated choices is meaningful progress.',
-    milestone_14: '14 days. Your routines are starting to become easier to repeat.',
-    milestone_30: "30 days. You've strengthened new reward pathways through consistent practice.",
-    sixty_days: '60 days. Two months of pattern change is real behavioral evidence.',
-    milestone_90: '90 days. You have built a stable recovery rhythm.',
-    milestone_180: '180 days. Half a year of choices has changed your default path.',
-    year_legend: '365 days. A year of recovery practice is a major life signal.',
+function milestoneMessageKey(id: string): TranslationKey {
+  const keys: Record<string, TranslationKey> = {
+    milestone_7: 'milestone.m7',
+    milestone_14: 'milestone.m14',
+    milestone_30: 'milestone.m30',
+    sixty_days: 'milestone.m60',
+    milestone_90: 'milestone.m90',
+    milestone_180: 'milestone.m180',
+    year_legend: 'milestone.m365',
   };
-  return messages[id] ?? 'A real milestone, earned one day at a time.';
+  return keys[id] ?? 'milestone.default';
 }

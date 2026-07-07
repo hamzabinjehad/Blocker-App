@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text } from 'react-native';
 
+import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { radius, shadow, typography } from '@/theme';
 
 export function XpPopup({ amount, visible }: { amount: number; visible: boolean }) {
   const { colors } = useTheme();
+  const t = useTranslation();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
   const scale = useRef(new Animated.Value(0.7)).current;
@@ -44,7 +46,7 @@ export function XpPopup({ amount, visible }: { amount: number; visible: boolean 
 
   return (
     <Animated.View style={[s.popup, { backgroundColor: colors.green[500] }, shadow.lg, { opacity, transform: [{ translateY }, { scale }] }]}>
-      <Text selectable style={s.text}>+{amount} XP</Text>
+      <Text selectable style={s.text}>{t('xp.gain', { amount })}</Text>
     </Animated.View>
   );
 }

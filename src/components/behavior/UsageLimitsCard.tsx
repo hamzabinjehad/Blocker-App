@@ -4,8 +4,12 @@ import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
 import { Button, Field } from '../controls';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { InstalledApp, UsageLimitPolicy, UsageLimitPolicyUpdate } from '@/types/blocker';
+
+type Translate = ReturnType<typeof useTranslation>;
 
 type UsageLimitsCardProps = {
   policy: UsageLimitPolicy;
@@ -37,6 +41,7 @@ export function UsageLimitsCard({
   onChange,
   onRefreshApps,
 }: UsageLimitsCardProps) {
+  const t = useTranslation();
   const [pin, setPin] = useState('');
   const [category, setCategory] = useState('social_media');
   const [categoryMinutes, setCategoryMinutes] = useState('30');
@@ -88,32 +93,32 @@ export function UsageLimitsCard({
 
   return (
     <Card
-      title="Daily Limits"
-      subtitle="Set a time budget per app."
+      title={t('limits.title')}
+      subtitle={t('limits.subtitle')}
       action={
         <Chip compact icon={usageAccessGranted ? 'timeline-check-outline' : 'timeline-alert-outline'}>
-          {usageAccessGranted ? 'Usage ready' : 'Usage needed'}
+          {usageAccessGranted ? t('limits.chipReady') : t('limits.chipNeeded')}
         </Chip>
       }
     >
       {pinConfigured ? (
         <Field
           keyboardType="number-pad"
-          label="Parent PIN for usage limits"
+          label={t('limits.pinLabel')}
           onChangeText={setPin}
-          placeholder="Enter PIN"
+          placeholder={t('common.enterPin')}
           secureTextEntry
           value={pin}
         />
       ) : null}
 
       <View style={styles.row}>
-        <Text style={styles.label}>Daily usage limits</Text>
+        <Text style={styles.label}>{t('limits.enableToggle')}</Text>
         <Switch onValueChange={(enabled) => update({ enabled })} value={policy.enabled} />
       </View>
 
       <View style={styles.limitPanel}>
-        <Text style={styles.sectionTitle}>Category limits</Text>
+        <Text style={styles.sectionTitle}>{t('limits.categoryTitle')}</Text>
         <View style={styles.chipList}>
           {categoryOptions.map((item) => (
             <Chip
@@ -122,44 +127,44 @@ export function UsageLimitsCard({
               selected={category === item}
               onPress={() => setCategory(item)}
             >
-              {formatCategory(item)}
+              {categoryLabel(item, t)}
             </Chip>
           ))}
         </View>
-        <Field label="Category key" onChangeText={setCategory} placeholder="social_media" value={category} />
+        <Field label={t('limits.categoryKey')} onChangeText={setCategory} placeholder={t('limits.categoryPlaceholder')} value={category} />
         <Field
           keyboardType="number-pad"
-          label="Daily minutes"
+          label={t('limits.dailyMinutes')}
           onChangeText={setCategoryMinutes}
           placeholder="30"
           value={categoryMinutes}
         />
         <Button icon="content-save-outline" tone="neutral" onPress={saveCategoryLimit}>
-          Save Category Limit
+          {t('limits.saveCategory')}
         </Button>
-        <LimitChips limits={policy.categoryLimits} formatLabel={formatCategory} onRemove={(key) => update({ categoryLimits: omitKey(policy.categoryLimits, key) })} />
+        <LimitChips limits={policy.categoryLimits} formatLabel={(value) => categoryLabel(value, t)} onRemove={(key) => update({ categoryLimits: omitKey(policy.categoryLimits, key) })} />
       </View>
 
       <View style={styles.limitPanel}>
         <View style={styles.headerRow}>
-          <Text style={styles.sectionTitle}>Per-app limits</Text>
+          <Text style={styles.sectionTitle}>{t('limits.perAppTitle')}</Text>
           <Button icon="refresh" tone="neutral" onPress={() => void onRefreshApps()}>
-            Refresh
+            {t('common.refresh')}
           </Button>
         </View>
-        <Field label="Package name" onChangeText={setPackageName} placeholder="com.example.app" value={packageName} />
+        <Field label={t('limits.packageName')} onChangeText={setPackageName} placeholder={t('limits.packagePlaceholder')} value={packageName} />
         <Field
           keyboardType="number-pad"
-          label="Daily minutes"
+          label={t('limits.dailyMinutes')}
           onChangeText={setAppMinutes}
           placeholder="30"
           value={appMinutes}
         />
         <Button icon="content-save-outline" tone="neutral" onPress={() => saveAppLimit()}>
-          Save App Limit
+          {t('limits.saveApp')}
         </Button>
         <LimitChips limits={policy.appLimits} onRemove={(key) => update({ appLimits: omitKey(policy.appLimits, key) })} />
-        <Field label="Find installed app" onChangeText={setAppSearch} placeholder="Search app name or package" value={appSearch} />
+        <Field label={t('limits.findApp')} onChangeText={setAppSearch} placeholder={t('limits.findAppPlaceholder')} value={appSearch} />
         <View style={styles.appList}>
           {appRows.map((app) => (
             <View key={app.packageName} style={styles.appRow}>
@@ -168,7 +173,7 @@ export function UsageLimitsCard({
                 <Text style={styles.packageName} numberOfLines={1}>{app.packageName}</Text>
               </View>
               <Button icon="timer-plus-outline" tone="neutral" onPress={() => saveAppLimit(app.packageName)}>
-                Limit
+                {t('limits.limitBtn')}
               </Button>
             </View>
           ))}
@@ -176,12 +181,12 @@ export function UsageLimitsCard({
       </View>
 
       <View style={styles.limitPanel}>
-        <Text style={styles.sectionTitle}>Today</Text>
+        <Text style={styles.sectionTitle}>{t('limits.today')}</Text>
         {policy.trackedApps.length > 0 ? policy.trackedApps.slice(0, 8).map((app) => (
           <View key={`${app.packageName}-${app.source}`} style={styles.usageDashboardRow}>
             <View style={styles.usageRow}>
               <Text style={styles.appLabel}>{app.appLabel}</Text>
-              <Text style={styles.usageText}>{app.usedMinutes} min / {app.limitMinutes} min</Text>
+              <Text style={styles.usageText}>{t('limits.usedOfLimit', { used: app.usedMinutes, limit: app.limitMinutes })}</Text>
             </View>
             <View style={styles.progressTrack}>
               <View
@@ -196,7 +201,7 @@ export function UsageLimitsCard({
             </View>
           </View>
         )) : (
-          <Text style={styles.note}>No usage-limited apps are tracked yet.</Text>
+          <Text style={styles.note}>{t('limits.noTracked')}</Text>
         )}
       </View>
     </Card>
@@ -212,9 +217,10 @@ function LimitChips({
   formatLabel?: (value: string) => string;
   onRemove: (key: string) => void;
 }) {
+  const t = useTranslation();
   const entries = Object.entries(limits).sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) {
-    return <Text style={styles.note}>No limits configured.</Text>;
+    return <Text style={styles.note}>{t('limits.noneConfigured')}</Text>;
   }
 
   return (
@@ -240,7 +246,24 @@ function omitKey(values: Record<string, number>, key: string) {
   return next;
 }
 
-function formatCategory(value: string) {
+const categoryLabelKeys: Record<string, TranslationKey> = {
+  social_media: 'limits.catSocialMedia',
+  short_video: 'limits.catShortVideo',
+  browser: 'limits.catBrowser',
+  private_browser: 'limits.catPrivateBrowser',
+  livestream: 'limits.catLivestream',
+  dating: 'limits.catDating',
+  random_chat: 'limits.catRandomChat',
+  unsafe_ai: 'limits.catUnsafeAi',
+  apk_store: 'limits.catApkStore',
+  vpn: 'limits.catVpn',
+};
+
+// Known categories translate; ad-hoc ones (from installed-app metadata) fall
+// back to prettified snake_case.
+function categoryLabel(value: string, t: Translate) {
+  const key = categoryLabelKeys[value];
+  if (key) return t(key);
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 

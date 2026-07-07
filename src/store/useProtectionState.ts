@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { formatShortDate, useI18n } from '@/i18n';
 import BlockerModule from '@/native/BlockerModule';
 import type {
   AnomalyDetectionStatus,
@@ -299,6 +300,9 @@ const deviceOwnerEnrollmentCommand =
   'adb shell dpm set-device-owner com.example.parentblocker/com.example.blocker.BlockerDeviceAdminReceiver';
 
 export function useProtectionState() {
+  // Deliberate user-facing messages are keyed; generic catch fallbacks stay raw
+  // (native error strings pass through untranslated).
+  const { t, language } = useI18n();
   const galleryAutoScanAttempted = useRef(false);
   const [status, setStatus] = useState<ProtectionStatus>('inactive');
   const [vpnActive, setVpnActive] = useState(false);
@@ -353,6 +357,9 @@ export function useProtectionState() {
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // False until the first getStatus round-trip settles — lets screens show
+  // skeletons instead of the placeholder zeros baked into the initial state.
+  const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   const refreshStatus = useCallback(async (showRefreshing = true) => {
@@ -435,6 +442,7 @@ export function useProtectionState() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to read protection status.');
     } finally {
+      setHydrated(true);
       if (showRefreshing) setRefreshing(false);
     }
   }, []);
@@ -502,19 +510,23 @@ export function useProtectionState() {
 
   const dismissError = useCallback(() => setError(undefined), []);
 
+  // Locked-until copy shared by start/stop paths.
+  const lockedMessage = (unlocksAt?: number | null) =>
+    unlocksAt ? t('error.lockedUntil', { date: formatShortDate(unlocksAt, language) }) : t('error.lockedUnknown');
+
   const prepareVpn = useCallback(async () => {
     setLoading(true);
     try {
       const result = await BlockerModule.prepareVpn();
       setVpnPermissionGranted(result.granted);
       setStatus(result.needsPermission ? 'needs_vpn_permission' : 'inactive');
-      setError(result.needsPermission ? 'Approve the Android VPN dialog, then start protection again.' : undefined);
+      setError(result.needsPermission ? t('error.vpnApprove') : undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to request VPN permission.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const startProtection = useCallback(async (durationDays = 7) => {
     setLoading(true);
@@ -523,7 +535,7 @@ export function useProtectionState() {
       if (permission.needsPermission) {
         setVpnPermissionGranted(false);
         setStatus('needs_vpn_permission');
-        setError('Approve the Android VPN dialog, then tap Start Protection again.');
+        setError(t('error.vpnApprove'));
         return;
       }
 
@@ -531,18 +543,18 @@ export function useProtectionState() {
         const adminResult = await BlockerModule.requestDeviceAdminPermission();
         setManagedDeviceStatus(normalizeManagedDeviceStatus(adminResult.managedDeviceStatus));
         setStatus('inactive');
-        setError('Approve Device Admin so protection can prevent the app from being removed.');
+        setError(t('error.deviceAdminApprove'));
         return;
       }
 
       const result = await BlockerModule.startProtection(durationDays);
       if (result.status === 'time_locked') {
-        setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
+        setError(lockedMessage(result.unlocksAt));
         await refreshStatus(false);
         return;
       }
       if (result.status === 'unlock_countdown_active') {
-        setError('Protection is already waiting to turn off.');
+        setError(t('error.alreadyStopping'));
         await refreshStatus(false);
         return;
       }
@@ -563,7 +575,8 @@ export function useProtectionState() {
     } finally {
       setLoading(false);
     }
-  }, [imageScanningEnabled, managedDeviceStatus.deviceAdminActive, refreshStatus, scanSensitivity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lockedMessage is render-scoped; t/language cover it
+  }, [imageScanningEnabled, managedDeviceStatus.deviceAdminActive, refreshStatus, scanSensitivity, t, language]);
 
   const stopProtection = useCallback(
     async (pin: string): Promise<string> => {
@@ -572,12 +585,12 @@ export function useProtectionState() {
         const result = await BlockerModule.stopProtection(pin);
         if (result.status === 'pin_locked_out') {
           const minutes = Math.ceil(Number(result.remainingMs ?? 0) / 60000);
-          setError(`Too many wrong PIN attempts. Try again in ${Math.max(1, minutes)} minute${minutes === 1 ? '' : 's'}.`);
+          setError(t('error.pinLockout', { minutes: Math.max(1, minutes) }));
           await refreshStatus(false);
           return result.status;
         }
         if (result.status === 'time_locked') {
-          setError(`Protection is locked until ${formatLockDate(result.unlocksAt)}.`);
+          setError(lockedMessage(result.unlocksAt));
           await refreshStatus(false);
           return result.status;
         }
@@ -586,7 +599,7 @@ export function useProtectionState() {
         }
         if (result.status === 'unlock_countdown_active') {
           const seconds = Math.ceil(Number(result.remainingMs ?? 0) / 1000);
-          setError(`Protection can be turned off in ${Math.max(1, seconds)} seconds.`);
+          setError(t('error.stopCountdown', { seconds: Math.max(1, seconds) }));
           await refreshStatus(false);
           return result.status;
         }
@@ -603,12 +616,13 @@ export function useProtectionState() {
         setLoading(false);
       }
     },
-    [refreshStatus],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lockedMessage is render-scoped; t/language cover it
+    [refreshStatus, t, language],
   );
 
   const requirePinForClientSideChange = (pin?: string) => {
     if (pinConfigured && !pin?.trim()) {
-      setError('Parent PIN is required for this setting.');
+      setError(t('error.pinRequiredSetting'));
       return false;
     }
     return true;
@@ -619,7 +633,7 @@ export function useProtectionState() {
       if (!requirePinForClientSideChange(pin)) return false;
       const normalized = normalizeDomain(domain);
       if (!normalized) {
-        setError('Enter a valid domain before adding a rule.');
+        setError(t('error.invalidDomain'));
         return false;
       }
       try {
@@ -634,7 +648,8 @@ export function useProtectionState() {
         return false;
       }
     },
-    [blockedDomains, pinConfigured, refreshStatus],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- requirePinForClientSideChange is render-scoped
+    [blockedDomains, pinConfigured, refreshStatus, t],
   );
 
   const removeBlockedDomain = useCallback(
@@ -662,7 +677,7 @@ export function useProtectionState() {
       if (!requirePinForClientSideChange(pin)) return undefined;
       const normalized = normalizeDomainList(domains);
       if (normalized.length === 0) {
-        setError('No valid domains were found in that import file.');
+        setError(t('error.importNoDomains'));
         return undefined;
       }
 
@@ -680,7 +695,8 @@ export function useProtectionState() {
         return undefined;
       }
     },
-    [pinConfigured, refreshStatus],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- requirePinForClientSideChange is render-scoped
+    [pinConfigured, refreshStatus, t],
   );
 
   const addAllowlistedDomain = useCallback(
@@ -688,7 +704,7 @@ export function useProtectionState() {
       if (!requirePinForClientSideChange(pin)) return false;
       const normalized = normalizeDomain(domain);
       if (!normalized) {
-        setError('Enter a valid domain before adding a rule.');
+        setError(t('error.invalidDomain'));
         return false;
       }
       try {
@@ -702,7 +718,8 @@ export function useProtectionState() {
         return false;
       }
     },
-    [pinConfigured, refreshStatus],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- requirePinForClientSideChange is render-scoped
+    [pinConfigured, refreshStatus, t],
   );
 
   const removeAllowlistedDomain = useCallback(
@@ -905,7 +922,7 @@ export function useProtectionState() {
   const updateKeywordList = useCallback(
     async (keywords: string[], pin?: string) => {
       if (pinConfigured && !pin?.trim()) {
-        setError('Parent PIN is required for keyword changes.');
+        setError(t('error.pinRequiredKeywords'));
         return;
       }
 
@@ -923,7 +940,7 @@ export function useProtectionState() {
         setError(cause instanceof Error ? cause.message : 'Unable to update custom keywords.');
       }
     },
-    [pinConfigured],
+    [pinConfigured, t],
   );
 
   const detectText = useCallback(async (input: string) => {
@@ -933,11 +950,11 @@ export function useProtectionState() {
         const blockEvent = normalizeBlockEvent(event);
         setActiveBlockEvent(blockEvent);
       }
-      setError(event ? undefined : 'No blocked keyword was detected in the test input.');
+      setError(event ? undefined : t('error.keywordTestNone'));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to test keyword detection.');
     }
-  }, []);
+  }, [t]);
 
   const registerScreenContext = useCallback(async (app: string, screen: string) => {
     try {
@@ -958,14 +975,14 @@ export function useProtectionState() {
       if (pinConfigured && behaviorPolicy.behaviorBlockRequiresPin) {
         const result = await BlockerModule.verifyParentPin(pin ?? '');
         if (!result.verified) {
-          setError('Parent PIN is required to dismiss this block.');
+          setError(t('error.pinRequiredDismiss'));
           return;
         }
       }
       setActiveBlockEvent(undefined);
       setError(undefined);
     },
-    [activeBlockEvent, behaviorPolicy.behaviorBlockRequiresPin, pinConfigured],
+    [activeBlockEvent, behaviorPolicy.behaviorBlockRequiresPin, pinConfigured, t],
   );
 
   const openAccessibilitySettings = useCallback(async () => {
@@ -1279,6 +1296,7 @@ export function useProtectionState() {
     installedApps,
     loading,
     refreshing,
+    hydrated,
     error,
     dismissError,
     refreshStatus,
@@ -1794,10 +1812,6 @@ function clampUsageLimit(value?: number) {
   return Math.min(1440, Math.max(0, Math.round(minutes)));
 }
 
-function formatLockDate(value?: number | null) {
-  if (!value) return 'the lock time ends';
-  return new Date(value).toLocaleString();
-}
 
 function managedPolicyReason(reason?: string) {
   switch (reason) {
