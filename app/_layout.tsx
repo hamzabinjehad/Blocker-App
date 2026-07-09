@@ -1,13 +1,17 @@
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PaperProvider } from 'react-native-paper';
 
 import { OnboardingFlow } from '@/components/OnboardingFlow';
 import { GlobalErrorBanner } from '@/components/GlobalErrorBanner';
 import { I18nProvider, useTranslation } from '@/i18n';
 import { ProtectionProvider } from '@/store/ProtectionContext';
+import { ScheduleProfilesProvider } from '@/store/ScheduleProfilesContext';
 import { ThemeProvider, useTheme } from '@/theme';
 import { buildPaperTheme } from '@/theme';
 import { radius } from '@/theme';
@@ -25,8 +29,22 @@ const tabIcons: Record<string, TabFeatherIconName> = {
 
 function TabIcon({ name, color, focused }: { name: TabFeatherIconName; color: string; focused: boolean }) {
   const { colors } = useTheme();
+  const focus = useSharedValue(focused ? 1 : 0);
+
+  useEffect(() => {
+    focus.value = withSpring(focused ? 1 : 0, { damping: 14, mass: 0.7, stiffness: 220 });
+  }, [focus, focused]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: focus.value,
+    transform: [{ scale: interpolate(focus.value, [0, 1], [0.6, 1]) }],
+  }));
+
   return (
-    <View style={[styles.tabIconWrap, focused && { backgroundColor: colors.green[50] }]}>
+    <View style={styles.tabIconWrap}>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.tabIconPill, { backgroundColor: colors.green[50] }, pillStyle]}
+      />
       <Feather name={name} size={focused ? 22 : 21} color={color} />
     </View>
   );
@@ -50,6 +68,7 @@ function AppContent() {
 
   return (
     <PaperProvider theme={paperTheme}>
+      <BottomSheetModalProvider>
       <GlobalErrorBanner />
       <Tabs
         screenOptions={{
@@ -58,7 +77,7 @@ function AppContent() {
           tabBarInactiveTintColor: colors.text.muted,
           tabBarShowLabel: true,
           tabBarLabel: ({ color, children }) => (
-            <Text style={[styles.tabLabel, { color }]}>{children}</Text>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.tabLabel, { color }]}>{children}</Text>
           ),
           tabBarLabelStyle: {
             fontSize: 10,
@@ -120,29 +139,40 @@ function AppContent() {
         <Tabs.Screen name="guardian" options={{ href: null }} />
         <Tabs.Screen name="alerts" options={{ href: null }} />
       </Tabs>
+      </BottomSheetModalProvider>
     </PaperProvider>
   );
 }
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <I18nProvider>
-        <ProtectionProvider>
-          <AppContent />
-        </ProtectionProvider>
-      </I18nProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <ThemeProvider>
+        <I18nProvider>
+          <ProtectionProvider>
+            <ScheduleProfilesProvider>
+              <AppContent />
+            </ScheduleProfilesProvider>
+          </ProtectionProvider>
+        </I18nProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   tabIconWrap: {
     alignItems: 'center',
     borderRadius: radius.full,
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  tabIconPill: {
+    borderRadius: radius.full,
   },
   tabLabel: {
     fontSize: 11,

@@ -535,27 +535,29 @@ test("native bridge exposes Usage Access, Guardian alert, allowlist, and strict 
 });
 
 test("setup checklist wires Android permission prompts into onboarding", () => {
-  // The permission checklist lives in the onboarding flow; the dashboard keeps only
-  // quick notices for VPN and Accessibility.
+  // Since the V2-D contextual-permissions pass, onboarding asks only for the two
+  // critical permissions (VPN + Accessibility). The deferred ones surface where
+  // they matter: overlay on the Rules apps section, usage access on Focus, and
+  // device admin stays on Guardian. The dashboard keeps quick notices for the
+  // two critical permissions.
   const dashboard = readFileSync(join(process.cwd(), "app", "index.tsx"), "utf8");
   const onboarding = readFileSync(join(process.cwd(), "src", "components", "OnboardingFlow.tsx"), "utf8");
+  const rules = readFileSync(join(process.cwd(), "app", "rules.tsx"), "utf8");
+  const focus = readFileSync(join(process.cwd(), "app", "focus.tsx"), "utf8");
+  const guardian = readFileSync(join(process.cwd(), "app", "guardian.tsx"), "utf8");
   const stateStore = readFileSync(join(process.cwd(), "src", "store", "useProtectionState.ts"), "utf8");
 
-  [
-    "protection.prepareVpn",
-    "protection.openAccessibilitySettings",
-    "protection.openOverlaySettings",
-    "protection.openUsageAccessSettings",
-    "protection.requestDeviceAdminPermission",
-  ].forEach((handler) => assert.match(onboarding, new RegExp(handler.replace(".", "\\."))));
+  ["protection.prepareVpn", "protection.openAccessibilitySettings"].forEach((handler) =>
+    assert.match(onboarding, new RegExp(handler.replace(".", "\\."))),
+  );
+  ["vpnPermissionGranted", "accessibilityServiceEnabled"].forEach((statusKey) =>
+    assert.match(onboarding, new RegExp(statusKey.replace(".", "\\."))),
+  );
 
-  [
-    "vpnPermissionGranted",
-    "accessibilityServiceEnabled",
-    "overlayPermissionGranted",
-    "usageAccessStatus.granted",
-    "managedDeviceStatus.deviceAdminActive",
-  ].forEach((statusKey) => assert.match(onboarding, new RegExp(statusKey.replace(".", "\\."))));
+  assert.match(rules, /protection\.openOverlaySettings/);
+  assert.match(rules, /overlayPermissionGranted/);
+  assert.match(focus, /protection\.openUsageAccessSettings/);
+  assert.match(guardian, /requestDeviceAdminPermission/);
 
   ["protection.prepareVpn", "protection.openAccessibilitySettings"].forEach((handler) =>
     assert.match(dashboard, new RegExp(handler.replace(".", "\\."))),

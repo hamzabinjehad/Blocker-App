@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Feather } from '@expo/vector-icons';
 
 import { AppIcon } from '@/components/AppIcon';
+import { AppSheet } from '@/components/AppSheet';
 import { Card } from '@/components/Card';
 import { Chevron } from '@/components/Chevron';
 import { EmptyState } from '@/components/EmptyState';
@@ -208,11 +210,8 @@ function MomentLogSheet({
   };
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={s.sheetBackdrop} onPress={onClose}>
-        <Pressable style={[s.sheet, { backgroundColor: colors.bg.elevated }]}>
-          <View style={[s.sheetHandle, { backgroundColor: colors.border.default }]} />
-          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>Log a moment</Text>
+    <AppSheet visible={visible} onClose={onClose}>
+      <Text style={[s.sheetTitle, { color: colors.text.primary }]}>Log a moment</Text>
           {saved ? (
             <>
               <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>Thank you for your honesty. +20 XP.</Text>
@@ -270,7 +269,7 @@ function MomentLogSheet({
                   </Pressable>
                 ))}
               </View>
-              <TextInput
+              <BottomSheetTextInput
                 multiline
                 onChangeText={setNotes}
                 placeholder="Optional note"
@@ -307,9 +306,7 @@ function MomentLogSheet({
               )}
             </>
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </AppSheet>
   );
 }
 
@@ -430,18 +427,6 @@ const s = StyleSheet.create({
   optionText: {
     ...typography.captionMd,
   },
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    gap: spacing.md,
-    padding: spacing.xl,
-    width: '100%',
-  },
-  sheetBackdrop: {
-    backgroundColor: 'rgba(21,26,23,0.18)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   sheetButton: {
     alignItems: 'center',
     borderRadius: radius.md,
@@ -453,12 +438,6 @@ const s = StyleSheet.create({
   },
   sheetCopy: {
     ...typography.body,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    borderRadius: radius.full,
-    height: 4,
-    width: 32,
   },
   sheetTitle: {
     fontSize: 17,

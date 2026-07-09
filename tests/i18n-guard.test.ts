@@ -32,6 +32,9 @@ const LOCALIZED_FILES = [
   "src/components/behavior/CustomKeywordManager.tsx",
   "src/components/behavior/FocusModeCard.tsx",
   "src/components/behavior/UsageLimitsCard.tsx",
+  "src/components/UsageStatsCard.tsx",
+  "src/components/ScheduleProfilesCard.tsx",
+  "src/components/TimeField.tsx",
 ];
 
 // Matches literal latin text as the first content inside a <Text …> element

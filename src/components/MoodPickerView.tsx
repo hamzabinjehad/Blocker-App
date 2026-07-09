@@ -65,6 +65,7 @@ export function MoodPickerView({ onSelect, onClose }: Props) {
             >
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={t(moodLabelKey(bubble.value))}
                 onPress={() => onSelect(bubble.value)}
                 style={{ alignItems: 'center', width: '100%' }}
               >

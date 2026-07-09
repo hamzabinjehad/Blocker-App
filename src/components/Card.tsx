@@ -54,8 +54,8 @@ export function Card({
       {title || subtitle || action ? (
         <View style={s.header}>
           <View style={s.titleGroup}>
-            {title ? <Text selectable style={[s.title, { color: colors.text.primary }]}>{title}</Text> : null}
-            {subtitle ? <Text selectable style={[s.subtitle, { color: colors.text.secondary }]}>{subtitle}</Text> : null}
+            {title ? <Text maxFontSizeMultiplier={1.5} selectable style={[s.title, { color: colors.text.primary }]}>{title}</Text> : null}
+            {subtitle ? <Text maxFontSizeMultiplier={1.5} selectable style={[s.subtitle, { color: colors.text.secondary }]}>{subtitle}</Text> : null}
           </View>
           {action}
         </View>

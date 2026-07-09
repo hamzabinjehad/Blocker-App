@@ -17,6 +17,7 @@ import type {
   GuardianAlert,
   HttpsInspectionStatus,
   InstalledApp,
+  DailyUsageSummary,
   IntegrityStatus,
   MediaScanningStatus,
   ManagedEnforcementStatus,
@@ -1192,6 +1193,15 @@ export function useProtectionState() {
     }
   }, []);
 
+  const fetchDailyUsageSummary = useCallback(async (): Promise<DailyUsageSummary> => {
+    try {
+      return await BlockerModule.getDailyUsageSummary();
+    } catch {
+      // Stale native builds without the bridge method just report unavailable.
+      return { available: false };
+    }
+  }, []);
+
   const openOverlaySettings = useCallback(async () => {
     try {
       await BlockerModule.openOverlaySettings();
@@ -1340,6 +1350,7 @@ export function useProtectionState() {
     openBatteryOptimizationSettings,
     requestIgnoreBatteryOptimizations,
     openUsageAccessSettings,
+    fetchDailyUsageSummary,
     openOverlaySettings,
     applyStrictDeviceOwnerPolicy,
     setStrictModeEnabled,

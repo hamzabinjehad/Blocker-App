@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { Badge, Chip, Divider, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -181,16 +182,21 @@ export function AlertCenterCard({
       ) : (
         <View style={styles.alertList}>
           {displayedAlerts.map((alert) => (
-            <AlertRow
+            <Animated.View
               key={alert.id}
-              alert={alert}
-              isExpanded={expandedAlertId === alert.id}
-              onPress={() => {
-                setExpandedAlertId(expandedAlertId === alert.id ? null : alert.id);
-                if (!alert.read) void onMarkAsRead(alert.id);
-              }}
-              onDelete={() => void onDeleteAlert(alert.id)}
-            />
+              exiting={FadeOut.duration(150)}
+              layout={LinearTransition.duration(220)}
+            >
+              <AlertRow
+                alert={alert}
+                isExpanded={expandedAlertId === alert.id}
+                onPress={() => {
+                  setExpandedAlertId(expandedAlertId === alert.id ? null : alert.id);
+                  if (!alert.read) void onMarkAsRead(alert.id);
+                }}
+                onDelete={() => void onDeleteAlert(alert.id)}
+              />
+            </Animated.View>
           ))}
         </View>
       )}
@@ -202,7 +208,11 @@ export function AlertCenterCard({
       )}
 
       {showSettings && (
-        <View style={styles.settingsPanel}>
+        <Animated.View
+          entering={FadeIn.duration(180)}
+          exiting={FadeOut.duration(140)}
+          style={styles.settingsPanel}
+        >
           <Divider />
           <View style={styles.settingsHeader}>
             <View>
@@ -295,7 +305,7 @@ export function AlertCenterCard({
             value={preferences.dailyDigestEnabled}
             onToggle={(v) => void onUpdatePreferences({ dailyDigestEnabled: v })}
           />
-        </View>
+        </Animated.View>
       )}
     </Card>
   );
@@ -330,7 +340,7 @@ function AlertRow({
         </View>
 
         {isExpanded && (
-          <View style={styles.alertExpanded}>
+          <Animated.View entering={FadeIn.duration(160)} style={styles.alertExpanded}>
             <Text style={styles.alertDescription}>{alert.description}</Text>
             {alert.app && (
               <Text style={styles.alertMeta}>{t('alertsCard.metaApp', { app: alert.app })}</Text>
@@ -351,7 +361,7 @@ function AlertRow({
                 {t('common.delete')}
               </Button>
             </View>
-          </View>
+          </Animated.View>
         )}
       </View>
     </TouchableOpacity>
@@ -382,8 +392,8 @@ function StatPill({
         selected ? { backgroundColor: color + '18' } : null,
       ]}
     >
-      <Text style={[styles.statCount, { color: count > 0 ? color : colors.text.primary }]}>{count}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.4} style={[styles.statCount, { color: count > 0 ? color : colors.text.primary }]}>{count}</Text>
+      <Text maxFontSizeMultiplier={1.4} style={styles.statLabel}>{label}</Text>
     </TouchableOpacity>
   );
 }

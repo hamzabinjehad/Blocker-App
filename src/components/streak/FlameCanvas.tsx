@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 
 import { radius, useTheme } from '@/theme';
 
@@ -21,53 +31,53 @@ type Particle = {
 
 const PARTICLE_COUNT = 52;
 
+// The whole flame runs off two shared values (a looping clock + an entrance
+// progress); every particle derives its frame from them in a UI-thread worklet,
+// so the JS thread does no per-frame work.
 export function FlameCanvas({ streakDays, state }: FlameCanvasProps) {
   const { colors } = useTheme();
-  const loop = useRef(new Animated.Value(0)).current;
-  const entrance = useRef(new Animated.Value(0)).current;
+  const loop = useSharedValue(0);
+  const entrance = useSharedValue(0);
   const particles = useMemo(() => buildParticles(), []);
   const baseHeight = flameHeightForStreak(streakDays);
   const flameHeight = state === 'freeze' ? baseHeight * 0.82 : baseHeight;
-  const palette = state === 'freeze'
+  const freeze = state === 'freeze';
+  const palette = freeze
     ? [colors.blue[400], colors.blue[500], '#B8D9F2']
     : ['#176341', colors.green[500], '#CDE9A1'];
 
   useEffect(() => {
-    const runner = Animated.loop(
-      Animated.timing(loop, {
-        duration: state === 'freeze' ? 2400 : 1700,
-        easing: Easing.linear,
-        toValue: 1,
-        useNativeDriver: true,
-      }),
+    loop.value = 0;
+    loop.value = withRepeat(
+      withTiming(1, { duration: state === 'freeze' ? 2400 : 1700, easing: Easing.linear }),
+      -1,
+      false,
     );
-    runner.start();
-    return () => runner.stop();
+    return () => cancelAnimation(loop);
   }, [loop, state]);
 
   useEffect(() => {
-    entrance.setValue(state === 'freshStart' ? 1 : 0.82);
-    Animated.timing(entrance, {
+    entrance.value = state === 'freshStart' ? 1 : 0.82;
+    entrance.value = withTiming(state === 'freshStart' ? 0 : 1, {
       duration: state === 'freshStart' ? 600 : 800,
       easing: state === 'freshStart' ? Easing.in(Easing.cubic) : Easing.out(Easing.cubic),
-      toValue: state === 'freshStart' ? 0 : 1,
-      useNativeDriver: true,
-    }).start();
+    });
   }, [entrance, state, streakDays]);
+
+  const stoneStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(entrance.value, [0, 1], [1, 0.2]),
+    transform: [{ scale: interpolate(entrance.value, [0, 1], [1, 1.8]) }],
+  }));
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(entrance.value, [0, 1], [0, freeze ? 0.68 : 0.84]),
+    transform: [{ scale: interpolate(entrance.value, [0, 1], [0.82, 1]) }],
+  }));
 
   if (state === 'freshStart') {
     return (
       <View style={[s.stage, { height: flameHeightForStreak(1) + 54 }]}>
-        <Animated.View
-          style={[
-            s.baseStone,
-            {
-              backgroundColor: colors.teal[200],
-              opacity: entrance.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] }),
-              transform: [{ scale: entrance.interpolate({ inputRange: [0, 1], outputRange: [1, 1.8] }) }],
-            },
-          ]}
-        />
+        <Animated.View style={[s.baseStone, { backgroundColor: colors.teal[200] }, stoneStyle]} />
       </View>
     );
   }
@@ -76,99 +86,112 @@ export function FlameCanvas({ streakDays, state }: FlameCanvasProps) {
     <View style={[s.stage, { height: flameHeight + 54 }]}>
       <Animated.View
         pointerEvents="none"
-        style={[
-          s.glow,
-          {
-            backgroundColor: state === 'freeze' ? colors.blue[50] : colors.green[50],
-            opacity: entrance.interpolate({ inputRange: [0, 1], outputRange: [0, state === 'freeze' ? 0.68 : 0.84] }),
-            transform: [{ scale: entrance.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
-          },
-        ]}
+        style={[s.glow, { backgroundColor: freeze ? colors.blue[50] : colors.green[50] }, glowStyle]}
       />
-      {particles.map((particle, index) => {
-        const age = Animated.modulo(Animated.add(loop, particle.phase), 1);
-        const translateY = age.interpolate({
-          inputRange: [0, 1],
-          outputRange: [flameHeight * 0.24, -flameHeight * 0.76],
-        });
-        const translateX = age.interpolate({
-          inputRange: [0, 0.45, 1],
-          outputRange: [particle.startX, particle.startX + particle.drift * 0.34, particle.startX + particle.drift],
-        });
-        const opacity = age.interpolate({
-          inputRange: [0, 0.14, 0.72, 1],
-          outputRange: [0, 0.72, state === 'freeze' ? 0.42 : 0.58, 0],
-        });
-        const scale = age.interpolate({
-          inputRange: [0, 0.62, 1],
-          outputRange: [1.12, 0.72, 0.18],
-        });
-
-        return (
-          <Animated.View
-            key={`${particle.phase}-${index}`}
-            pointerEvents="none"
-            style={[
-              s.particleAnchor,
-              {
-                opacity,
-                transform: [
-                  { translateX },
-                  { translateY },
-                  { scale: Animated.multiply(scale, entrance) },
-                  { rotate: `${particle.turn}deg` },
-                ],
-              },
-            ]}
-          >
-            <View
-              style={[
-                s.particle,
-                {
-                  backgroundColor: palette[particle.tone] ?? palette[1],
-                  height: particle.size * 1.36,
-                  width: particle.size,
-                },
-              ]}
-            />
-          </Animated.View>
-        );
-      })}
-      {streakDays >= 90 ? <Shimmer color={state === 'freeze' ? colors.blue[400] : colors.green[400]} loop={loop} /> : null}
+      {particles.map((particle, index) => (
+        <FlameParticle
+          key={`${particle.phase}-${index}`}
+          color={palette[particle.tone] ?? palette[1]}
+          entrance={entrance}
+          flameHeight={flameHeight}
+          freeze={freeze}
+          loop={loop}
+          particle={particle}
+        />
+      ))}
+      {streakDays >= 90 ? (
+        <Shimmer color={freeze ? colors.blue[400] : colors.green[400]} loop={loop} />
+      ) : null}
     </View>
   );
 }
 
-function Shimmer({ color, loop }: { color: string; loop: Animated.Value }) {
+function FlameParticle({
+  color,
+  entrance,
+  flameHeight,
+  freeze,
+  loop,
+  particle,
+}: {
+  color: string;
+  entrance: SharedValue<number>;
+  flameHeight: number;
+  freeze: boolean;
+  loop: SharedValue<number>;
+  particle: Particle;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const age = (loop.value + particle.phase) % 1;
+    return {
+      opacity: interpolate(age, [0, 0.14, 0.72, 1], [0, 0.72, freeze ? 0.42 : 0.58, 0]),
+      transform: [
+        {
+          translateX: interpolate(
+            age,
+            [0, 0.45, 1],
+            [particle.startX, particle.startX + particle.drift * 0.34, particle.startX + particle.drift],
+          ),
+        },
+        { translateY: interpolate(age, [0, 1], [flameHeight * 0.24, -flameHeight * 0.76]) },
+        { scale: interpolate(age, [0, 0.62, 1], [1.12, 0.72, 0.18]) * entrance.value },
+        { rotate: `${particle.turn}deg` },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View pointerEvents="none" style={[s.particleAnchor, animatedStyle]}>
+      <View
+        style={[
+          s.particle,
+          { backgroundColor: color, height: particle.size * 1.36, width: particle.size },
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
+function Shimmer({ color, loop }: { color: string; loop: SharedValue<number> }) {
   return (
     <>
-      {[0.18, 0.48, 0.76].map((phase, index) => {
-        const age = Animated.modulo(Animated.add(loop, phase), 1);
-        return (
-          <Animated.View
-            key={phase}
-            style={[
-              s.spark,
-              {
-                backgroundColor: color,
-                opacity: age.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0.6, 0] }),
-                transform: [
-                  {
-                    translateX: age.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [index === 1 ? 4 : -14 + index * 14, index === 1 ? 18 : -4 + index * 16],
-                    }),
-                  },
-                  { translateY: age.interpolate({ inputRange: [0, 1], outputRange: [-120, -156] }) },
-                  { scale: age.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.5, 1, 0.2] }) },
-                ],
-              },
-            ]}
-          />
-        );
-      })}
+      {[0.18, 0.48, 0.76].map((phase, index) => (
+        <ShimmerSpark key={phase} color={color} index={index} loop={loop} phase={phase} />
+      ))}
     </>
   );
+}
+
+function ShimmerSpark({
+  color,
+  index,
+  loop,
+  phase,
+}: {
+  color: string;
+  index: number;
+  loop: SharedValue<number>;
+  phase: number;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const age = (loop.value + phase) % 1;
+    return {
+      opacity: interpolate(age, [0, 0.35, 1], [0, 0.6, 0]),
+      transform: [
+        {
+          translateX: interpolate(
+            age,
+            [0, 1],
+            [index === 1 ? 4 : -14 + index * 14, index === 1 ? 18 : -4 + index * 16],
+          ),
+        },
+        { translateY: interpolate(age, [0, 1], [-120, -156]) },
+        { scale: interpolate(age, [0, 0.35, 1], [0.5, 1, 0.2]) },
+      ],
+    };
+  });
+
+  return <Animated.View style={[s.spark, { backgroundColor: color }, animatedStyle]} />;
 }
 
 function flameHeightForStreak(streakDays: number) {

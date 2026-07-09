@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 
 import { Banner } from '@/components/Banner';
 import { PolicyCard } from '@/components/PolicyCard';
+import { ScheduleProfilesCard } from '@/components/ScheduleProfilesCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { Skeleton } from '@/components/Skeleton';
 import { AIProtectionCard } from '@/components/behavior/AIProtectionCard';
@@ -13,6 +14,7 @@ import { RecentlyBlockedCard } from '@/components/RecentlyBlockedCard';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { useProtection } from '@/store/ProtectionContext';
+import { useSchedules } from '@/store/ScheduleProfilesContext';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
 type ControlSection = 'filtering' | 'lists' | 'apps';
@@ -28,6 +30,7 @@ export default function RulesScreen() {
   const t = useTranslation();
   const { colors } = useTheme();
   const protection = useProtection();
+  const schedules = useSchedules();
   const [activeSection, setActiveSection] = useState<ControlSection>('filtering');
 
   // Installed apps load lazily, first time the Apps section is opened.
@@ -138,6 +141,14 @@ export default function RulesScreen() {
               onUpdatePolicy={protection.updatePolicy}
               pinConfigured={protection.pinConfigured}
             />
+            <ScheduleProfilesCard
+              profiles={schedules.profiles}
+              activeState={schedules.activeState}
+              onToggleProfile={schedules.toggleProfile}
+              onUpdateProfile={schedules.updateProfile}
+              onAddProfile={schedules.addProfile}
+              onRemoveProfile={schedules.removeProfile}
+            />
           </View>
         ) : null}
 
@@ -236,8 +247,8 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: S
   const valueColor = tone === 'success' ? colors.green[600] : colors.text.primary;
   return (
     <View style={[s.metric, { backgroundColor: colors.bg.tertiary }]}>
-      <Text style={[s.metricValue, { color: valueColor }]} numberOfLines={1}>{value}</Text>
-      <Text style={[s.metricLabel, { color: colors.text.muted }]}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.4} style={[s.metricValue, { color: valueColor }]} numberOfLines={1}>{value}</Text>
+      <Text maxFontSizeMultiplier={1.4} style={[s.metricLabel, { color: colors.text.muted }]}>{label}</Text>
     </View>
   );
 }

@@ -4,8 +4,11 @@ import { Chip, IconButton, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Card } from './Card';
+import { TimeField } from './TimeField';
 import { Button, Field } from './controls';
-import { colors, radius, spacing, typography } from '@/theme';
+import { formatTimeOfDay, useI18n, weekdayShort } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
+import { radius, spacing, typography, useTheme } from '@/theme';
 import type { ActiveScheduleState, ScheduleProfile, StrictnessLevel } from '@/types/blocker';
 
 type ScheduleProfilesCardProps = {
@@ -17,31 +20,29 @@ type ScheduleProfilesCardProps = {
   onRemoveProfile: (id: string) => Promise<void>;
 };
 
-const STRICTNESS_COLORS: Record<StrictnessLevel, string> = {
-  off: colors.text.muted,
-  low: colors.blue[400],
-  moderate: colors.amber[400],
-  high: colors.purple[400],
-  lockdown: colors.red[400],
+const STRICTNESS_LABEL_KEYS: Record<StrictnessLevel, TranslationKey> = {
+  off: 'schedules.levelOff',
+  low: 'schedules.levelLow',
+  moderate: 'schedules.levelModerate',
+  high: 'schedules.levelHigh',
+  lockdown: 'schedules.levelLockdown',
 };
 
-const STRICTNESS_LABELS: Record<StrictnessLevel, string> = {
-  off: 'Off',
-  low: 'Low',
-  moderate: 'Moderate',
-  high: 'High',
-  lockdown: 'Lockdown',
+// The three built-in profiles ship with English labels persisted in
+// AsyncStorage; render them from keys, but keep user-created labels literal.
+const DEFAULT_PROFILE_LABEL_KEYS: Record<string, TranslationKey> = {
+  bedtime: 'schedules.profileBedtime',
+  school: 'schedules.profileSchool',
+  freetime: 'schedules.profileFreetime',
 };
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const DAY_VALUES = [1, 2, 3, 4, 5, 6, 7];
+const DAY_VALUES = [1, 2, 3, 4, 5, 6, 7]; // 1 = Monday … 7 = Sunday
 
-function formatMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = minutes % 60;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+type Translate = ReturnType<typeof useI18n>['t'];
+
+function profileLabel(profile: Pick<ScheduleProfile, 'id' | 'label'>, t: Translate): string {
+  const key = DEFAULT_PROFILE_LABEL_KEYS[profile.id];
+  return key ? t(key) : profile.label;
 }
 
 export function ScheduleProfilesCard({
@@ -52,42 +53,67 @@ export function ScheduleProfilesCard({
   onAddProfile,
   onRemoveProfile,
 }: ScheduleProfilesCardProps) {
+  const { colors } = useTheme();
+  const { t, language } = useI18n();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newStrictness, setNewStrictness] = useState<StrictnessLevel>('high');
 
+  const strictnessColors: Record<StrictnessLevel, string> = {
+    off: colors.text.muted,
+    low: colors.blue[400],
+    moderate: colors.amber[400],
+    high: colors.purple[400],
+    lockdown: colors.red[400],
+  };
+
+  const activeProfile = activeState.activeProfileId
+    ? profiles.find((p) => p.id === activeState.activeProfileId)
+    : undefined;
+  const nextProfile = activeState.nextProfileLabel
+    ? profiles.find((p) => p.label === activeState.nextProfileLabel)
+    : undefined;
+
   return (
-    <Card
-      title="Schedule Profiles"
-      subtitle="Automatically adjust strictness by time of day."
-    >
+    <Card title={t('schedules.title')} subtitle={t('schedules.subtitle')}>
       {/* Active state banner */}
-      {activeState.activeProfileId && (
-        <View style={styles.activeBanner}>
+      {activeProfile && (
+        <View
+          style={[
+            styles.activeBanner,
+            { backgroundColor: colors.green[50], borderColor: colors.border.green },
+          ]}
+        >
           <MaterialCommunityIcons name="shield-check" size={20} color={colors.green[400]} />
           <View style={styles.activeBannerText}>
-            <Text style={styles.activeLabel}>
-              Active: {activeState.activeProfileLabel}
+            <Text style={[styles.activeLabel, { color: colors.green[600] }]}>
+              {t('schedules.activeNow', { label: profileLabel(activeProfile, t) })}
             </Text>
-            <Text style={styles.activeStrictness}>
-              Strictness: {STRICTNESS_LABELS[activeState.currentStrictness]}
+            <Text style={[styles.activeStrictness, { color: colors.green[500] }]}>
+              {t('schedules.strictnessValue', { level: t(STRICTNESS_LABEL_KEYS[activeState.currentStrictness]) })}
             </Text>
           </View>
           <Chip
             compact
-            style={{ backgroundColor: STRICTNESS_COLORS[activeState.currentStrictness] + '22' }}
-            textStyle={{ color: STRICTNESS_COLORS[activeState.currentStrictness], fontSize: 11, fontWeight: '700' }}
+            style={{ backgroundColor: strictnessColors[activeState.currentStrictness] + '22' }}
+            textStyle={{ color: strictnessColors[activeState.currentStrictness], fontSize: 11, fontWeight: '700' }}
           >
-            {STRICTNESS_LABELS[activeState.currentStrictness]}
+            {t(STRICTNESS_LABEL_KEYS[activeState.currentStrictness])}
           </Chip>
         </View>
       )}
 
-      {activeState.nextTransitionAt && (
-        <Text style={styles.nextTransition}>
-          Next: {activeState.nextProfileLabel} at{' '}
-          {new Date(activeState.nextTransitionAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      {activeState.nextTransitionAt && activeState.nextProfileLabel && (
+        <Text style={[styles.nextTransition, { color: colors.text.muted }]}>
+          {t('schedules.next', {
+            label: nextProfile ? profileLabel(nextProfile, t) : activeState.nextProfileLabel,
+            time: formatTimeOfDay(
+              new Date(activeState.nextTransitionAt).getHours() * 60 +
+                new Date(activeState.nextTransitionAt).getMinutes(),
+              language,
+            ),
+          })}
         </Text>
       )}
 
@@ -96,6 +122,7 @@ export function ScheduleProfilesCard({
         <ProfileRow
           key={profile.id}
           profile={profile}
+          strictnessColors={strictnessColors}
           isActive={activeState.activeProfileId === profile.id}
           isEditing={editingId === profile.id}
           onToggle={() => void onToggleProfile(profile.id)}
@@ -107,10 +134,17 @@ export function ScheduleProfilesCard({
 
       {/* Add new profile */}
       {showAdd ? (
-        <View style={styles.addForm}>
-          <Field label="Profile Name" onChangeText={setNewLabel} placeholder="e.g. Homework Time" value={newLabel} />
+        <View
+          style={[styles.addForm, { backgroundColor: colors.bg.tertiary, borderColor: colors.border.subtle }]}
+        >
+          <Field
+            label={t('schedules.nameLabel')}
+            onChangeText={setNewLabel}
+            placeholder={t('schedules.namePlaceholder')}
+            value={newLabel}
+          />
           <View style={styles.strictnessRow}>
-            <Text style={styles.fieldLabel}>Strictness:</Text>
+            <Text style={[styles.fieldLabel, { color: colors.text.secondary }]}>{t('schedules.strictness')}</Text>
             <View style={styles.strictnessOptions}>
               {(['low', 'moderate', 'high', 'lockdown'] as StrictnessLevel[]).map((level) => (
                 <Chip
@@ -118,10 +152,10 @@ export function ScheduleProfilesCard({
                   compact
                   selected={newStrictness === level}
                   onPress={() => setNewStrictness(level)}
-                  style={newStrictness === level ? { backgroundColor: STRICTNESS_COLORS[level] + '22' } : undefined}
+                  style={newStrictness === level ? { backgroundColor: strictnessColors[level] + '22' } : undefined}
                   textStyle={{ fontSize: 11 }}
                 >
-                  {STRICTNESS_LABELS[level]}
+                  {t(STRICTNESS_LABEL_KEYS[level])}
                 </Chip>
               ))}
             </View>
@@ -149,16 +183,16 @@ export function ScheduleProfilesCard({
                 });
               }}
             >
-              Create Profile
+              {t('schedules.create')}
             </Button>
             <Button icon="close" tone="neutral" onPress={() => setShowAdd(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </View>
         </View>
       ) : (
         <Button icon="plus" tone="neutral" onPress={() => setShowAdd(true)}>
-          Add Schedule Profile
+          {t('schedules.add')}
         </Button>
       )}
     </Card>
@@ -167,6 +201,7 @@ export function ScheduleProfilesCard({
 
 function ProfileRow({
   profile,
+  strictnessColors,
   isActive,
   isEditing,
   onToggle,
@@ -175,6 +210,7 @@ function ProfileRow({
   onRemove,
 }: {
   profile: ScheduleProfile;
+  strictnessColors: Record<StrictnessLevel, string>;
   isActive: boolean;
   isEditing: boolean;
   onToggle: () => void;
@@ -182,6 +218,10 @@ function ProfileRow({
   onUpdate: (patch: Partial<ScheduleProfile>) => void;
   onRemove: () => void;
 }) {
+  const { colors } = useTheme();
+  const { t, language } = useI18n();
+  const label = profileLabel(profile, t);
+
   const toggleDay = (day: number) => {
     const days = profile.daysOfWeek.includes(day)
       ? profile.daysOfWeek.filter((d) => d !== day)
@@ -190,76 +230,75 @@ function ProfileRow({
   };
 
   return (
-    <View style={[styles.profileCard, isActive && styles.profileCardActive]}>
+    <View
+      style={[
+        styles.profileCard,
+        { backgroundColor: colors.bg.tertiary, borderColor: colors.border.subtle },
+        isActive && { backgroundColor: colors.green[50], borderColor: colors.green[400] },
+      ]}
+    >
       <View style={styles.profileHeader}>
         <MaterialCommunityIcons
           name={profile.icon as any}
           size={22}
-          color={STRICTNESS_COLORS[profile.strictness]}
+          color={strictnessColors[profile.strictness]}
         />
         <View style={styles.profileInfo}>
-          <Text style={styles.profileLabel}>{profile.label}</Text>
-          <Text style={styles.profileTime}>
-            {formatMinutes(profile.startMinutes)} – {formatMinutes(profile.endMinutes)}
+          <Text style={[styles.profileLabel, { color: colors.text.primary }]}>{label}</Text>
+          <Text style={[styles.profileTime, { color: colors.text.secondary }]}>
+            {formatTimeOfDay(profile.startMinutes, language)} – {formatTimeOfDay(profile.endMinutes, language)}
           </Text>
         </View>
         <Chip
           compact
-          style={{ backgroundColor: STRICTNESS_COLORS[profile.strictness] + '22' }}
-          textStyle={{
-            color: STRICTNESS_COLORS[profile.strictness],
-            fontSize: 10,
-            fontWeight: '700',
-          }}
+          style={{ backgroundColor: strictnessColors[profile.strictness] + '22' }}
+          textStyle={{ color: strictnessColors[profile.strictness], fontSize: 10, fontWeight: '700' }}
         >
-          {STRICTNESS_LABELS[profile.strictness]}
+          {t(STRICTNESS_LABEL_KEYS[profile.strictness])}
         </Chip>
-        <Switch
-          color={colors.green[400]}
-          value={profile.enabled}
-          onValueChange={onToggle}
+        <Switch color={colors.green[400]} value={profile.enabled} onValueChange={onToggle} />
+        <IconButton
+          accessibilityLabel={t('schedules.editA11y', { label })}
+          icon="pencil-outline"
+          size={18}
+          onPress={onEdit}
         />
-        <IconButton icon="pencil-outline" size={18} onPress={onEdit} />
       </View>
 
       {isEditing && (
-        <View style={styles.editSection}>
+        <View style={[styles.editSection, { borderTopColor: colors.border.subtle }]}>
           <View style={styles.timeRow}>
-            <View style={styles.timeField}>
-              <Text style={styles.fieldLabel}>Start</Text>
-              <View style={styles.timeStepper}>
-                <IconButton icon="minus" size={16} onPress={() => onUpdate({ startMinutes: Math.max(0, profile.startMinutes - 30) })} />
-                <Text style={styles.timeValue}>{formatMinutes(profile.startMinutes)}</Text>
-                <IconButton icon="plus" size={16} onPress={() => onUpdate({ startMinutes: Math.min(23 * 60 + 30, profile.startMinutes + 30) })} />
-              </View>
-            </View>
-            <View style={styles.timeField}>
-              <Text style={styles.fieldLabel}>End</Text>
-              <View style={styles.timeStepper}>
-                <IconButton icon="minus" size={16} onPress={() => onUpdate({ endMinutes: Math.max(0, profile.endMinutes - 30) })} />
-                <Text style={styles.timeValue}>{formatMinutes(profile.endMinutes)}</Text>
-                <IconButton icon="plus" size={16} onPress={() => onUpdate({ endMinutes: Math.min(23 * 60 + 30, profile.endMinutes + 30) })} />
-              </View>
-            </View>
+            <TimeField
+              label={t('schedules.start')}
+              minutes={profile.startMinutes}
+              onChange={(minutes) => onUpdate({ startMinutes: minutes })}
+            />
+            <TimeField
+              label={t('schedules.end')}
+              minutes={profile.endMinutes}
+              onChange={(minutes) => onUpdate({ endMinutes: minutes })}
+            />
           </View>
 
           <View style={styles.daysRow}>
-            {DAY_VALUES.map((day, i) => (
+            {DAY_VALUES.map((day) => (
               <Chip
                 key={day}
                 compact
                 selected={profile.daysOfWeek.includes(day)}
                 onPress={() => toggleDay(day)}
-                style={profile.daysOfWeek.includes(day) ? styles.dayActive : styles.dayInactive}
+                style={{
+                  backgroundColor: profile.daysOfWeek.includes(day) ? colors.green[50] : colors.bg.secondary,
+                }}
                 textStyle={{ fontSize: 11 }}
               >
-                {DAY_LABELS[i]}
+                {weekdayShort(language, day % 7)}
               </Chip>
             ))}
           </View>
 
           <View style={styles.strictnessRow}>
-            <Text style={styles.fieldLabel}>Strictness:</Text>
+            <Text style={[styles.fieldLabel, { color: colors.text.secondary }]}>{t('schedules.strictness')}</Text>
             <View style={styles.strictnessOptions}>
               {(['low', 'moderate', 'high', 'lockdown'] as StrictnessLevel[]).map((level) => (
                 <Chip
@@ -267,17 +306,17 @@ function ProfileRow({
                   compact
                   selected={profile.strictness === level}
                   onPress={() => onUpdate({ strictness: level })}
-                  style={profile.strictness === level ? { backgroundColor: STRICTNESS_COLORS[level] + '22' } : undefined}
+                  style={profile.strictness === level ? { backgroundColor: strictnessColors[level] + '22' } : undefined}
                   textStyle={{ fontSize: 11 }}
                 >
-                  {STRICTNESS_LABELS[level]}
+                  {t(STRICTNESS_LABEL_KEYS[level])}
                 </Chip>
               ))}
             </View>
           </View>
 
           <Button icon="delete-outline" tone="danger" onPress={onRemove}>
-            Delete Profile
+            {t('schedules.delete')}
           </Button>
         </View>
       )}
@@ -288,8 +327,6 @@ function ProfileRow({
 const styles = StyleSheet.create({
   activeBanner: {
     alignItems: 'center',
-    backgroundColor: colors.green[50],
-    borderColor: colors.border.green,
     borderRadius: radius.md,
     borderWidth: 1,
     flexDirection: 'row',
@@ -301,29 +338,20 @@ const styles = StyleSheet.create({
   },
   activeLabel: {
     ...typography.bodyMd,
-    color: colors.green[600],
   },
   activeStrictness: {
     ...typography.caption,
-    color: colors.green[500],
   },
   nextTransition: {
     ...typography.caption,
-    color: colors.text.muted,
     textAlign: 'center',
   },
   profileCard: {
-    backgroundColor: colors.bg.tertiary,
-    borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: 1,
     gap: spacing.sm,
     overflow: 'hidden',
     padding: spacing.md,
-  },
-  profileCardActive: {
-    borderColor: colors.green[400],
-    backgroundColor: colors.green[50],
   },
   profileHeader: {
     alignItems: 'center',
@@ -335,14 +363,11 @@ const styles = StyleSheet.create({
   },
   profileLabel: {
     ...typography.bodyMd,
-    color: colors.text.primary,
   },
   profileTime: {
     ...typography.caption,
-    color: colors.text.secondary,
   },
   editSection: {
-    borderTopColor: colors.border.subtle,
     borderTopWidth: 1,
     gap: spacing.md,
     paddingTop: spacing.md,
@@ -351,37 +376,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
-  timeField: {
-    flex: 1,
-    gap: spacing.xs,
-  },
   fieldLabel: {
     ...typography.captionMd,
-    color: colors.text.secondary,
-  },
-  timeStepper: {
-    alignItems: 'center',
-    backgroundColor: colors.bg.secondary,
-    borderColor: colors.border.default,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timeValue: {
-    ...typography.bodyMd,
-    color: colors.text.primary,
   },
   daysRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-  },
-  dayActive: {
-    backgroundColor: colors.green[50],
-  },
-  dayInactive: {
-    backgroundColor: colors.bg.secondary,
   },
   strictnessRow: {
     gap: spacing.xs,
@@ -392,8 +393,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   addForm: {
-    backgroundColor: colors.bg.tertiary,
-    borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: 1,
     gap: spacing.md,

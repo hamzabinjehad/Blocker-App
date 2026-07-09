@@ -5,6 +5,7 @@ import { Switch } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
 
 import { AlwaysOnVpnCard } from '@/components/AlwaysOnVpnCard';
+import { ManagedModeNotice } from '@/components/ManagedModeNotice';
 import { ParentPinCard } from '@/components/ParentPinCard';
 import { RemoteManagementCard } from '@/components/RemoteManagementCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
@@ -72,6 +73,30 @@ export default function GuardianScreen() {
           onRemoveDevice={remote.removeDevice}
           onSubmitUnlockRequest={remote.submitUnlockRequest}
           onRespondToUnlockRequest={remote.respondToUnlockRequest}
+        />
+      </View>
+
+      {/* Device admin / uninstall guard — the only entry point for
+          requestDeviceAdminPermission since the onboarding checklist was
+          trimmed to the two critical permissions. */}
+      <View style={s.section}>
+        <ManagedModeNotice
+          batteryOptimizationIgnored={protection.batteryOptimizationStatus.ignored}
+          error={protection.error}
+          enforcement={protection.managedEnforcementStatus}
+          status={protection.managedDeviceStatus}
+          onCopyDeviceOwnerCommand={protection.copyDeviceOwnerEnrollmentCommand}
+          onConfigureManagedPrivateDns={protection.configureManagedPrivateDns}
+          onOpenPrivateDnsSettings={protection.openPrivateDnsSettings}
+          onApplyStrictDeviceOwnerPolicy={protection.applyStrictDeviceOwnerPolicy}
+          onRefreshStatus={() => protection.refreshStatus(false)}
+          onRequestIgnoreBatteryOptimizations={protection.requestIgnoreBatteryOptimizations}
+          onRequestDeviceAdminPermission={protection.requestDeviceAdminPermission}
+          onSetAlwaysOnVpnLockdown={protection.setAlwaysOnVpnLockdown}
+          onSetEmergencyLockEnabled={protection.setEmergencyLockEnabled}
+          onSetPackageSuspensionEnabled={protection.setPackageSuspensionEnabled}
+          onSetStrictModeEnabled={protection.setStrictModeEnabled}
+          onSetUninstallProtectionEnabled={protection.setUninstallProtectionEnabled}
         />
       </View>
 

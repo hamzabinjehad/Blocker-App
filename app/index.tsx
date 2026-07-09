@@ -1,10 +1,13 @@
 import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Animated, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
 
 import { Feather } from '@expo/vector-icons';
 import { AppIcon } from '@/components/AppIcon';
+import { AppSheet } from '@/components/AppSheet';
 import { Banner } from '@/components/Banner';
 import { Chevron } from '@/components/Chevron';
 import { BlockScreenOverlay } from '@/components/behavior/BlockScreenOverlay';
@@ -17,6 +20,7 @@ import { XpPopup } from '@/components/XpPopup';
 import { MoodDetailView } from '@/components/MoodDetailView';
 import { MoodFace } from '@/components/MoodFace';
 import { MoodPickerView } from '@/components/MoodPickerView';
+import { haptics } from '@/lib/haptics';
 import { getTodaysMood, saveMood } from '@/services/mood';
 import type { MoodCheckIn } from '@/services/mood';
 import { useAlertCenter } from '@/store/useAlertCenter';
@@ -92,6 +96,10 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    if (streakPopup.visible) haptics.success();
+  }, [streakPopup.visible]);
+
+  useEffect(() => {
     if (!disableSheetVisible) return;
     setDisableCountdown(DISABLE_PROTECTION_COUNTDOWN_SECONDS);
     setDisablePin('');
@@ -163,11 +171,13 @@ export default function HomeScreen() {
   }, [gamification.blocksToday, isProtected, t]);
 
   const showXpGain = () => {
+    haptics.success();
     setShowXp(true);
     setTimeout(() => setShowXp(false), 1800);
   };
 
   const handleProtectionPress = () => {
+    haptics.press();
     if (!isProtected) {
       void protection.startProtection(7).then(showXpGain);
       return;
@@ -180,11 +190,13 @@ export default function HomeScreen() {
     setDisablePinError(false);
     void protection.stopProtection(disablePin).then((status) => {
       if (status === 'pin_locked_out' || status === 'pin_required') {
+        haptics.error();
         setDisablePinError(true);
         if (status === 'pin_locked_out') setDisableSheetVisible(false);
         return;
       }
       if (status === 'inactive') {
+        haptics.warning();
         void AsyncStorage.removeItem(PROTECTION_SESSION_KEY);
         setDisableSheetVisible(false);
       }
@@ -197,12 +209,14 @@ export default function HomeScreen() {
   };
 
   const handleMoodSelect = (selected: MoodCheckIn) => {
+    haptics.selection();
     setPendingMood(selected);
     setMoodModalStep('detail');
   };
 
   const handleMoodSave = () => {
     if (!pendingMood) return;
+    haptics.success();
     setMood(pendingMood);
     void saveMood(pendingMood, moodNote || undefined);
     gamification.markMoodCheckedIn();
@@ -253,7 +267,10 @@ export default function HomeScreen() {
             visible={disableSheetVisible}
             onCancel={() => setDisableSheetVisible(false)}
             onConfirm={confirmDisable}
-            onPinChange={setDisablePin}
+            onPinChange={(value) => {
+              if (value.length > disablePin.length) haptics.selection();
+              setDisablePin(value);
+            }}
           />
           <Modal
             animationType="slide"
@@ -292,6 +309,8 @@ export default function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ checked: isProtected }}
+          accessibilityLabel={isProtected ? t('home.protected') : t('home.notProtected')}
+          accessibilityHint={isProtected ? undefined : t('home.tapToProtect')}
           onPress={handleProtectionPress}
           onPressIn={heroPressIn}
           onPressOut={heroPressOut}
@@ -311,20 +330,20 @@ export default function HomeScreen() {
               )}
             </View>
             <View style={s.heroCardCenter}>
-              <Text style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.muted }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.muted }]}>
                 {isProtected ? t('home.protected') : t('home.notProtected')}
               </Text>
-              <Text style={[s.heroSub, { color: isProtected ? 'rgba(255,255,255,0.7)' : colors.text.muted }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[s.heroSub, { color: isProtected ? 'rgba(255,255,255,0.7)' : colors.text.muted }]}>
                 {protection.loading
                   ? (isProtected ? t('home.stopping') : t('home.starting'))
                   : (isProtected ? statusLine : t('home.tapToProtect'))}
               </Text>
             </View>
             <View style={s.heroBlocksRight}>
-              <Text style={[s.heroBlocksNum, { color: isProtected ? colors.text.inverse : colors.text.primary }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[s.heroBlocksNum, { color: isProtected ? colors.text.inverse : colors.text.primary }]}>
                 {gamification.blocksToday}
               </Text>
-              <Text style={[s.heroBlocksLabel, { color: isProtected ? 'rgba(255,255,255,0.65)' : colors.text.muted }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[s.heroBlocksLabel, { color: isProtected ? 'rgba(255,255,255,0.65)' : colors.text.muted }]}>
                 {t('home.blocksLabel')}
               </Text>
             </View>
@@ -332,18 +351,18 @@ export default function HomeScreen() {
           {isProtected ? (
             <View style={[s.heroStatsRow, { borderTopColor: 'rgba(255,255,255,0.15)' }]}>
               <View style={s.heroStat}>
-                <Text style={s.heroStatVal}>{gamification.currentStreak}</Text>
-                <Text style={s.heroStatLabel}>{t('home.dayStreak')}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatVal}>{gamification.currentStreak}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatLabel}>{t('home.dayStreak')}</Text>
               </View>
               <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
               <View style={s.heroStat}>
-                <Text style={s.heroStatVal}>{formatCleanTime(cleanMinutes, t)}</Text>
-                <Text style={s.heroStatLabel}>{t('home.cleanToday')}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatVal}>{formatCleanTime(cleanMinutes, t)}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatLabel}>{t('home.cleanToday')}</Text>
               </View>
               <View style={[s.heroStatDivider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
               <View style={s.heroStat}>
-                <Text style={s.heroStatVal}>{t('home.levelShort', { level: gamification.level })}</Text>
-                <Text style={s.heroStatLabel}>{t(levelNameKey(gamification.level))}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatVal}>{t('home.levelShort', { level: gamification.level })}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={s.heroStatLabel}>{t(levelNameKey(gamification.level))}</Text>
               </View>
             </View>
           ) : null}
@@ -530,7 +549,6 @@ function DisableProtectionSheet({
 }) {
   const { colors } = useTheme();
   const { t, language } = useI18n();
-  const pinInputRef = useRef<TextInput>(null);
   const canConfirm = !locked && (!pinConfigured || pin.length >= 4) && countdown <= 0;
 
   const lockCopy = useMemo(() => {
@@ -540,67 +558,61 @@ function DisableProtectionSheet({
   }, [locked, lockExpiresAt, t, language]);
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onCancel}>
-      <Pressable style={s.sheetBackdrop} onPress={onCancel}>
-        <Pressable style={[s.sheet, { backgroundColor: colors.bg.elevated }]}>
-          <View style={[s.sheetHandle, { backgroundColor: colors.border.default }]} />
-          <Text style={[s.sheetTitle, { color: colors.text.primary }]}>{t('disable.title')}</Text>
-          <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>
-            {locked
-              ? lockCopy
-              : pinConfigured
-                ? t('disable.enterPin')
-                : t('disable.wait', { seconds: DISABLE_PROTECTION_COUNTDOWN_SECONDS })}
-          </Text>
-          {pinConfigured && !locked ? (
-            <TextInput
-              ref={pinInputRef}
-              accessibilityLabel={t('policy.pinLabel')}
-              autoFocus
-              keyboardType="number-pad"
-              maxLength={12}
-              placeholder={t('common.enterPin')}
-              placeholderTextColor={colors.text.muted}
-              secureTextEntry
-              style={[
-                s.pinInput,
-                {
-                  backgroundColor: colors.bg.tertiary,
-                  borderColor: pinError ? colors.red[500] : colors.border.subtle,
-                  color: colors.text.primary,
-                },
-              ]}
-              value={pin}
-              onChangeText={onPinChange}
-              onSubmitEditing={onConfirm}
-            />
-          ) : null}
-          {pinError ? (
-            <Text style={[s.pinError, { color: colors.red[500] }]}>{t('disable.incorrectPin')}</Text>
-          ) : null}
-          <Pressable accessibilityRole="button" onPress={onCancel} style={[s.sheetButton, { backgroundColor: colors.green[500] }]}>
-            <Text style={[s.sheetButtonText, { color: colors.text.inverse }]}>{t('disable.stayProtected')}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={!canConfirm}
-            onPress={onConfirm}
-            style={s.sheetTextButton}
-          >
-            <Text
-              style={[
-                s.sheetTextButtonLabel,
-                { color: canConfirm ? colors.red[500] : colors.text.muted },
-              ]}
-            >
-              {countdown > 0 && !locked && !pinConfigured
-                ? t('disable.confirmIn', { seconds: countdown })
-                : t('disable.turnOff')}
-            </Text>
-          </Pressable>
-        </Pressable>
+    <AppSheet visible={visible} onClose={onCancel}>
+      <Text style={[s.sheetTitle, { color: colors.text.primary }]}>{t('disable.title')}</Text>
+      <Text style={[s.sheetCopy, { color: colors.text.secondary }]}>
+        {locked
+          ? lockCopy
+          : pinConfigured
+            ? t('disable.enterPin')
+            : t('disable.wait', { seconds: DISABLE_PROTECTION_COUNTDOWN_SECONDS })}
+      </Text>
+      {pinConfigured && !locked ? (
+        <BottomSheetTextInput
+          accessibilityLabel={t('policy.pinLabel')}
+          autoFocus
+          keyboardType="number-pad"
+          maxLength={12}
+          placeholder={t('common.enterPin')}
+          placeholderTextColor={colors.text.muted}
+          secureTextEntry
+          style={[
+            s.pinInput,
+            {
+              backgroundColor: colors.bg.tertiary,
+              borderColor: pinError ? colors.red[500] : colors.border.subtle,
+              color: colors.text.primary,
+            },
+          ]}
+          value={pin}
+          onChangeText={onPinChange}
+          onSubmitEditing={onConfirm}
+        />
+      ) : null}
+      {pinError ? (
+        <Text style={[s.pinError, { color: colors.red[500] }]}>{t('disable.incorrectPin')}</Text>
+      ) : null}
+      <Pressable accessibilityRole="button" onPress={onCancel} style={[s.sheetButton, { backgroundColor: colors.green[500] }]}>
+        <Text style={[s.sheetButtonText, { color: colors.text.inverse }]}>{t('disable.stayProtected')}</Text>
       </Pressable>
-    </Modal>
+      <Pressable
+        accessibilityRole="button"
+        disabled={!canConfirm}
+        onPress={onConfirm}
+        style={s.sheetTextButton}
+      >
+        <Text
+          style={[
+            s.sheetTextButtonLabel,
+            { color: canConfirm ? colors.red[500] : colors.text.muted },
+          ]}
+        >
+          {countdown > 0 && !locked && !pinConfigured
+            ? t('disable.confirmIn', { seconds: countdown })
+            : t('disable.turnOff')}
+        </Text>
+      </Pressable>
+    </AppSheet>
   );
 }
 
@@ -781,18 +793,6 @@ const s = StyleSheet.create({
   },
 
   // Disable sheet
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    gap: spacing.md,
-    padding: spacing.xl,
-    width: '100%',
-  },
-  sheetBackdrop: {
-    backgroundColor: 'rgba(21,26,23,0.18)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   sheetButton: {
     alignItems: 'center',
     borderRadius: radius.md,
@@ -804,12 +804,6 @@ const s = StyleSheet.create({
   },
   sheetCopy: {
     ...typography.body,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    borderRadius: radius.full,
-    height: 4,
-    width: 32,
   },
   pinInput: {
     borderRadius: radius.md,

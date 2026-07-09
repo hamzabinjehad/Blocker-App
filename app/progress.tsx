@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { AnimatedCard } from '@/components/AnimatedCard';
 import { AppIcon } from '@/components/AppIcon';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
+import { UsageStatsCard } from '@/components/UsageStatsCard';
 import { formatShortDate, levelNameKey, useI18n, useTranslation, weekdayShort } from '@/i18n';
 import type { Language, TranslationKey } from '@/i18n';
+import { haptics } from '@/lib/haptics';
 import { useGamification } from '@/store/useGamification';
+import { useProtection } from '@/store/ProtectionContext';
 import type { DayRecord } from '@/store/useGamification';
 import { radius, spacing, typography, useTheme } from '@/theme';
 
@@ -46,15 +50,13 @@ function JourneyBanner({
 }) {
   const { colors } = useTheme();
   const t = useTranslation();
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useSharedValue(0);
 
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: Math.min(1, Math.max(0, progress)),
-      duration: 900,
-      useNativeDriver: false,
-    }).start();
+    progressAnim.value = withTiming(Math.min(1, Math.max(0, progress)), { duration: 900 });
   }, [progress, progressAnim]);
+
+  const fillStyle = useAnimatedStyle(() => ({ width: `${progressAnim.value * 100}%` }));
 
   const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
 
@@ -73,15 +75,7 @@ function JourneyBanner({
         </View>
       </View>
       <View style={[sjb.track, { backgroundColor: colors.border.subtle }]}>
-        <Animated.View
-          style={[
-            sjb.fill,
-            {
-              backgroundColor: colors.green[500],
-              width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-            },
-          ]}
-        />
+        <Animated.View style={[sjb.fill, { backgroundColor: colors.green[500] }, fillStyle]} />
       </View>
       <Text style={[sjb.goal, { color: colors.text.muted }]}>{t('progress.goal', { date: goalDateStr })}</Text>
     </View>
@@ -319,10 +313,14 @@ export default function ProgressScreen() {
   const { colors } = useTheme();
   const { t, language } = useI18n();
   const gamification = useGamification();
+  const protection = useProtection();
   const [milestoneVisible, setMilestoneVisible] = useState(Boolean(gamification.latestMilestoneBadge));
 
   useEffect(() => {
-    if (gamification.latestMilestoneBadge) setMilestoneVisible(true);
+    if (gamification.latestMilestoneBadge) {
+      haptics.success();
+      setMilestoneVisible(true);
+    }
   }, [gamification.latestMilestoneBadge?.id]);
 
   const progressRatio = Math.min(1, gamification.xpProgress.current / gamification.xpProgress.required);
@@ -337,14 +335,11 @@ export default function ProgressScreen() {
   const daysRemaining = Math.max(0, daysBetween(today, goalDate));
   const journeyProgress = Math.min(1, daysElapsed / JOURNEY_DAYS);
 
-  const xpBarAnim = useRef(new Animated.Value(0)).current;
+  const xpBarAnim = useSharedValue(0);
   useEffect(() => {
-    Animated.timing(xpBarAnim, {
-      toValue: progressRatio,
-      duration: 900,
-      useNativeDriver: false,
-    }).start();
+    xpBarAnim.value = withTiming(progressRatio, { duration: 900 });
   }, [progressRatio, xpBarAnim]);
+  const xpFillStyle = useAnimatedStyle(() => ({ width: `${xpBarAnim.value * 100}%` }));
 
   return (
     <ScreenScaffold title={t('progress.title')} subtitle={t('progress.subtitle')} iconName="progress" collapsibleTitle>
@@ -361,6 +356,14 @@ export default function ProgressScreen() {
       {/* Current week calendar */}
       <WeekCalendarSection days={calendarDays} />
 
+      {/* Screen time (usage stats) */}
+      <AnimatedCard delay={120}>
+        <UsageStatsCard
+          onFetchDailySummary={protection.fetchDailyUsageSummary}
+          onOpenUsageAccessSettings={protection.openUsageAccessSettings}
+        />
+      </AnimatedCard>
+
       {/* Level card */}
       <AnimatedCard delay={160}>
         <Card>
@@ -375,15 +378,7 @@ export default function ProgressScreen() {
             <AppIcon name="xp" size={24} color={colors.green[500]} />
           </View>
           <View style={[s.track, { backgroundColor: colors.bg.tertiary }]}>
-            <Animated.View
-              style={[
-                s.fill,
-                {
-                  backgroundColor: colors.green[500],
-                  width: xpBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-                },
-              ]}
-            />
+            <Animated.View style={[s.fill, { backgroundColor: colors.green[500] }, xpFillStyle]} />
           </View>
           <Text style={[s.supportCopy, { color: colors.text.secondary }]}>
             {t('progress.percentToNext', { percent: Math.round(progressRatio * 100), level: gamification.level + 1 })}

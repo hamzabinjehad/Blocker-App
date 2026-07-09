@@ -45,3 +45,18 @@ export function formatShortDate(value: Date | number | string, language: Languag
   const day = d.getDate();
   return language === 'ar' ? `${day} ${month}` : `${month} ${day}`;
 }
+
+const AM_PM: Record<Language, [string, string]> = {
+  en: ['AM', 'PM'],
+  ar: ['ص', 'م'],
+};
+
+/** "3:30 PM" / "3:30 م" from minutes since midnight. Digits stay Western. */
+export function formatTimeOfDay(minutesSinceMidnight: number, language: Language): string {
+  const total = ((Math.round(minutesSinceMidnight) % 1440) + 1440) % 1440;
+  const hours24 = Math.floor(total / 60);
+  const minutes = total % 60;
+  const marker = AM_PM[language][hours24 >= 12 ? 1 : 0];
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${marker}`;
+}

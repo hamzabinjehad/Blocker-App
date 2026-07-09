@@ -5,6 +5,7 @@ import { Text } from 'react-native-paper';
 import { Card } from './Card';
 import { Button, Field } from './controls';
 import { useTranslation } from '@/i18n';
+import { haptics } from '@/lib/haptics';
 import { radius, spacing, useTheme, typography } from '@/theme';
 
 type ParentPinCardProps = {
@@ -24,10 +25,12 @@ export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCar
 
   const submit = () => {
     if (newPin.length < 4) {
+      haptics.error();
       setLocalError(t('pin.errTooShort'));
       return;
     }
     if (newPin !== confirmPin) {
+      haptics.error();
       setLocalError(t('pin.errMismatch'));
       setNewPin('');
       setConfirmPin('');
@@ -36,6 +39,7 @@ export function ParentPinCard({ pinConfigured, loading, onSetPin }: ParentPinCar
     }
     setLocalError(undefined);
     void onSetPin(newPin, pinConfigured ? currentPin : undefined).then(() => {
+      haptics.success();
       setCurrentPin('');
       setNewPin('');
       setConfirmPin('');
@@ -117,11 +121,12 @@ function PinDots({ value }: { value: string }) {
 
 function PinEntry({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { colors } = useTheme();
+  const t = useTranslation();
   return (
     <View style={[styles.pinEntry, { borderColor: colors.border.subtle }]}>
       <PinDots value={value} />
       <TextInput
-        accessibilityLabel="PIN"
+        accessibilityLabel={t('policy.pinLabel')}
         autoFocus
         keyboardType="number-pad"
         maxLength={6}

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Chip, Switch, Text } from 'react-native-paper';
 
 import { Card } from '../Card';
+import { TimeField } from '../TimeField';
 import { Button, Field } from '../controls';
 import { useI18n, weekdayShort } from '@/i18n';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -120,21 +121,20 @@ export function FocusModeCard({
       </View>
 
       <View style={styles.grid}>
-        <TimeChip
-          icon="moon-waning-crescent"
-          label={startTime}
-          onPress={() => {
-            const next = minutesToTime(timeToMinutes(startTime, schedule.startMinutes) + 30);
+        <TimeField
+          label={t('schedules.start')}
+          minutes={timeToMinutes(startTime, schedule.startMinutes)}
+          onChange={(minutes) => {
+            const next = minutesToTime(minutes);
             setStartTime(next);
             applySchedule(next, endTime, selectedDays);
           }}
         />
-        <Text style={styles.timeArrow}>{t('focusCard.to')}</Text>
-        <TimeChip
-          icon="weather-sunset-up"
-          label={endTime}
-          onPress={() => {
-            const next = minutesToTime(timeToMinutes(endTime, schedule.endMinutes) + 30);
+        <TimeField
+          label={t('schedules.end')}
+          minutes={timeToMinutes(endTime, schedule.endMinutes)}
+          onChange={(minutes) => {
+            const next = minutesToTime(minutes);
             setEndTime(next);
             applySchedule(startTime, next, selectedDays);
           }}
@@ -264,14 +264,6 @@ function PackageChips({
         <Text style={styles.empty}>{emptyLabel}</Text>
       )}
     </View>
-  );
-}
-
-function TimeChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.timeChip}>
-      <Chip compact icon={icon}>{label} ▾</Chip>
-    </Pressable>
   );
 }
 
@@ -440,17 +432,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
   },
-  timeArrow: {
-    ...typography.captionMd,
-    color: colors.text.secondary,
-  },
   timeSummary: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  timeChip: {
-    borderRadius: radius.full,
   },
 });

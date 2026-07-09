@@ -58,8 +58,8 @@ export function Banner({
     <>
       <Feather name={icon} size={iconSize} color={palette.icon} />
       <View style={s.text}>
-        {title ? <Text style={[s.title, { color: palette.title }]}>{title}</Text> : null}
-        {subtitle ? <Text style={[s.subtitle, { color: palette.subtitle }]}>{subtitle}</Text> : null}
+        {title ? <Text maxFontSizeMultiplier={1.5} style={[s.title, { color: palette.title }]}>{title}</Text> : null}
+        {subtitle ? <Text maxFontSizeMultiplier={1.5} style={[s.subtitle, { color: palette.subtitle }]}>{subtitle}</Text> : null}
       </View>
       {trailing === 'chevron' ? (
         <Chevron size={16} color={palette.title} />

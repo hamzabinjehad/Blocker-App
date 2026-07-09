@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
     },
-    plugins: ['expo-router'],
+    plugins: ['expo-router', '@react-native-community/datetimepicker'],
   };
 
   return withBlockerAndroid(expoConfig);

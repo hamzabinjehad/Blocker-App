@@ -6,6 +6,7 @@ import { AppIcon } from '@/components/AppIcon';
 import { Field } from '@/components/controls';
 import { UrgeSurfingSheet } from '@/components/UrgeSurfingSheet';
 import { useTranslation } from '@/i18n';
+import { haptics } from '@/lib/haptics';
 import { radius, spacing, typography, useTheme } from '@/theme';
 import type { BlockEvent } from '@/types/blocker';
 
@@ -25,10 +26,12 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
   const [urgeSheetVisible, setUrgeSheetVisible] = useState(false);
 
   useEffect(() => {
+    if (event) haptics.warning();
     setRemaining(Math.max(5, durationSeconds));
     setPin('');
     setPinSheetVisible(false);
     setUrgeSheetVisible(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only per block event
   }, [durationSeconds, event?.id]);
 
   useEffect(() => {
@@ -54,7 +57,10 @@ export function BlockScreenOverlay({ event, durationSeconds, requiresPin, onDism
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => setUrgeSheetVisible(true)}
+            onPress={() => {
+              haptics.tap();
+              setUrgeSheetVisible(true);
+            }}
             style={[styles.outlineButton, { borderColor: colors.green[500] }]}
           >
             <Text style={[styles.outlineButtonText, { color: colors.green[600] }]}>{t('coach.imStruggling')}</Text>
