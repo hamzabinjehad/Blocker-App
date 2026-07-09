@@ -2,6 +2,7 @@ import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
 import { Feather } from '@expo/vector-icons';
@@ -316,10 +317,18 @@ export default function HomeScreen() {
           style={[
             s.heroCard,
             isProtected
-              ? { backgroundColor: colors.bg.green, borderColor: colors.green[700] }
+              ? { borderColor: colors.green[700] }
               : { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle },
           ]}
         >
+          {isProtected ? (
+            <LinearGradient
+              colors={[colors.bg.greenDark, colors.bg.green]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
           <View style={s.heroCardTop}>
             <View style={[s.heroIconCircle, { backgroundColor: isProtected ? 'rgba(255,255,255,0.18)' : colors.bg.tertiary }]}>
               {protection.loading ? (

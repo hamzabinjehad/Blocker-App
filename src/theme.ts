@@ -9,7 +9,8 @@ function buildPaperTheme(c: ColorPalette, isDark: boolean) {
   const base = isDark ? MD3DarkTheme : MD3LightTheme;
   return {
     ...base,
-    roundness: radius.md,
+    // Controls (inputs, chips, Paper buttons) stay tidier than cards.
+    roundness: radius.sm,
     colors: {
       ...base.colors,
       primary: c.green[400],
