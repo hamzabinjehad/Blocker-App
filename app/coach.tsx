@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Feather } from '@expo/vector-icons';
 
 import { AppIcon } from '@/components/AppIcon';
@@ -269,7 +268,7 @@ function MomentLogSheet({
                   </Pressable>
                 ))}
               </View>
-              <BottomSheetTextInput
+              <TextInput
                 multiline
                 onChangeText={setNotes}
                 placeholder="Optional note"

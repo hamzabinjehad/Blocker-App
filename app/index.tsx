@@ -1,8 +1,7 @@
 import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
 
 import { Feather } from '@expo/vector-icons';
@@ -568,7 +567,7 @@ function DisableProtectionSheet({
             : t('disable.wait', { seconds: DISABLE_PROTECTION_COUNTDOWN_SECONDS })}
       </Text>
       {pinConfigured && !locked ? (
-        <BottomSheetTextInput
+        <TextInput
           accessibilityLabel={t('policy.pinLabel')}
           autoFocus
           keyboardType="number-pad"

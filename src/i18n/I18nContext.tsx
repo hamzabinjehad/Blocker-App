@@ -39,8 +39,15 @@ export function I18nProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     void AsyncStorage.getItem(LANGUAGE_KEY).then((stored) => {
-      if (stored === 'en' || stored === 'ar') {
-        setLanguageState(stored);
+      const initial: Language = stored === 'ar' ? 'ar' : 'en';
+      setLanguageState(initial);
+      // Heal a stale native direction flag (crash between the pref write and
+      // forceRTL, or restored app data can desync them — seen live as English
+      // text in a mirrored layout). forceRTL applies on the next launch.
+      const wantRTL = initial === 'ar';
+      if (I18nManager.isRTL !== wantRTL) {
+        I18nManager.allowRTL(wantRTL);
+        I18nManager.forceRTL(wantRTL);
       }
       setLoaded(true);
     });

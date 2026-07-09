@@ -1,70 +1,128 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { PropsWithChildren } from 'react';
+import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
-import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { radius, spacing, useTheme } from '@/theme';
 
 type AppSheetProps = PropsWithChildren<{
   visible: boolean;
-  /** Called after the sheet is fully dismissed (backdrop tap, drag down, or visible=false). */
+  /** Called when the user dismisses (backdrop tap, drag down, back button). */
   onClose: () => void;
   /** Set false to force closing through an explicit action (no backdrop/drag dismiss). */
   dismissable?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }>;
 
-// Single bottom-sheet primitive for the app: gesture-dismissable, sized to its
-// content, themed, and keyboard-aware. Declarative `visible` API so consumers
-// keep their existing boolean state.
-//
-// CAVEAT: sheets render through BottomSheetModalProvider at the app root, so
-// they appear BELOW any native RN `Modal` that is currently open. A sheet that
-// must layer above an RN Modal (e.g. UrgeSurfingSheet inside the block-screen
-// overlay) cannot use AppSheet.
+// Single bottom-sheet primitive for the app: slide/fade driven by reanimated on
+// the UI thread, drag-down-to-dismiss via gesture-handler, themed, RTL-safe.
+// Hosted in a transparent RN Modal so it reliably layers above everything —
+// including other RN Modals — with no portal machinery.
 export function AppSheet({ visible, onClose, dismissable = true, contentStyle, children }: AppSheetProps) {
   const { colors } = useTheme();
-  const sheetRef = useRef<BottomSheetModal>(null);
+  const { height: windowHeight } = useWindowDimensions();
+  // The Modal stays mounted through the exit animation, then unmounts.
+  const [mounted, setMounted] = useState(visible);
+  const progress = useSharedValue(0); // 0 = hidden below screen, 1 = fully shown
+  const dragY = useSharedValue(0);
+  const sheetHeight = useSharedValue(0);
 
   useEffect(() => {
-    if (visible) sheetRef.current?.present();
-    else sheetRef.current?.dismiss();
-  }, [visible]);
+    if (visible) {
+      setMounted(true);
+      dragY.value = 0;
+      progress.value = withSpring(1, { damping: 22, mass: 0.9, stiffness: 240 });
+    } else {
+      progress.value = withTiming(0, { duration: 180 }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
+      });
+    }
+  }, [dragY, progress, visible]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.32}
-        pressBehavior={dismissable ? 'close' : 'none'}
-      />
-    ),
-    [dismissable],
-  );
+  const requestClose = useCallback(() => {
+    if (dismissable) onClose();
+  }, [dismissable, onClose]);
+
+  const pan = Gesture.Pan()
+    .enabled(dismissable)
+    .onUpdate((event) => {
+      dragY.value = Math.max(0, event.translationY);
+    })
+    .onEnd((event) => {
+      if (event.translationY > 120 || event.velocityY > 800) {
+        runOnJS(onClose)();
+      } else {
+        dragY.value = withSpring(0, { damping: 20, mass: 0.8, stiffness: 260 });
+      }
+    });
+
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.32 }));
+  const sheetStyle = useAnimatedStyle(() => {
+    const hidden = sheetHeight.value > 0 ? sheetHeight.value : windowHeight;
+    return { transform: [{ translateY: (1 - progress.value) * hidden + dragY.value }] };
+  });
+
+  if (!mounted) return null;
 
   return (
-    <BottomSheetModal
-      ref={sheetRef}
-      android_keyboardInputMode="adjustResize"
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{
-        backgroundColor: colors.bg.elevated,
-        borderTopLeftRadius: radius.lg,
-        borderTopRightRadius: radius.lg,
-      }}
-      enableDynamicSizing
-      enablePanDownToClose={dismissable}
-      handleIndicatorStyle={{ backgroundColor: colors.border.default, height: 4, width: 32 }}
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      onDismiss={onClose}
-    >
-      <BottomSheetView style={[{ gap: spacing.md, padding: spacing.xl, paddingTop: spacing.md }, contentStyle]}>
-        {children}
-      </BottomSheetView>
-    </BottomSheetModal>
+    <Modal statusBarTranslucent transparent visible onRequestClose={requestClose}>
+      {/* Gesture handlers need their own root inside an RN Modal on Android. */}
+      <GestureHandlerRootView style={styles.fill}>
+        <View style={styles.container}>
+          <Pressable accessibilityRole="button" style={StyleSheet.absoluteFill} onPress={requestClose}>
+            <Animated.View style={[styles.fill, styles.backdrop, backdropStyle]} />
+          </Pressable>
+          <GestureDetector gesture={pan}>
+            <Animated.View
+              onLayout={(event) => {
+                sheetHeight.value = event.nativeEvent.layout.height;
+              }}
+              style={[styles.sheet, { backgroundColor: colors.bg.elevated }, sheetStyle]}
+            >
+              <View style={[styles.handle, { backgroundColor: colors.border.default }]} />
+              <View style={[styles.content, contentStyle]}>{children}</View>
+            </Animated.View>
+          </GestureDetector>
+        </View>
+      </GestureHandlerRootView>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    backgroundColor: '#151A17',
+  },
+  sheet: {
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingTop: spacing.sm,
+    width: '100%',
+  },
+  handle: {
+    alignSelf: 'center',
+    borderRadius: radius.full,
+    height: 4,
+    width: 32,
+  },
+  content: {
+    gap: spacing.md,
+    padding: spacing.xl,
+    paddingTop: spacing.md,
+  },
+});

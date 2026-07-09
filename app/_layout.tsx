@@ -4,7 +4,6 @@ import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PaperProvider } from 'react-native-paper';
 
 import { OnboardingFlow } from '@/components/OnboardingFlow';
@@ -68,7 +67,6 @@ function AppContent() {
 
   return (
     <PaperProvider theme={paperTheme}>
-      <BottomSheetModalProvider>
       <GlobalErrorBanner />
       <Tabs
         screenOptions={{
@@ -139,7 +137,6 @@ function AppContent() {
         <Tabs.Screen name="guardian" options={{ href: null }} />
         <Tabs.Screen name="alerts" options={{ href: null }} />
       </Tabs>
-      </BottomSheetModalProvider>
     </PaperProvider>
   );
 }
