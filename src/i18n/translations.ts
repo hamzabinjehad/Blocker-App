@@ -98,6 +98,19 @@ export const en = {
     'Leave "Block connections without VPN" OFF. This app filters DNS only, so that option would cut off all non-DNS internet.',
   'alwaysOn.openSettings': 'Open VPN settings',
 
+  // Private DNS protection (no-VPN mode)
+  'privateDnsProtection.title': 'Family DNS (no VPN)',
+  'privateDnsProtection.subtitle': 'Filter content without the VPN. Internet stays fully on.',
+  'privateDnsProtection.needsOwnerSubtitle': 'Set family-safe DNS manually — locking it needs device-owner setup.',
+  'privateDnsProtection.tradeoff':
+    'Points the whole device at a family-safe resolver that blocks adult content and forces safe search. No VPN, no notification, and you cannot switch it off. It does not use the app’s custom lists, keyword blocking, or block history — the resolver does the filtering.',
+  'privateDnsProtection.chipOn': 'Active',
+  'privateDnsProtection.chipOff': 'Off',
+  'privateDnsProtection.locked': 'Locked',
+  'privateDnsProtection.enable': 'Turn on Family DNS',
+  'privateDnsProtection.disable': 'Turn off Family DNS',
+  'privateDnsProtection.openSettings': 'Open network settings',
+
   // Appearance / language
   'appearance.title': 'Appearance',
   'appearance.subtitle': 'Theme and language.',
@@ -750,6 +763,19 @@ export const ar: Record<TranslationKey, string> = {
   'alwaysOn.warning':
     'اترك "حظر الاتصالات بدون VPN" مُطفأً. هذا التطبيق يُرشّح DNS فقط، وتفعيل ذلك الخيار سيقطع كل إنترنت غير الـDNS.',
   'alwaysOn.openSettings': 'افتح إعدادات VPN',
+
+  // Private DNS protection (no-VPN mode)
+  'privateDnsProtection.title': 'DNS العائلي (بلا VPN)',
+  'privateDnsProtection.subtitle': 'رشّح المحتوى بلا VPN. الإنترنت يبقى يعمل بالكامل.',
+  'privateDnsProtection.needsOwnerSubtitle': 'اضبط DNS عائلياً يدوياً — قفله يحتاج إعداد مالك الجهاز.',
+  'privateDnsProtection.tradeoff':
+    'يوجّه الجهاز كله إلى مُحلِّل عائلي يحجب المحتوى البالغ ويفرض البحث الآمن. بلا VPN، بلا إشعار، ولا يمكنك إطفاؤه. لا يستخدم القوائم المخصّصة أو حجب الكلمات أو سجل الحجب في التطبيق — المُحلِّل هو من يُرشّح.',
+  'privateDnsProtection.chipOn': 'نشط',
+  'privateDnsProtection.chipOff': 'مُطفأ',
+  'privateDnsProtection.locked': 'مقفل',
+  'privateDnsProtection.enable': 'تفعيل DNS العائلي',
+  'privateDnsProtection.disable': 'إيقاف DNS العائلي',
+  'privateDnsProtection.openSettings': 'افتح إعدادات الشبكة',
 
   // Appearance / language
   'appearance.title': 'المظهر',

@@ -108,7 +108,29 @@ export type ManagedDeviceStatus = {
   canConfigurePrivateDns: boolean;
   privateDnsMode?: number | null;
   privateDnsHost?: string | null;
+  privateDnsProtection?: PrivateDnsProtectionStatus;
   requiresManagedEnrollment: boolean;
+};
+
+export type PrivateDnsProtectionResult = {
+  applied: boolean;
+  reason?: string | null;
+  privateDnsProtectionStatus: PrivateDnsProtectionStatus;
+};
+
+/** No-VPN filtering: Device-Owner-locked family Private DNS. */
+export type PrivateDnsProtectionStatus = {
+  /** Device owner + Android 9+ — the locked no-VPN mode can be applied. */
+  supported: boolean;
+  /** The user's stored preference for this mode. */
+  enabled: boolean;
+  /** The system resolver is currently pinned to a family-safe host. */
+  active: boolean;
+  /** DISALLOW_CONFIG_PRIVATE_DNS is held, so it can't be changed in Settings. */
+  locked: boolean;
+  host?: string | null;
+  mode?: number | null;
+  defaultHost: string;
 };
 
 export type PrivateDnsStatus = {
@@ -631,6 +653,8 @@ export type BlockerNativeModule = {
   setPackageSuspensionEnabled(enabled: boolean, pin?: string): Promise<EnforcementUpdateResult>;
   setEmergencyLockEnabled(enabled: boolean, pin?: string): Promise<EnforcementUpdateResult>;
   configureManagedPrivateDns(hostname: string): Promise<{ applied: boolean; reason?: string; managedDeviceStatus: ManagedDeviceStatus }>;
+  enablePrivateDnsProtection(hostname: string | null, pin?: string): Promise<PrivateDnsProtectionResult>;
+  disablePrivateDnsProtection(pin?: string): Promise<PrivateDnsProtectionResult>;
   copyTextToClipboard(label: string, text: string): Promise<{ copied: boolean }>;
   openPrivateDnsSettings(): Promise<{ opened: boolean; target?: string | null }>;
   openBatteryOptimizationSettings(): Promise<void>;

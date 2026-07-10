@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { AlwaysOnVpnCard } from '@/components/AlwaysOnVpnCard';
 import { ManagedModeNotice } from '@/components/ManagedModeNotice';
 import { ParentPinCard } from '@/components/ParentPinCard';
+import { PrivateDnsProtectionCard } from '@/components/PrivateDnsProtectionCard';
 import { RemoteManagementCard } from '@/components/RemoteManagementCard';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { useTranslation } from '@/i18n';
@@ -59,6 +60,16 @@ export default function GuardianScreen() {
         onConfigureManagedPrivateDns={protection.configureManagedPrivateDns}
         canConfigureManagedDns={protection.managedDeviceStatus.canConfigurePrivateDns}
       />
+
+      <View style={s.section}>
+        <PrivateDnsProtectionCard
+          status={protection.managedDeviceStatus.privateDnsProtection}
+          pinConfigured={protection.pinConfigured}
+          onEnable={protection.enablePrivateDnsProtection}
+          onDisable={protection.disablePrivateDnsProtection}
+          onOpenPrivateDnsSettings={protection.openPrivateDnsSettings}
+        />
+      </View>
 
       <View style={s.section}>
         <AlwaysOnVpnCard onOpenVpnSettings={protection.openVpnSettings} />

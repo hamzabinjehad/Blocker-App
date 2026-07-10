@@ -1164,6 +1164,23 @@ class PolicyRepository(context: Context) {
     preferences.edit().putBoolean(KEY_PACKAGE_SUSPENSION_ENABLED, enabled).apply()
   }
 
+  // Filtering via Device-Owner managed Private DNS, running *without* the local VPN. A second
+  // protection mode for users who would rather not hold the single VPN slot; the family resolver
+  // does the adult/safe-search filtering and the user cannot change it.
+  fun isPrivateDnsProtectionEnabled(): Boolean = preferences.getBoolean(KEY_PRIVATE_DNS_PROTECTION_ENABLED, false)
+
+  fun setPrivateDnsProtectionEnabled(enabled: Boolean, pin: String? = null) {
+    assertCanChangePolicy(pin)
+    preferences.edit().putBoolean(KEY_PRIVATE_DNS_PROTECTION_ENABLED, enabled).apply()
+    recordAuditEvent(
+      eventType = "PRIVATE_DNS_PROTECTION_CHANGED",
+      severity = "high",
+      category = "dns",
+      subject = "private_dns_protection",
+      action = if (enabled) "enabled" else "disabled"
+    )
+  }
+
   fun isEmergencyLockEnabled(): Boolean = preferences.getBoolean(KEY_EMERGENCY_LOCK_ENABLED, false)
 
   fun setEmergencyLockEnabled(enabled: Boolean, pin: String? = null) {
@@ -1653,6 +1670,7 @@ class PolicyRepository(context: Context) {
     private const val KEY_PACKAGE_SUSPENSION_ENABLED = "packageSuspensionEnabled"
     private const val KEY_ALWAYS_ON_VPN_LOCKDOWN = "alwaysOnVpnLockdown"
     private const val KEY_EMERGENCY_LOCK_ENABLED = "emergencyLockEnabled"
+    private const val KEY_PRIVATE_DNS_PROTECTION_ENABLED = "privateDnsProtectionEnabled"
     private const val KEY_UNINSTALL_LOCK_STARTED_AT = "uninstallLockStartedAt"
     private const val KEY_UNINSTALL_LOCK_EXPIRES_AT = "uninstallLockExpiresAt"
     private const val KEY_UNINSTALL_LOCK_DURATION_DAYS = "uninstallLockDurationDays"

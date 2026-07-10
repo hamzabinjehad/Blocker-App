@@ -1033,6 +1033,38 @@ export function useProtectionState() {
     }
   }, []);
 
+  // No-VPN protection: Device-Owner-locked family Private DNS. A full status refresh follows so
+  // managedDeviceStatus.privateDnsProtection (and the home shield) reflect the new mode.
+  const enablePrivateDnsProtection = useCallback(
+    async (hostname: string | null, pin?: string) => {
+      try {
+        const result = await BlockerModule.enablePrivateDnsProtection(hostname, pin);
+        setError(result.applied ? undefined : managedPolicyReason(result.reason ?? undefined));
+        await refreshStatus(false);
+        return result;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to enable Private DNS protection.');
+        return undefined;
+      }
+    },
+    [refreshStatus],
+  );
+
+  const disablePrivateDnsProtection = useCallback(
+    async (pin?: string) => {
+      try {
+        const result = await BlockerModule.disablePrivateDnsProtection(pin);
+        setError(result.applied ? undefined : managedPolicyReason(result.reason ?? undefined));
+        await refreshStatus(false);
+        return result;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to disable Private DNS protection.');
+        return undefined;
+      }
+    },
+    [refreshStatus],
+  );
+
   const openPrivateDnsSettings = useCallback(async () => {
     try {
       await BlockerModule.openPrivateDnsSettings();
@@ -1336,6 +1368,8 @@ export function useProtectionState() {
     requestDeviceAdminPermission,
     setUninstallProtectionEnabled,
     configureManagedPrivateDns,
+    enablePrivateDnsProtection,
+    disablePrivateDnsProtection,
     openPrivateDnsSettings,
     copyPrivateDnsHostname,
     copyDeviceOwnerEnrollmentCommand,

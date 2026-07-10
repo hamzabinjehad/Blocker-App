@@ -181,6 +181,21 @@ class BlockerModule : Module() {
       configureManagedPrivateDns(hostname)
     }
 
+    AsyncFunction("enablePrivateDnsProtection") { hostname: String?, pin: String? ->
+      val context = reactContext()
+      PrivateDnsProtectionManager.enable(
+        context,
+        PolicyRepository(context),
+        hostname ?: PrivateDnsProtectionManager.DEFAULT_HOST,
+        pin
+      )
+    }
+
+    AsyncFunction("disablePrivateDnsProtection") { pin: String? ->
+      val context = reactContext()
+      PrivateDnsProtectionManager.disable(context, PolicyRepository(context), pin)
+    }
+
     AsyncFunction("copyTextToClipboard") { label: String, text: String ->
       copyTextToClipboard(label, text)
     }
@@ -1002,6 +1017,7 @@ class BlockerModule : Module() {
       "canConfigurePrivateDns" to (managedOwner && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P),
       "privateDnsMode" to privateDnsMode,
       "privateDnsHost" to privateDnsHost,
+      "privateDnsProtection" to PrivateDnsProtectionManager.status(context, repo),
       "requiresManagedEnrollment" to !managedOwner
     )
   }
