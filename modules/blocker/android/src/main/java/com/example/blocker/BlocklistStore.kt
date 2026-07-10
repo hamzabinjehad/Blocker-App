@@ -54,6 +54,11 @@ object BlocklistStore {
   private const val PREFS_KEY_HASH = "blocklist_hash_"
   private const val BLOCKLISTS_DIR = "blocklists"
   private const val FETCH_TIMEOUT_MS = 10_000
+
+  // A rebuild may prune entries the upstreams delisted, but a feed that suddenly returns half
+  // its usual size is far more likely to be truncated than genuinely shrunk. Below this share
+  // of the previous list, fall back to merging so a bad fetch cannot gut coverage.
+  private const val MIN_REBUILD_COVERAGE_RATIO = 0.5
   private val ADULT_DOMAIN_SOURCES = listOf(
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt",
     "https://raw.githubusercontent.com/blocklistproject/Lists/master/porn.txt",
@@ -135,7 +140,17 @@ object BlocklistStore {
       }
     }
 
-    val next = (current + fetched).filter { it.isNotBlank() }.toSortedSet()
+    // The upstream sources are the source of truth. Merging them into the previous list
+    // (`current + fetched`) meant an entry could only ever be added: a false positive that the
+    // upstreams later delisted stayed blocked forever and the file grew without bound. Rebuild
+    // from the sources instead — but only when every source answered, and never let a truncated
+    // feed collapse coverage in one run.
+    val rebuilt = fetched.filter { it.isNotBlank() }.toSortedSet()
+    val coverageFloor = current.size * MIN_REBUILD_COVERAGE_RATIO
+    val rebuild = errors.isEmpty() && rebuilt.size >= coverageFloor
+    val next = if (rebuild) rebuilt else (current + fetched).filter { it.isNotBlank() }.toSortedSet()
+    val prunedCount = if (rebuild) current.count { it.isNotBlank() && it !in rebuilt } else 0
+
     if (next.size < 1_000) {
       return mapOf(
         "updated" to false,
@@ -155,6 +170,8 @@ object BlocklistStore {
       "updated" to (updatedSources > 0),
       "accepted" to fetched.size,
       "total" to next.size,
+      "rebuilt" to rebuild,
+      "pruned" to prunedCount,
       "updatedAt" to SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
       "errors" to errors.joinToString(";").take(300)
     )

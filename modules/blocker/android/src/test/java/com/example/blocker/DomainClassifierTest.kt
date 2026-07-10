@@ -32,6 +32,82 @@ class DomainClassifierTest {
     classifier = DomainClassifier(context, repository)
   }
 
+  // ── Allowlist must not become a master key ─────────────────────────────
+
+  /**
+   * Robolectric cannot read this module's merged assets, so the real bypass/adult lists are
+   * empty in unit tests — which is why the older `blocks bypass domain in strict mode` case
+   * could only assert non-null. Inject a snapshot instead so these paths are actually covered.
+   */
+  private fun classifierWithBypassList(vararg bypassDomains: String): DomainClassifier =
+    DomainClassifier(
+      RuntimeEnvironment.getApplication(),
+      repository,
+      BlocklistSnapshot(
+        adultMatcher = EmptyDomainMatcher,
+        bypassDomains = bypassDomains.toSet(),
+        allowDomains = emptySet(),
+        dnsRewriteRules = emptyList(),
+        activeKeywords = emptySet(),
+        activeKeywordRules = emptyList(),
+        generatedAt = "test",
+        adultDomainCount = 0,
+        bypassDomainCount = bypassDomains.size,
+        allowDomainCount = 0,
+        activeKeywordCount = 0
+      )
+    )
+
+  @Test
+  fun `bypass domain is blocked in strict mode`() {
+    whenever(repository.isStrictModeEnabled()).thenReturn(true)
+    val result = classifierWithBypassList("nordvpn.com").classify("nordvpn.com")
+    assertEquals(DomainClassification.Action.BLOCK, result.action)
+    assertEquals(DomainClassifier.CATEGORY_BYPASS, result.category)
+  }
+
+  @Test
+  fun `allowlisting a bypass domain has no effect while strict mode is on`() {
+    whenever(repository.isStrictModeEnabled()).thenReturn(true)
+    whenever(repository.allowlistedDomains()).thenReturn(setOf("nordvpn.com"))
+
+    val result = classifierWithBypassList("nordvpn.com").classify("nordvpn.com")
+    assertEquals(DomainClassification.Action.BLOCK, result.action)
+    assertEquals(DomainClassifier.CATEGORY_BYPASS, result.category)
+  }
+
+  @Test
+  fun `allowlisting a bypass domain has no effect on its subdomains either`() {
+    whenever(repository.shouldBlockBypassDomains()).thenReturn(true)
+    whenever(repository.allowlistedDomains()).thenReturn(setOf("nordvpn.com"))
+
+    // matchesAny walks parents, so the entry would otherwise unlock every subdomain too.
+    val result = classifierWithBypassList("nordvpn.com").classify("downloads.nordvpn.com")
+    assertEquals(DomainClassification.Action.BLOCK, result.action)
+    assertEquals(DomainClassifier.CATEGORY_BYPASS, result.category)
+  }
+
+  @Test
+  fun `allowlisting a bypass domain still works when bypass blocking is off`() {
+    whenever(repository.isStrictModeEnabled()).thenReturn(false)
+    whenever(repository.shouldBlockBypassDomains()).thenReturn(false)
+    whenever(repository.allowlistedDomains()).thenReturn(setOf("nordvpn.com"))
+
+    val result = classifierWithBypassList("nordvpn.com").classify("nordvpn.com")
+    assertEquals(DomainClassification.Action.ALLOW, result.action)
+    assertEquals(DomainClassifier.CATEGORY_ALLOWLIST, result.category)
+  }
+
+  @Test
+  fun `allowlisting an ordinary domain still works under strict mode`() {
+    whenever(repository.isStrictModeEnabled()).thenReturn(true)
+    whenever(repository.allowlistedDomains()).thenReturn(setOf("example.com"))
+
+    val result = classifierWithBypassList("nordvpn.com").classify("example.com")
+    assertEquals(DomainClassification.Action.ALLOW, result.action)
+    assertEquals(DomainClassifier.CATEGORY_ALLOWLIST, result.category)
+  }
+
   // ── Adult domain blocking ──────────────────────────────────────────────
 
   @Test
@@ -125,17 +201,8 @@ class DomainClassifierTest {
   }
 
   // ── Bypass tool blocking ───────────────────────────────────────────────
-
-  @Test
-  fun `blocks bypass domain in strict mode`() {
-    whenever(repository.isStrictModeEnabled()).thenReturn(true)
-    classifier = DomainClassifier(RuntimeEnvironment.getApplication(), repository)
-    // bypass domains loaded from assets; test with heuristic
-    val result = classifier.classify("nordvpn.com")
-    // If nordvpn.com is in the bundled bypass list it should block
-    // Otherwise this test documents the behavior
-    assertNotNull(result)
-  }
+  // `bypass domain is blocked in strict mode` lives with the allowlist-guardrail cases above,
+  // where a snapshot is injected so the bypass list is actually populated.
 
   @Test
   fun `allows bypass domain when strict mode off`() {

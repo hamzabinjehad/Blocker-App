@@ -91,16 +91,78 @@ class DnsFilterEngine(
         // Domains the user explicitly allowlisted must resolve even if the family
         // upstream would filter them, so route those through an unfiltered resolver.
         val unfiltered = classification.category == DomainClassifier.CATEGORY_ALLOWLIST
-        forwardDnsWithCache(
+        val forwarded = forwardDnsWithCache(
           packet.copyOfRange(query.dnsOffset, query.dnsOffset + query.dnsLength),
           query.domain,
           query.queryType,
           unfiltered
-        ) ?: buildServfailDnsResponse(packet, query.dnsOffset, query.dnsLength)
+        )
+        when {
+          forwarded == null -> buildServfailDnsResponse(packet, query.dnsOffset, query.dnsLength)
+          else -> {
+            // A clean name can still point at a blocked one. Runs on cached responses too,
+            // so a chain that was benign when first cached cannot be replayed past the filter.
+            val cloaked = if (unfiltered) null else firstBlockedCnameTarget(forwarded)
+            if (cloaked != null) {
+              recordCnameBlock(query.domain, cloaked)
+              buildBlockedDnsResponse(packet, query.dnsOffset, query.dnsLength)
+            } else {
+              forwarded
+            }
+          }
+        }
       }
     }
 
     return wrapDnsResponse(query, dnsResponse)
+  }
+
+  /**
+   * CNAME cloaking hides a blocked host behind an innocuous name that the classifier — which
+   * only ever sees the *queried* name — happily allows. Re-classify every target in the chain.
+   *
+   * Heuristic name matches are deliberately ignored here. CNAME targets are infrastructure
+   * hostnames, not names a user chose, so the adult-name heuristic collides with them far more
+   * readily than with the domains it was tuned on ("cams.cdn.example.net" decomposes entirely
+   * into a core adult word). A false positive is invisible — the user typed a clean name and the
+   * site simply fails — so only an explicit blocklist entry may sever a chain. Real adult CDNs
+   * are on the blocklist; the heuristic adds nothing here but risk.
+   */
+  private fun firstBlockedCnameTarget(response: ByteArray): String? {
+    val targets = DnsResponseParser.summarize(response)?.cnameTargets ?: return null
+    if (targets.isEmpty()) return null
+    return targets.firstOrNull { target ->
+      val classification = classifier.classify(target)
+      classification.action == DomainClassification.Action.BLOCK && !classification.heuristic
+    }
+  }
+
+  private fun recordCnameBlock(queriedDomain: String, cnameTarget: String) {
+    // Recorded against the queried name so it lands in Recently Blocked with a one-tap allow;
+    // the cloaked target travels in the audit metadata.
+    val recorded = repository.recordDomainEvent(
+      queriedDomain,
+      DomainClassifier.CATEGORY_ADULT,
+      ACTION_BLOCKED_CNAME
+    )
+    if (!recorded) return
+
+    repository.recordAuditEvent(
+      eventType = "DNS_CNAME_CLOAKING_BLOCKED",
+      severity = "high",
+      category = DomainClassifier.CATEGORY_ADULT,
+      subject = queriedDomain,
+      action = ACTION_BLOCKED_CNAME,
+      metadata = mapOf("cnameTarget" to cnameTarget)
+    )
+    GuardianNotifier.notify(
+      vpnService.applicationContext,
+      eventType = "DNS_CNAME_CLOAKING_BLOCKED",
+      severity = "high",
+      subject = queriedDomain,
+      action = ACTION_BLOCKED_CNAME,
+      metadata = mapOf("cnameTarget" to cnameTarget)
+    )
   }
 
   private fun wrapDnsResponse(query: DnsQuery, dnsPayload: ByteArray): ByteArray {
@@ -653,6 +715,7 @@ class DnsFilterEngine(
     private const val ACTION_ECH_HINT_STRIPPED = "ech_hint_stripped"
     private const val ACTION_BLOCKED_UPSTREAM = "blocked_upstream"
     private const val ACTION_BLOCKED_HEURISTIC = "blocked_heuristic"
+    private const val ACTION_BLOCKED_CNAME = "blocked_cname"
 
     private const val GOOGLE_SAFE_SEARCH_IP = "216.239.38.120"
     private const val BING_SAFE_SEARCH_IP = "204.79.197.220"

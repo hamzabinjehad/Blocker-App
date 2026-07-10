@@ -21,9 +21,11 @@ data class DomainClassification(
 
 class DomainClassifier(
   context: Context,
-  private val repository: PolicyRepository
+  private val repository: PolicyRepository,
+  // Unit tests inject a snapshot: Robolectric cannot read the module's merged assets, and
+  // loading the real 1M-entry adult list into every test would be far too slow anyway.
+  private val blocklists: BlocklistSnapshot = BlocklistStore.get(context)
 ) {
-  private val blocklists = BlocklistStore.get(context)
 
   fun classify(rawDomain: String): DomainClassification {
     val domain = normalizeDomain(rawDomain)
@@ -31,7 +33,18 @@ class DomainClassifier(
       return DomainClassification(domain, CATEGORY_UNKNOWN, DomainClassification.Action.ALLOW)
     }
 
-    if (matchesAny(domain, repository.allowlistedDomains()) || matchesAny(domain, blocklists.allowDomains)) {
+    // The allowlist is consulted first so an explicit "allow this site" beats the blocklists —
+    // and DnsFilterEngine then resolves it through an *unfiltered* upstream. That makes a single
+    // entry a master key: allowlisting "nordvpn.com" would disable this filter, the family
+    // resolver, and the bypass list for that domain and every subdomain (matchesAny walks
+    // parents). Bypass domains therefore stay blocked while bypass enforcement is on, no matter
+    // what the allowlist says.
+    val bypassEnforced = repository.isStrictModeEnabled() || repository.shouldBlockBypassDomains()
+    val isEnforcedBypassDomain = bypassEnforced && matchesAny(domain, blocklists.bypassDomains)
+
+    if (!isEnforcedBypassDomain &&
+      (matchesAny(domain, repository.allowlistedDomains()) || matchesAny(domain, blocklists.allowDomains))
+    ) {
       return DomainClassification(domain, CATEGORY_ALLOWLIST, DomainClassification.Action.ALLOW)
     }
 

@@ -105,6 +105,64 @@ class DnsResponseParserTest {
     assertFalse(summary.looksUpstreamFiltered)
   }
 
+  /** Length-prefixed labels terminated by a root byte, e.g. "media.blocked.test". */
+  private fun encodedName(domain: String): ByteArray {
+    val bytes = mutableListOf<Byte>()
+    domain.split('.').forEach { label ->
+      bytes.add(label.length.toByte())
+      label.forEach { bytes.add(it.code.toByte()) }
+    }
+    bytes.add(0)
+    return bytes.toByteArray()
+  }
+
+  @Test
+  fun `extracts a cname target written with a compression pointer`() {
+    // rdata = "www" + pointer back to the question name ("example.com")
+    val cnameTarget = byteArrayOf(3, 'w'.code.toByte(), 'w'.code.toByte(), 'w'.code.toByte(), 0xc0.toByte(), 0x0c)
+    val response = dnsResponse(0, listOf(Answer(5, 30L, cnameTarget)))
+    val summary = DnsResponseParser.summarize(response)
+    assertNotNull(summary)
+    assertEquals(listOf("www.example.com"), summary!!.cnameTargets)
+  }
+
+  @Test
+  fun `extracts every target in a cname chain in wire order`() {
+    val response = dnsResponse(
+      0,
+      listOf(
+        Answer(5, 300L, encodedName("cdn.innocent.test")),
+        Answer(5, 300L, encodedName("media.blocked.test")),
+        Answer(1, 300L, byteArrayOf(1, 2, 3, 4))
+      )
+    )
+    val summary = DnsResponseParser.summarize(response)
+    assertNotNull(summary)
+    assertEquals(listOf("cdn.innocent.test", "media.blocked.test"), summary!!.cnameTargets)
+    assertEquals(1, summary.addressRecordCount)
+  }
+
+  @Test
+  fun `a plain address answer carries no cname targets`() {
+    val response = dnsResponse(0, listOf(Answer(1, 300L, byteArrayOf(1, 2, 3, 4))))
+    assertEquals(emptyList<String>(), DnsResponseParser.summarize(response)!!.cnameTargets)
+  }
+
+  @Test
+  fun `a self referential compression pointer returns null instead of looping`() {
+    val header = byteArrayOf(
+      0x12, 0x34,
+      0x81.toByte(), 0x80.toByte(),
+      0, 1, // QDCOUNT
+      0, 0, // ANCOUNT
+      0, 0,
+      0, 0
+    )
+    // The question name at offset 12 is a pointer to offset 12 — itself.
+    val response = header + byteArrayOf(0xc0.toByte(), 0x0c, 0, 1, 0, 1)
+    assertNull(DnsResponseParser.summarize(response))
+  }
+
   @Test
   fun `nxdomain without answers has no ttl and is not filtered`() {
     val response = dnsResponse(3, emptyList())
