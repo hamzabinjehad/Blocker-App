@@ -34,10 +34,13 @@ class DeviceOwnerPolicyManager(
     apply("set_uninstall_blocked", failed) {
       manager.setUninstallBlocked(component, context.packageName, true)
     }
-    apply("set_always_on_vpn_lockdown", failed) {
+    apply("set_always_on_vpn", failed) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        manager.setAlwaysOnVpnPackage(component, context.packageName, true)
-        repository.setAlwaysOnVpnLockdownEnabled(true, pin)
+        // Lockdown blocks every destination the tunnel does not route. With the DNS-only
+        // tunnel that is *all* of them — see VpnPolicyManager.isLockdownSafe.
+        val lockdown = VpnPolicyManager.isLockdownSafe(repository)
+        manager.setAlwaysOnVpnPackage(component, context.packageName, lockdown)
+        repository.setAlwaysOnVpnLockdownEnabled(lockdown, pin)
       }
     }
     strictRestrictions().forEach { restriction ->
@@ -151,9 +154,16 @@ class DeviceOwnerPolicyManager(
       "missingRestrictions" to missingRestrictions,
       "failedRestrictions" to missingRestrictions,
       "canApplyStrictPolicy" to managedOwner,
-      "canBlockNetworkWithoutVpn" to (managedOwner && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N),
+      // Blocking the network without the VPN requires the tunnel to route every destination;
+      // with the DNS-only tunnel it would take the device offline. See VpnPolicyManager.
+      "canBlockNetworkWithoutVpn" to (
+        managedOwner &&
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+          VpnPolicyManager.FULL_TUNNEL_SUPPORTED
+        ),
       "alwaysOnVpnPackage" to alwaysOnVpnPackage,
       "alwaysOnVpnLockdownApplied" to lockdownApplied,
+      "alwaysOnVpnLockdownSupported" to VpnPolicyManager.FULL_TUNNEL_SUPPORTED,
       "uninstallBlocked" to uninstallBlocked
     )
   }
@@ -169,7 +179,7 @@ class DeviceOwnerPolicyManager(
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
       runCatching {
-        manager.setAlwaysOnVpnPackage(component, context.packageName, true)
+        manager.setAlwaysOnVpnPackage(component, context.packageName, VpnPolicyManager.isLockdownSafe(repository))
       }
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

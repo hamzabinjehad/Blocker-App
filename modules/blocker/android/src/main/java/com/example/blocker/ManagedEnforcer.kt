@@ -29,8 +29,12 @@ class ManagedEnforcer(
       "managedOwner" to managedOwner,
       "canSetAlwaysOnVpn" to (managedOwner && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N),
       "alwaysOnVpnPackage" to alwaysOnPackage,
+      "alwaysOnVpnEnabled" to (alwaysOnPackage == context.packageName),
       "alwaysOnVpnLockdownEnabled" to lockdownEnabled,
       "alwaysOnVpnLockdownRequested" to repository.isAlwaysOnVpnLockdownEnabled(),
+      // Lockdown drops every destination the tunnel does not route, so it stays unavailable
+      // until full-tunnel routing exists. Always-on itself is applied regardless.
+      "alwaysOnVpnLockdownSupported" to VpnPolicyManager.FULL_TUNNEL_SUPPORTED,
       "canSuspendPackages" to (managedOwner && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N),
       "packageSuspensionEnabled" to repository.isPackageSuspensionEnabled(),
       "emergencyLockEnabled" to repository.isEmergencyLockEnabled(),
@@ -52,11 +56,15 @@ class ManagedEnforcer(
 
     return try {
       if (enabled) {
-        manager.setAlwaysOnVpnPackage(component, context.packageName, true)
+        // Always-on is always safe: the VPN auto-starts and cannot be switched off while
+        // DISALLOW_CONFIG_VPN holds. Lockdown is the dangerous half and is gated on routing.
+        val lockdown = VpnPolicyManager.isLockdownSafe(repository)
+        manager.setAlwaysOnVpnPackage(component, context.packageName, lockdown)
+        if (lockdown) result(true) else result(true, REASON_LOCKDOWN_NEEDS_FULL_TUNNEL)
       } else {
         manager.setAlwaysOnVpnPackage(component, null, false)
+        result(true)
       }
-      result(true)
     } catch (_: Exception) {
       result(false, "android_rejected_always_on_vpn")
     }
@@ -70,8 +78,9 @@ class ManagedEnforcer(
       return result(false, "device_owner_or_profile_owner_required")
     }
     return try {
-      manager.setAlwaysOnVpnPackage(component, context.packageName, true)
-      result(true)
+      val lockdown = VpnPolicyManager.isLockdownSafe(repository)
+      manager.setAlwaysOnVpnPackage(component, context.packageName, lockdown)
+      if (lockdown) result(true) else result(true, REASON_LOCKDOWN_NEEDS_FULL_TUNNEL)
     } catch (_: Exception) {
       result(false, "android_rejected_always_on_vpn")
     }
@@ -171,4 +180,9 @@ class ManagedEnforcer(
     "managedEnforcementStatus" to status(),
     "focusState" to repository.focusStateSnapshot(context)
   )
+
+  companion object {
+    /** Always-on was applied but lockdown was withheld: the tunnel routes DNS only. */
+    const val REASON_LOCKDOWN_NEEDS_FULL_TUNNEL = "lockdown_requires_full_tunnel"
+  }
 }

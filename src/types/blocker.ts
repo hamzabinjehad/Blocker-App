@@ -120,10 +120,16 @@ export type PrivateDnsStatus = {
 };
 
 export type VpnPolicyStatus = {
+  /** Stored intent. Routing is driven by `routesAllIpv4Traffic`, never by this. */
   fullTunnelVpnEnabled: boolean;
+  /** False while the tunnel is a DNS filter with no packet forwarder. */
+  fullTunnelSupported?: boolean;
+  /** Lockdown strands every unrouted destination, so it needs full-tunnel routing. */
+  alwaysOnVpnLockdownSupported?: boolean;
   effectiveTunnelMode: 'dns_only' | 'full_tunnel' | string;
   routesAllIpv4Traffic: boolean;
   routesAllIpv6Traffic: boolean;
+  /** Stored intent. The guard is only real when `routesAllIpv6Traffic` is true. */
   ipv6LeakPreventionEnabled: boolean;
   perAppVpnFilteringEnabled: boolean;
   allowedPackages: string[];

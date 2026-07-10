@@ -168,8 +168,10 @@ class WorkProfileManager(
     }
     apply("set_always_on_vpn", failed) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        manager.setAlwaysOnVpnPackage(component, context.packageName, true)
-        repository.setAlwaysOnVpnLockdownEnabled(true, pin)
+        // Lockdown would strand every destination the DNS-only tunnel does not route.
+        val lockdown = VpnPolicyManager.isLockdownSafe(repository)
+        manager.setAlwaysOnVpnPackage(component, context.packageName, lockdown)
+        repository.setAlwaysOnVpnLockdownEnabled(lockdown, pin)
       }
     }
     apply("set_camera_disabled", failed) {

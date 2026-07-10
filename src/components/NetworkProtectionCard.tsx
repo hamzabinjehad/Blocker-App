@@ -39,6 +39,11 @@ export function NetworkProtectionCard({
   }
 
   const fullTunnelActive = vpnPolicy.effectiveTunnelMode === 'full_tunnel' && vpnPolicy.routesAllIpv4Traffic;
+  // The tunnel only carries DNS until a packet forwarder exists, so the full-tunnel and IPv6
+  // controls describe intent, not protection. Render every indicator from what actually routes
+  // — a green shield for a guard that isn't running is worse than no shield at all.
+  const fullTunnelSupported = vpnPolicy.fullTunnelSupported ?? false;
+  const ipv6GuardActive = vpnPolicy.routesAllIpv6Traffic;
 
   return (
     <Card title="Network Protection" subtitle="Local VPN routing, app scope, IPv6 leaks, and HTTPS proxy controls.">
@@ -49,8 +54,8 @@ export function NetworkProtectionCard({
         <Chip compact icon={vpnPolicy.perAppVpnFilteringEnabled ? 'application-cog-outline' : 'apps'}>
           {vpnPolicy.perAppVpnFilteringEnabled ? `${vpnPolicy.filteredPackageCount} scoped apps` : 'All apps'}
         </Chip>
-        <Chip compact icon={vpnPolicy.ipv6LeakPreventionEnabled ? 'shield-check-outline' : 'shield-alert-outline'}>
-          {vpnPolicy.ipv6LeakPreventionEnabled ? 'IPv6 leak guard' : 'IPv6 guard off'}
+        <Chip compact icon={ipv6GuardActive ? 'shield-check-outline' : 'shield-alert-outline'}>
+          {ipv6GuardActive ? 'IPv6 leak guard' : 'IPv6 guard off'}
         </Chip>
         <Chip compact icon={httpsInspection.localProxyConfigured ? 'lock-check-outline' : 'lock-alert-outline'}>
           {httpsInspection.localProxyConfigured ? 'HTTPS proxy set' : 'HTTPS proxy off'}
@@ -83,6 +88,20 @@ export function NetworkProtectionCard({
         />
       </View>
 
+      {!fullTunnelSupported ? (
+        <View style={styles.warningPanel}>
+          <Text selectable style={styles.warningTitle}>
+            Full-tunnel routing is not implemented
+          </Text>
+          <Text selectable style={styles.note}>
+            The local VPN answers DNS and forwards nothing else, so it cannot route general app
+            traffic yet. Full-tunnel and IPv6 leak-guard controls stay disabled, and always-on VPN
+            lockdown is withheld: enabling it over a DNS-only tunnel would leave every non-DNS
+            destination unreachable.
+          </Text>
+        </View>
+      ) : null}
+
       <Field
         label="Parent PIN for network changes"
         onChangeText={setPin}
@@ -93,7 +112,7 @@ export function NetworkProtectionCard({
 
       <View style={styles.actions}>
         <Button
-          disabled={fullTunnelActive}
+          disabled={!fullTunnelSupported || fullTunnelActive}
           icon="lan-connect"
           loading={pendingAction === 'enable-full-tunnel'}
           onPress={() =>
@@ -110,7 +129,7 @@ export function NetworkProtectionCard({
           Enable Full-Tunnel Filtering
         </Button>
         <Button
-          disabled={!fullTunnelActive}
+          disabled={!fullTunnelSupported || !fullTunnelActive}
           icon="dns-outline"
           loading={pendingAction === 'disable-full-tunnel'}
           tone="neutral"
@@ -126,7 +145,7 @@ export function NetworkProtectionCard({
           Use DNS-Only Fallback
         </Button>
         <Button
-          disabled={vpnPolicy.ipv6LeakPreventionEnabled}
+          disabled={!fullTunnelSupported || ipv6GuardActive}
           icon="shield-check-outline"
           loading={pendingAction === 'enable-ipv6'}
           tone="neutral"
