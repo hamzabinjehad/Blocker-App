@@ -27,6 +27,15 @@ class UrlPolicyEvaluator(
       return UrlPolicyDecision(blocked = true, reason = "invalid_host")
     }
 
+    // Connecting straight to a public IP literal skips DNS, so the domain filter never sees it.
+    // The DNS-only tunnel can't close that path (it would need full-tunnel packet forwarding),
+    // but it can at least make it *visible*: record the access so the review flow and the
+    // full-tunnel decision rest on data, not a guess. Private/loopback IPs (router pages, local
+    // dev) are ignored — they are never the content bypass this is watching for.
+    if (isPublicIpLiteral(normalizedHost)) {
+      recordDirectIpAccess(normalizedHost, action)
+    }
+
     val classification = classifier.classify(normalizedHost)
     if (classification.action == DomainClassification.Action.BLOCK) {
       recordDomainBlock(classification, action)
@@ -164,6 +173,20 @@ class UrlPolicyEvaluator(
     )
   }
 
+  private fun recordDirectIpAccess(ip: String, action: String) {
+    val recorded = repository.recordDomainEvent(ip, CATEGORY_DIRECT_IP, ACTION_DIRECT_IP_ACCESS)
+    if (!recorded) return
+
+    repository.recordAuditEvent(
+      eventType = "DIRECT_IP_ACCESS",
+      severity = "medium",
+      category = CATEGORY_DIRECT_IP,
+      subject = ip,
+      action = ACTION_DIRECT_IP_ACCESS,
+      metadata = mapOf("surface" to action)
+    )
+  }
+
   private fun recordSafeSearchRewrite(host: String, action: String) {
     val recorded = repository.recordDomainEvent(host, DomainClassifier.CATEGORY_SEARCH, ACTION_SAFESEARCH_PARAM_INJECTED)
     if (!recorded) return
@@ -200,6 +223,53 @@ class UrlPolicyEvaluator(
       .trim('.')
   }
 
+  // True for a routable IPv4/IPv6 literal — i.e. one a person could type to reach a public
+  // server directly. Hostnames and private/loopback/link-local addresses return false.
+  private fun isPublicIpLiteral(host: String): Boolean {
+    val ipv4 = parseIpv4(host)
+    if (ipv4 != null) return isPublicIpv4(ipv4)
+    if (host.contains(':')) return isPublicIpv6(host)
+    return false
+  }
+
+  private fun parseIpv4(host: String): IntArray? {
+    val parts = host.split('.')
+    if (parts.size != 4) return null
+    val octets = IntArray(4)
+    for (i in parts.indices) {
+      val value = parts[i].toIntOrNull() ?: return null
+      if (value !in 0..255 || (parts[i].length > 1 && parts[i][0] == '0')) return null
+      octets[i] = value
+    }
+    return octets
+  }
+
+  private fun isPublicIpv4(octets: IntArray): Boolean {
+    val a = octets[0]; val b = octets[1]
+    return when {
+      a == 10 -> false                       // 10.0.0.0/8 private
+      a == 127 -> false                      // loopback
+      a == 0 -> false                        // "this" network
+      a == 172 && b in 16..31 -> false       // 172.16.0.0/12 private
+      a == 192 && b == 168 -> false          // 192.168.0.0/16 private
+      a == 169 && b == 254 -> false          // link-local
+      a == 100 && b in 64..127 -> false      // CGNAT 100.64.0.0/10
+      a >= 224 -> false                      // multicast + reserved
+      else -> true
+    }
+  }
+
+  private fun isPublicIpv6(host: String): Boolean {
+    val addr = host.trim().removePrefix("[").removeSuffix("]").lowercase()
+    if (addr.count { it == ':' } < 2) return false // not an IPv6 literal
+    return when {
+      addr == "::1" || addr == "::" -> false       // loopback / unspecified
+      addr.startsWith("fe80") -> false             // link-local
+      addr.startsWith("fc") || addr.startsWith("fd") -> false // unique local
+      else -> true
+    }
+  }
+
   private fun isGoogleSearchHost(host: String): Boolean =
     host == "google.com" ||
       host == "www.google.com" ||
@@ -216,5 +286,7 @@ class UrlPolicyEvaluator(
   companion object {
     private const val ACTION_URL_KEYWORD_BLOCKED = "url_keyword_blocked"
     private const val ACTION_SAFESEARCH_PARAM_INJECTED = "safesearch_param_injected"
+    private const val ACTION_DIRECT_IP_ACCESS = "direct_ip_access"
+    private const val CATEGORY_DIRECT_IP = "direct_ip"
   }
 }

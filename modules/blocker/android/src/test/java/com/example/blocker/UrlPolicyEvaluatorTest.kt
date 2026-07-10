@@ -77,4 +77,40 @@ class UrlPolicyEvaluatorTest {
     val result = evaluator.evaluateHttpRequest("www.google.com", "/search?q=weather", "GET")
     assertFalse(result.blocked)
   }
+
+  // ── Direct-IP access instrumentation ───────────────────────────────────
+
+  @Test
+  fun `records direct_ip_access for a public ipv4 literal`() {
+    val result = evaluator.evaluateHost("203.0.113.7", "https_connect")
+    assertFalse(result.blocked) // measured, not blocked
+    verify(repository).recordDomainEvent("203.0.113.7", "direct_ip", "direct_ip_access")
+  }
+
+  @Test
+  fun `records direct_ip_access for a public ipv6 literal`() {
+    evaluator.evaluateHost("[2606:4700:4700::1111]", "https_connect")
+    verify(repository).recordDomainEvent("2606:4700:4700::1111", "direct_ip", "direct_ip_access")
+  }
+
+  @Test
+  fun `ignores private and loopback ipv4 literals`() {
+    listOf("192.168.1.1", "10.0.0.5", "172.16.0.1", "127.0.0.1", "169.254.1.1").forEach { ip ->
+      evaluator.evaluateHost(ip, "https_connect")
+    }
+    verify(repository, never()).recordDomainEvent(any(), eq("direct_ip"), eq("direct_ip_access"))
+  }
+
+  @Test
+  fun `does not treat a hostname as a direct ip`() {
+    evaluator.evaluateHost("example.com", "https_connect")
+    verify(repository, never()).recordDomainEvent(any(), eq("direct_ip"), eq("direct_ip_access"))
+  }
+
+  @Test
+  fun `does not treat a version-like dotted label as an ip`() {
+    // Four numeric labels that are not a valid dotted-quad (octet > 255) must stay a hostname.
+    evaluator.evaluateHost("300.400.500.600", "https_connect")
+    verify(repository, never()).recordDomainEvent(any(), eq("direct_ip"), eq("direct_ip_access"))
+  }
 }
