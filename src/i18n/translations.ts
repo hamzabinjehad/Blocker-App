@@ -90,11 +90,12 @@ export const en = {
   'alwaysOn.title': 'Lock protection on',
   'alwaysOn.subtitle': 'Stops the easiest bypass — simply switching the protection VPN off.',
   'alwaysOn.callout':
-    'With Always-on VPN and "Block connections without VPN" enabled, the internet stays off whenever protection is not running — so turning it off no longer opens a free path.',
+    'Always-on VPN makes protection restart automatically and stops it being switched off. Your internet keeps working normally — only the ability to turn protection off is removed.',
   'alwaysOn.step1': 'Open Android VPN settings below.',
   'alwaysOn.step2': 'Tap the gear next to "Control Yourself".',
   'alwaysOn.step3': 'Turn on "Always-on VPN".',
-  'alwaysOn.step4': 'Turn on "Block connections without VPN".',
+  'alwaysOn.warning':
+    'Leave "Block connections without VPN" OFF. This app filters DNS only, so that option would cut off all non-DNS internet.',
   'alwaysOn.openSettings': 'Open VPN settings',
 
   // Appearance / language
@@ -742,11 +743,12 @@ export const ar: Record<TranslationKey, string> = {
   'alwaysOn.title': 'ثبّت الحماية',
   'alwaysOn.subtitle': 'يوقف أسهل تحايل — مجرّد إطفاء شبكة الحماية VPN.',
   'alwaysOn.callout':
-    'مع تفعيل "VPN دائم التشغيل" و"حظر الاتصالات بدون VPN"، يبقى الإنترنت مقطوعاً كلما توقّفت الحماية — فإطفاؤها لم يعد يفتح طريقاً حرّاً.',
+    'يجعل "VPN دائم التشغيل" الحمايةَ تعيد التشغيل تلقائياً ويمنع إطفاءها. يبقى إنترنتك يعمل طبيعياً — يُزال فقط خيار إيقاف الحماية.',
   'alwaysOn.step1': 'افتح إعدادات VPN في أندرويد بالأسفل.',
   'alwaysOn.step2': 'اضغط على الترس بجانب "اضبط نفسك".',
   'alwaysOn.step3': 'فعّل "VPN دائم التشغيل".',
-  'alwaysOn.step4': 'فعّل "حظر الاتصالات بدون VPN".',
+  'alwaysOn.warning':
+    'اترك "حظر الاتصالات بدون VPN" مُطفأً. هذا التطبيق يُرشّح DNS فقط، وتفعيل ذلك الخيار سيقطع كل إنترنت غير الـDNS.',
   'alwaysOn.openSettings': 'افتح إعدادات VPN',
 
   // Appearance / language

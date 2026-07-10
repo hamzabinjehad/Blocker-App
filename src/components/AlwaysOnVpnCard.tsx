@@ -13,7 +13,10 @@ type AlwaysOnVpnCardProps = {
 
 export function AlwaysOnVpnCard({ onOpenVpnSettings }: AlwaysOnVpnCardProps) {
   const t = useTranslation();
-  const steps = [t('alwaysOn.step1'), t('alwaysOn.step2'), t('alwaysOn.step3'), t('alwaysOn.step4')];
+  // Only always-on itself is safe over a DNS-only tunnel: it keeps protection running without
+  // touching connectivity. The old step 4 ("Block connections without VPN") is deliberately
+  // dropped and turned into a warning — that setting would sever all non-DNS internet here.
+  const steps = [t('alwaysOn.step1'), t('alwaysOn.step2'), t('alwaysOn.step3')];
 
   return (
     <Card title={t('alwaysOn.title')} subtitle={t('alwaysOn.subtitle')}>
@@ -33,6 +36,11 @@ export function AlwaysOnVpnCard({ onOpenVpnSettings }: AlwaysOnVpnCardProps) {
         ))}
       </View>
 
+      <View style={[styles.warning, { borderColor: colors.border.amber, backgroundColor: colors.amber[50] }]}>
+        <Feather name="alert-triangle" size={16} color={colors.amber[700]} />
+        <Text style={[styles.calloutText, { color: colors.amber[800] }]}>{t('alwaysOn.warning')}</Text>
+      </View>
+
       <Button icon="cog" onPress={() => void onOpenVpnSettings()}>
         {t('alwaysOn.openSettings')}
       </Button>
@@ -42,6 +50,13 @@ export function AlwaysOnVpnCard({ onOpenVpnSettings }: AlwaysOnVpnCardProps) {
 
 const styles = StyleSheet.create({
   callout: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+  },
+  warning: {
     borderRadius: radius.md,
     borderWidth: 1,
     flexDirection: 'row',
