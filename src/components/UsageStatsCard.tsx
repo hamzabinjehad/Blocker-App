@@ -88,8 +88,8 @@ export function UsageStatsCard({ onFetchDailySummary, onOpenUsageAccessSettings 
       {(summary.topApps?.length ?? 0) > 0 && (
         <View style={[styles.section, { borderTopColor: colors.border.subtle }]}>
           <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>{t('usage.topApps')}</Text>
-          {summary.topApps!.slice(0, 5).map((app) => (
-            <View key={app.packageName} style={styles.appRow}>
+          {summary.topApps!.slice(0, 5).map((app, index) => (
+            <View key={`${app.packageName}-${index}`} style={styles.appRow}>
               <Text style={[styles.appLabel, { color: colors.text.primary }]} numberOfLines={1}>
                 {app.appLabel}
               </Text>

@@ -455,7 +455,17 @@ export function useProtectionState() {
   const refreshInstalledApps = useCallback(async () => {
     try {
       const apps = await BlockerModule.getLaunchableApps();
-      setInstalledApps(apps.map(normalizeInstalledApp));
+      // Some devices report the same package twice (e.g. an app with two launcher activities),
+      // which showed the app twice in every list keyed by packageName and triggered React
+      // duplicate-key warnings. Keep the first entry per package.
+      const seen = new Set<string>();
+      const deduped = apps.map(normalizeInstalledApp).filter((app) => {
+        const key = app.packageName.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setInstalledApps(deduped);
       setError(undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load installed apps.');
