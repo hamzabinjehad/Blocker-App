@@ -222,6 +222,7 @@ export default function HomeScreen() {
     gamification.markMoodCheckedIn();
     void gamification.awardXP(10, 'daily_mood_check_in');
     setMoodModalStep(null);
+    protection.notifySuccess(t('success.moodSaved'));
   };
 
   const closeMoodModal = () => {

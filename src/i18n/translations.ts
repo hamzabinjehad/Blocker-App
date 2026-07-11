@@ -117,6 +117,9 @@ export const en = {
 
   // Success confirmations (global snackbar)
   'success.domainAllowed': 'Allowed {domain}',
+  'success.domainBlocked': 'Blocked {domain}',
+  'success.keywordsUpdated': 'Keywords updated',
+  'success.moodSaved': 'Mood saved',
   'success.privateDnsOn': 'Family DNS protection is on',
   'success.privateDnsOff': 'Family DNS protection is off',
   'success.pinSaved': 'Parent PIN saved',
@@ -793,6 +796,9 @@ export const ar: Record<TranslationKey, string> = {
 
   // Success confirmations (global snackbar)
   'success.domainAllowed': 'تم السماح بـ {domain}',
+  'success.domainBlocked': 'تم حجب {domain}',
+  'success.keywordsUpdated': 'تم تحديث الكلمات',
+  'success.moodSaved': 'تم حفظ المزاج',
   'success.privateDnsOn': 'حماية DNS العائلي مُفعّلة',
   'success.privateDnsOff': 'حماية DNS العائلي مُطفأة',
   'success.pinSaved': 'تم حفظ رمز الوالدين',

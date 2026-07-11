@@ -658,6 +658,7 @@ export function useProtectionState() {
         setBlockedDomains((current) => [...new Set([...current, normalized])]);
         setBlockedDomainCount((current) => (blockedDomains.includes(normalized) ? current : current + 1));
         setError(undefined);
+        notifySuccess(t('success.domainBlocked', { domain: normalized }));
         await refreshStatus(false);
         return true;
       } catch (cause) {
@@ -666,7 +667,7 @@ export function useProtectionState() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- requirePinForClientSideChange is render-scoped
-    [blockedDomains, pinConfigured, refreshStatus, t],
+    [blockedDomains, pinConfigured, refreshStatus, t, notifySuccess],
   );
 
   const removeBlockedDomain = useCallback(
@@ -954,12 +955,13 @@ export function useProtectionState() {
           customKeywordCount: normalized.length,
         }));
         setError(undefined);
+        notifySuccess(t('success.keywordsUpdated'));
         await refreshStatus(false);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Unable to update custom keywords.');
       }
     },
-    [pinConfigured, t],
+    [pinConfigured, t, notifySuccess],
   );
 
   const detectText = useCallback(async (input: string) => {
