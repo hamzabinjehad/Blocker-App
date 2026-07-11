@@ -36,6 +36,7 @@ const LOCALIZED_FILES = [
   "src/components/ScheduleProfilesCard.tsx",
   "src/components/TimeField.tsx",
   "src/components/PrivateDnsProtectionCard.tsx",
+  "src/components/WeeklyBlocksChart.tsx",
 ];
 
 // Matches literal latin text as the first content inside a <Text …> element

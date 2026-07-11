@@ -8,6 +8,7 @@ import { PaperProvider } from 'react-native-paper';
 
 import { OnboardingFlow } from '@/components/OnboardingFlow';
 import { GlobalErrorBanner } from '@/components/GlobalErrorBanner';
+import { GlobalSuccessSnackbar } from '@/components/GlobalSuccessSnackbar';
 import { I18nProvider, useTranslation } from '@/i18n';
 import { ProtectionProvider } from '@/store/ProtectionContext';
 import { ScheduleProfilesProvider } from '@/store/ScheduleProfilesContext';
@@ -68,6 +69,7 @@ function AppContent() {
   return (
     <PaperProvider theme={paperTheme}>
       <GlobalErrorBanner />
+      <GlobalSuccessSnackbar />
       <Tabs
         screenOptions={{
           headerShown: false,

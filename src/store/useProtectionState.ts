@@ -511,6 +511,12 @@ export function useProtectionState() {
 
   const dismissError = useCallback(() => setError(undefined), []);
 
+  // Lightweight positive-confirmation channel, mirroring `error`. Screens push a short message
+  // after a successful action; a global Snackbar surfaces it and auto-dismisses.
+  const [successMessage, setSuccessMessage] = useState<string | undefined>();
+  const notifySuccess = useCallback((message: string) => setSuccessMessage(message), []);
+  const dismissSuccess = useCallback(() => setSuccessMessage(undefined), []);
+
   // Locked-until copy shared by start/stop paths.
   const lockedMessage = (unlocksAt?: number | null) =>
     unlocksAt ? t('error.lockedUntil', { date: formatShortDate(unlocksAt, language) }) : t('error.lockedUnknown');
@@ -712,6 +718,7 @@ export function useProtectionState() {
         await BlockerModule.addAllowlistedDomain(normalized, pin ?? '');
         setAllowlistedDomains((current) => [...new Set([...current, normalized])]);
         setError(undefined);
+        notifySuccess(t('success.domainAllowed', { domain: normalized }));
         await refreshStatus(false);
         return true;
       } catch (cause) {
@@ -720,7 +727,7 @@ export function useProtectionState() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- requirePinForClientSideChange is render-scoped
-    [pinConfigured, refreshStatus, t],
+    [pinConfigured, refreshStatus, t, notifySuccess],
   );
 
   const removeAllowlistedDomain = useCallback(
@@ -910,6 +917,7 @@ export function useProtectionState() {
         await BlockerModule.updatePolicy({ newPin, currentPin });
         setPinConfigured(true);
         setError(undefined);
+        notifySuccess(t('success.pinSaved'));
         await refreshStatus(false);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Unable to update parent PIN.');
@@ -917,7 +925,7 @@ export function useProtectionState() {
         setLoading(false);
       }
     },
-    [refreshStatus],
+    [refreshStatus, notifySuccess, t],
   );
 
   const updateKeywordList = useCallback(
@@ -1040,6 +1048,7 @@ export function useProtectionState() {
       try {
         const result = await BlockerModule.enablePrivateDnsProtection(hostname, pin);
         setError(result.applied ? undefined : managedPolicyReason(result.reason ?? undefined));
+        if (result.applied) notifySuccess(t('success.privateDnsOn'));
         await refreshStatus(false);
         return result;
       } catch (cause) {
@@ -1047,7 +1056,7 @@ export function useProtectionState() {
         return undefined;
       }
     },
-    [refreshStatus],
+    [refreshStatus, notifySuccess, t],
   );
 
   const disablePrivateDnsProtection = useCallback(
@@ -1055,6 +1064,7 @@ export function useProtectionState() {
       try {
         const result = await BlockerModule.disablePrivateDnsProtection(pin);
         setError(result.applied ? undefined : managedPolicyReason(result.reason ?? undefined));
+        if (result.applied) notifySuccess(t('success.privateDnsOff'));
         await refreshStatus(false);
         return result;
       } catch (cause) {
@@ -1062,7 +1072,7 @@ export function useProtectionState() {
         return undefined;
       }
     },
-    [refreshStatus],
+    [refreshStatus, notifySuccess, t],
   );
 
   const openPrivateDnsSettings = useCallback(async () => {
@@ -1341,6 +1351,9 @@ export function useProtectionState() {
     hydrated,
     error,
     dismissError,
+    successMessage,
+    notifySuccess,
+    dismissSuccess,
     refreshStatus,
     prepareVpn,
     startProtection,

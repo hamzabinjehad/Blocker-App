@@ -8,6 +8,8 @@ import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
 import { ScreenScaffold } from '@/components/ScreenScaffold';
 import { UsageStatsCard } from '@/components/UsageStatsCard';
+import { WeeklyBlocksChart } from '@/components/WeeklyBlocksChart';
+import type { WeeklyBlocksDatum } from '@/components/WeeklyBlocksChart';
 import { formatShortDate, levelNameKey, useI18n, useTranslation, weekdayShort } from '@/i18n';
 import type { Language, TranslationKey } from '@/i18n';
 import { haptics } from '@/lib/haptics';
@@ -154,6 +156,13 @@ function WeekCalendarSection({
     return d.toISOString().split('T')[0]!;
   });
 
+  const chartData: WeeklyBlocksDatum[] = weekDays.map((dateStr, i) => ({
+    label: weekdayShort(language, i),
+    count: days.find((d) => d.date === dateStr)?.blocksCount ?? 0,
+    isToday: dateStr === today,
+    isFuture: dateStr > today,
+  }));
+
   return (
     <AnimatedCard delay={80}>
       <Card>
@@ -219,6 +228,10 @@ function WeekCalendarSection({
             <View style={[sw.legendDot, { borderWidth: 1.5, borderColor: colors.border.default, backgroundColor: 'transparent' }]} />
             <Text style={[sw.legendText, { color: colors.text.muted }]}>{t('progress.legendNoData')}</Text>
           </View>
+        </View>
+
+        <View style={[sw.chartDivider, { borderTopColor: colors.border.subtle }]}>
+          <WeeklyBlocksChart data={chartData} />
         </View>
       </Card>
     </AnimatedCard>
@@ -288,6 +301,11 @@ const sw = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     paddingTop: spacing.sm,
+  },
+  chartDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   legendItem: {
     alignItems: 'center',
@@ -497,17 +515,6 @@ const s = StyleSheet.create({
   cardTitle: {
     ...typography.h3,
   },
-  chart: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    height: 144,
-  },
-  dayDetail: {
-    borderRadius: radius.lg,
-    gap: spacing.xs,
-    padding: spacing.md,
-  },
   fill: {
     borderRadius: radius.full,
     height: '100%',
@@ -516,9 +523,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  insightText: {
-    ...typography.bodyMd,
   },
   milestoneBackdrop: {
     alignItems: 'center',
@@ -549,10 +553,6 @@ const s = StyleSheet.create({
     fontSize: 28,
     fontWeight: '500',
     textAlign: 'center',
-  },
-  streakValue: {
-    fontSize: 20,
-    fontWeight: '500',
   },
   supportCopy: {
     ...typography.body,

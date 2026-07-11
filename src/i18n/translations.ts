@@ -111,6 +111,16 @@ export const en = {
   'privateDnsProtection.disable': 'Turn off Family DNS',
   'privateDnsProtection.openSettings': 'Open network settings',
 
+  // Weekly blocks chart
+  'weeklyChart.title': 'Blocks this week',
+  'weeklyChart.total': '{count} total',
+
+  // Success confirmations (global snackbar)
+  'success.domainAllowed': 'Allowed {domain}',
+  'success.privateDnsOn': 'Family DNS protection is on',
+  'success.privateDnsOff': 'Family DNS protection is off',
+  'success.pinSaved': 'Parent PIN saved',
+
   // Appearance / language
   'appearance.title': 'Appearance',
   'appearance.subtitle': 'Theme and language.',
@@ -776,6 +786,16 @@ export const ar: Record<TranslationKey, string> = {
   'privateDnsProtection.enable': 'تفعيل DNS العائلي',
   'privateDnsProtection.disable': 'إيقاف DNS العائلي',
   'privateDnsProtection.openSettings': 'افتح إعدادات الشبكة',
+
+  // Weekly blocks chart
+  'weeklyChart.title': 'المحجوب هذا الأسبوع',
+  'weeklyChart.total': '{count} إجمالاً',
+
+  // Success confirmations (global snackbar)
+  'success.domainAllowed': 'تم السماح بـ {domain}',
+  'success.privateDnsOn': 'حماية DNS العائلي مُفعّلة',
+  'success.privateDnsOff': 'حماية DNS العائلي مُطفأة',
+  'success.pinSaved': 'تم حفظ رمز الوالدين',
 
   // Appearance / language
   'appearance.title': 'المظهر',
