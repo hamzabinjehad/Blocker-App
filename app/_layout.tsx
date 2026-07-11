@@ -69,7 +69,6 @@ function AppContent() {
   return (
     <PaperProvider theme={paperTheme}>
       <GlobalErrorBanner />
-      <GlobalSuccessSnackbar />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -139,6 +138,9 @@ function AppContent() {
         <Tabs.Screen name="guardian" options={{ href: null }} />
         <Tabs.Screen name="alerts" options={{ href: null }} />
       </Tabs>
+      {/* After <Tabs> so it paints above the navigator — Paper's Snackbar has no elevated
+          zIndex of its own, unlike the error banner. */}
+      <GlobalSuccessSnackbar />
     </PaperProvider>
   );
 }

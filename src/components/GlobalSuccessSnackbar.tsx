@@ -18,6 +18,7 @@ export function GlobalSuccessSnackbar() {
       visible={Boolean(successMessage)}
       onDismiss={dismissSuccess}
       duration={AUTO_DISMISS_MS}
+      wrapperStyle={styles.wrapper}
       style={[styles.snackbar, { backgroundColor: colors.green[600] }]}
       theme={{ colors: { inverseOnSurface: '#FFFFFF' } }}
     >
@@ -27,9 +28,13 @@ export function GlobalSuccessSnackbar() {
 }
 
 const styles = StyleSheet.create({
+  // Float above the tab navigator; Paper's Snackbar has no elevated zIndex of its own.
+  wrapper: {
+    bottom: 72,
+    zIndex: 1000,
+  },
   snackbar: {
     borderRadius: radius.md,
-    marginBottom: spacing.xl,
     marginHorizontal: spacing.lg,
   },
 });
