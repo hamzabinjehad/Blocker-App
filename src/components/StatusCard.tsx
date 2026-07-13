@@ -13,6 +13,8 @@ type StatusCardProps = {
 const displayByStatus: Record<ProtectionStatus, string> = {
   active: 'Active',
   inactive: 'Inactive',
+  starting: 'Starting',
+  failed: 'Failed',
   needs_vpn_permission: 'Needs VPN Permission',
   tampered: 'Tampered',
 };

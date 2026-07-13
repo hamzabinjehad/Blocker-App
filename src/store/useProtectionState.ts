@@ -297,6 +297,7 @@ const initialUsageLimitPolicy: UsageLimitPolicy = {
 
 const bundledSampleCount = 5;
 const galleryAutoScanIntervalMs = 24 * 60 * 60 * 1000;
+const vpnStartingPollIntervalMs = 500;
 const deviceOwnerEnrollmentCommand =
   'adb shell dpm set-device-owner com.example.parentblocker/com.example.blocker.BlockerDeviceAdminReceiver';
 
@@ -305,7 +306,12 @@ export function useProtectionState() {
   // (native error strings pass through untranslated).
   const { t, language } = useI18n();
   const galleryAutoScanAttempted = useRef(false);
+  const statusRefreshGeneration = useRef(0);
+  const guardianAlertsRefreshGeneration = useRef(0);
+  const vpnStartingPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshStatusRef = useRef<((showRefreshing?: boolean) => Promise<void>) | null>(null);
   const [status, setStatus] = useState<ProtectionStatus>('inactive');
+  const [statusVerified, setStatusVerified] = useState(false);
   const [vpnActive, setVpnActive] = useState(false);
   const [vpnPermissionGranted, setVpnPermissionGranted] = useState(false);
   const [tampered, setTampered] = useState(false);
@@ -362,13 +368,38 @@ export function useProtectionState() {
   // skeletons instead of the placeholder zeros baked into the initial state.
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [guardianAlertsError, setGuardianAlertsError] = useState<string | undefined>();
 
-  const refreshStatus = useCallback(async (showRefreshing = true) => {
+  const refreshGuardianAlerts = useCallback(async () => {
+    const requestGeneration = ++guardianAlertsRefreshGeneration.current;
+    try {
+      const alerts = await BlockerModule.getGuardianAlerts();
+      if (requestGeneration !== guardianAlertsRefreshGeneration.current) return;
+      const normalizedAlerts = alerts.map(normalizeGuardianAlert);
+      setGuardianAlerts(normalizedAlerts);
+      setGuardianAlertCount(normalizedAlerts.filter((alert) => !alert.cleared).length);
+      setGuardianAlertsError(undefined);
+    } catch (cause) {
+      if (requestGeneration !== guardianAlertsRefreshGeneration.current) return;
+      setGuardianAlertsError(cause instanceof Error ? cause.message : 'Unable to load guardian alerts.');
+    }
+  }, []);
+
+  const refreshStatus = useCallback(async (showRefreshing = true): Promise<void> => {
+    const requestGeneration = ++statusRefreshGeneration.current;
+    if (vpnStartingPollTimer.current) {
+      clearTimeout(vpnStartingPollTimer.current);
+      vpnStartingPollTimer.current = null;
+    }
     if (showRefreshing) setRefreshing(true);
     try {
       const result = await BlockerModule.getStatus();
+      if (requestGeneration !== statusRefreshGeneration.current) return;
       setStatus(result.status);
-      setVpnActive(result.vpnActive);
+      setVpnActive(
+        result.vpnActive === true && (result.status === 'active' || result.status === 'tampered'),
+      );
+      setStatusVerified(true);
       setTampered(result.tampered);
       setVpnPermissionGranted(Boolean(result.vpnPermissionGranted));
       setPinConfigured(Boolean(result.pinConfigured));
@@ -421,7 +452,10 @@ export function useProtectionState() {
         setHttpsInspectionStatus(normalizeHttpsInspectionStatus(result.httpsInspectionStatus));
       }
       if (result.mediaScanningStatus) {
-        setMediaScanningStatus(normalizeMediaScanningStatus(result.mediaScanningStatus));
+        const normalizedMediaScanningStatus = normalizeMediaScanningStatus(result.mediaScanningStatus);
+        setMediaScanningStatus(normalizedMediaScanningStatus);
+        setImageScanningEnabledState(normalizedMediaScanningStatus.enabled);
+        setScanSensitivityState(scanSensitivityFromThreshold(normalizedMediaScanningStatus.blockThreshold));
       }
       if (result.screenshotAuditPolicy) {
         setScreenshotAuditPolicy(normalizeScreenshotAuditPolicy(result.screenshotAuditPolicy));
@@ -432,20 +466,46 @@ export function useProtectionState() {
       setSafeModeBoot(Boolean(result.safeModeBoot));
       setAuditEventCount(Number(result.auditEventCount ?? 0));
       setGuardianAlertCount(Number(result.guardianAlertCount ?? 0));
-      const alerts = await BlockerModule.getGuardianAlerts();
-      const normalizedAlerts = alerts.map(normalizeGuardianAlert);
-      setGuardianAlerts(normalizedAlerts);
-      setGuardianAlertCount(normalizedAlerts.filter((alert) => !alert.cleared).length);
       if (result.anomalyDetectionStatus) {
         setAnomalyDetectionStatus(normalizeAnomalyDetectionStatus(result.anomalyDetectionStatus));
       }
-      setError(undefined);
+      setError(
+        result.status === 'failed'
+          ? result.vpnStartFailure || 'Unable to start the VPN service.'
+          : undefined,
+      );
+      if (result.status !== 'starting') void refreshGuardianAlerts();
+
+      if (result.status === 'starting') {
+        const remainingMs = Math.max(0, Number(result.vpnStartupRemainingMs ?? 0));
+        const pollDelayMs = remainingMs > 0
+          ? Math.min(vpnStartingPollIntervalMs, remainingMs)
+          : vpnStartingPollIntervalMs;
+        vpnStartingPollTimer.current = setTimeout(() => {
+          vpnStartingPollTimer.current = null;
+          void refreshStatusRef.current?.(false);
+        }, pollDelayMs);
+      }
     } catch (cause) {
+      if (requestGeneration !== statusRefreshGeneration.current) return;
+      setStatus('inactive');
+      setVpnActive(false);
+      setStatusVerified(false);
       setError(cause instanceof Error ? cause.message : 'Unable to read protection status.');
     } finally {
-      setHydrated(true);
-      if (showRefreshing) setRefreshing(false);
+      if (requestGeneration === statusRefreshGeneration.current) {
+        setHydrated(true);
+        setRefreshing(false);
+      }
     }
+  }, [refreshGuardianAlerts]);
+
+  refreshStatusRef.current = refreshStatus;
+
+  useEffect(() => () => {
+    statusRefreshGeneration.current += 1;
+    guardianAlertsRefreshGeneration.current += 1;
+    if (vpnStartingPollTimer.current) clearTimeout(vpnStartingPollTimer.current);
   }, []);
 
   useEffect(() => {
@@ -487,7 +547,7 @@ export function useProtectionState() {
 
   useEffect(() => {
     if (galleryAutoScanAttempted.current) return;
-    if (status !== 'active') return;
+    if (!statusVerified || status !== 'active' || !vpnActive) return;
     if (!mediaScanningStatus.enabled) return;
     if (!mediaScanningStatus.galleryScanSupported || !mediaScanningStatus.galleryScanPermissionGranted) return;
     if (Date.now() - mediaScanningStatus.galleryScanLastAt < galleryAutoScanIntervalMs) return;
@@ -508,6 +568,8 @@ export function useProtectionState() {
     mediaScanningStatus.galleryScanSupported,
     refreshStatus,
     status,
+    statusVerified,
+    vpnActive,
   ]);
 
   useEffect(() => {
@@ -519,7 +581,10 @@ export function useProtectionState() {
     return () => subscription?.remove();
   }, []);
 
-  const dismissError = useCallback(() => setError(undefined), []);
+  const dismissError = useCallback(() => {
+    setError(undefined);
+    setGuardianAlertsError(undefined);
+  }, []);
 
   // Lightweight positive-confirmation channel, mirroring `error`. Screens push a short message
   // after a successful action; a global Snackbar surfaces it and auto-dismisses.
@@ -575,25 +640,25 @@ export function useProtectionState() {
         await refreshStatus(false);
         return;
       }
-      const safeStatus: ProtectionStatus =
-        result.status === 'pin_required' || result.status === 'pin_locked_out'
-          ? 'inactive'
-          : result.status;
-      setStatus(safeStatus);
-      setVpnActive(result.status === 'active');
-      setTampered(result.status === 'tampered');
-      setError(undefined);
-      if (result.status === 'active') {
-        BlockerModule.setImageScanningEnabled(imageScanningEnabled, scanSensitivity).catch(() => {});
+      if (result.status === 'starting' || result.status === 'failed') {
+        setStatus(result.status);
+        setStatusVerified(false);
       }
+      setError(
+        result.status === 'failed'
+          ? result.vpnStartFailure || 'Unable to start the VPN service.'
+          : undefined,
+      );
       await refreshStatus(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to start protection.');
+      const message = cause instanceof Error ? cause.message : 'Unable to start protection.';
+      await refreshStatus(false);
+      setError(message);
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- lockedMessage is render-scoped; t/language cover it
-  }, [imageScanningEnabled, managedDeviceStatus.deviceAdminActive, refreshStatus, scanSensitivity, t, language]);
+  }, [managedDeviceStatus.deviceAdminActive, refreshStatus, t, language]);
 
   const stopProtection = useCallback(
     async (pin: string): Promise<string> => {
@@ -621,8 +686,7 @@ export function useProtectionState() {
           return result.status;
         }
         setStatus(result.status);
-        setVpnActive(false);
-        setTampered(false);
+        setStatusVerified(false);
         setError(undefined);
         await refreshStatus(false);
         return result.status;
@@ -829,18 +893,6 @@ export function useProtectionState() {
       return null;
     }
   }, [refreshStatus]);
-
-  const refreshGuardianAlerts = useCallback(async () => {
-    try {
-      const alerts = await BlockerModule.getGuardianAlerts();
-      const normalizedAlerts = alerts.map(normalizeGuardianAlert);
-      setGuardianAlerts(normalizedAlerts);
-      setGuardianAlertCount(normalizedAlerts.filter((alert) => !alert.cleared).length);
-      setError(undefined);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to load guardian alerts.');
-    }
-  }, []);
 
   const clearGuardianAlert = useCallback(
     async (alertId: string) => {
@@ -1318,6 +1370,7 @@ export function useProtectionState() {
 
   return {
     status,
+    statusVerified,
     vpnActive,
     vpnPermissionGranted,
     tampered,
@@ -1361,7 +1414,8 @@ export function useProtectionState() {
     loading,
     refreshing,
     hydrated,
-    error,
+    error: error ?? guardianAlertsError,
+    guardianAlertsError,
     dismissError,
     successMessage,
     notifySuccess,
@@ -1658,6 +1712,12 @@ function normalizeMediaScanningStatus(status: Partial<MediaScanningStatus>): Med
     galleryScanRetainsImages: Boolean(status.galleryScanRetainsImages),
     limitations: Array.isArray(status.limitations) ? status.limitations.map(String) : [],
   };
+}
+
+function scanSensitivityFromThreshold(threshold: number): 'conservative' | 'standard' | 'strict' {
+  if (threshold >= 0.86) return 'conservative';
+  if (threshold <= 0.72) return 'strict';
+  return 'standard';
 }
 
 function normalizeScreenshotAuditPolicy(policy: Partial<ScreenshotAuditPolicy>): ScreenshotAuditPolicy {

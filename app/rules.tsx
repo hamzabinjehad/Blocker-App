@@ -43,9 +43,11 @@ export default function RulesScreen() {
   const overview = useMemo(() => getOverview(protection), [protection]);
 
   const isSuccess = overview.tone === 'success';
+  const protectionActive =
+    protection.statusVerified && protection.status === 'active' && protection.vpnActive;
   // Lock the UI only when no PIN is configured. With a PIN, each card already requires PIN entry,
   // so guardians can adjust rules without needing to stop protection first.
-  const isLocked = protection.status === 'active' && !protection.pinConfigured;
+  const isLocked = protectionActive && !protection.pinConfigured;
 
   return (
     <ScreenScaffold title={t('rules.title')} subtitle={t('rules.subtitle')} iconName="control">
@@ -114,7 +116,7 @@ export default function RulesScreen() {
         })}
       </View>
 
-      {protection.status === 'active' ? (
+      {protectionActive ? (
         <Banner
           tone={isLocked ? 'warning' : 'success'}
           icon={isLocked ? 'lock' : 'shield'}
@@ -205,7 +207,8 @@ export default function RulesScreen() {
 }
 
 function getSectionStatuses(protection: ReturnType<typeof useProtection>): Record<ControlSection, { label: string; tone: StatusTone }> {
-  const filteringActive = protection.adultFilteringEnabled || Object.values(protection.riskySettings).some(Boolean);
+  const filteringConfigured = protection.adultFilteringEnabled || Object.values(protection.riskySettings).some(Boolean);
+  const filteringActive = protection.statusVerified && protection.vpnActive && filteringConfigured;
   const customEntryCount =
     protection.behaviorPolicy.customKeywords.length +
     protection.blockedDomains.length +
@@ -228,7 +231,12 @@ function getOverview(protection: ReturnType<typeof useProtection>): {
 } {
   const statuses = getSectionStatuses(protection);
   const issueCount = Object.values(statuses).filter((s) => s.tone === 'warning').length;
-  if (issueCount === 0) {
+  if (
+    protection.statusVerified &&
+    protection.status === 'active' &&
+    protection.vpnActive &&
+    issueCount === 0
+  ) {
     return {
       titleKey: 'rules.fullyProtected',
       subtitleKey: 'rules.fullyProtectedSubtitle',

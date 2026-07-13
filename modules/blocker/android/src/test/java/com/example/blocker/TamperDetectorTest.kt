@@ -52,6 +52,15 @@ class TamperDetectorTest {
   }
 
   @Test
+  fun `vpn_down signal is suppressed during startup grace`() {
+    val signals = detector.report(vpnActive = false, suppressVpnDownTamper = true)
+    val vpnSignal = signals.find { it.id == "vpn_down" }
+
+    assertNotNull(vpnSignal)
+    assertFalse("vpn_down should be suppressed while startup grace is active", vpnSignal!!.detected)
+  }
+
+  @Test
   fun `safe_mode signal exists in report`() {
     val signals = detector.report(vpnActive = true)
     val safeModeSignal = signals.find { it.id == "safe_mode_active" }
@@ -101,5 +110,17 @@ class TamperDetectorTest {
     whenever(repository.isProtectionRequested()).thenReturn(true)
     val tampered = monitor.isTampered(vpnActive = true)
     assertFalse("Should not be tampered when VPN is running", tampered)
+  }
+
+  @Test
+  fun `TamperMonitor does not mark VPN down during startup grace`() {
+    val monitor = TamperMonitor(repository)
+    whenever(repository.isTampered()).thenReturn(false)
+    whenever(repository.isProtectionRequested()).thenReturn(true)
+
+    val tampered = monitor.isTampered(vpnActive = false, suppressVpnDownTamper = true)
+
+    assertFalse(tampered)
+    verify(repository, never()).setTampered(true)
   }
 }

@@ -1,14 +1,17 @@
 import type { PropsWithChildren, ReactElement, ReactNode } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RefreshControlProps } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useRef } from 'react';
 
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/AppIcon';
 import type { AppIconName } from '@/components/AppIcon';
+import { Chevron } from '@/components/Chevron';
 import { useTheme } from '@/theme';
 import { radius, spacing, typography } from '@/theme';
 
@@ -21,6 +24,8 @@ type ScreenScaffoldProps = PropsWithChildren<{
   refreshControl?: ReactElement<RefreshControlProps>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   collapsibleTitle?: boolean;
+  showBack?: boolean;
+  backLabel?: string;
 }>;
 
 export function ScreenScaffold({
@@ -32,9 +37,12 @@ export function ScreenScaffold({
   refreshControl,
   contentContainerStyle,
   collapsibleTitle = false,
+  showBack = false,
+  backLabel = 'Back',
   children,
 }: ScreenScaffoldProps) {
   const { colors, isDark } = useTheme();
+  const router = useRouter();
   const scrollY = useRef(new Animated.Value(0)).current;
   const collapsedTitleOpacity = collapsibleTitle
     ? scrollY.interpolate({
@@ -87,17 +95,43 @@ export function ScreenScaffold({
         scrollEventThrottle={16}
       >
         <View style={s.header}>
+          <LinearGradient
+            colors={[colors.gradient.headerStart, colors.gradient.headerMid, colors.gradient.headerEnd]}
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+          />
           <View style={[s.headerRow, s.contentWidth]}>
-            {iconName ? (
+            {showBack ? (
+              <Pressable
+                accessibilityLabel={backLabel}
+                accessibilityRole="button"
+                hitSlop={6}
+                onPress={() => {
+                  if (router.canGoBack()) router.back();
+                  else router.replace('/');
+                }}
+                style={({ pressed }) => [
+                  s.backButton,
+                  {
+                    backgroundColor: colors.bg.elevated,
+                    borderColor: colors.border.subtle,
+                    opacity: pressed ? 0.72 : 1,
+                  },
+                ]}
+              >
+                <Chevron color={colors.text.primary} direction="back" size={22} />
+              </Pressable>
+            ) : iconName ? (
               <View
                 style={[
                   s.iconTile,
                   {
-                    backgroundColor: colors.bg.tertiary,
+                    backgroundColor: colors.green[50],
+                    borderColor: colors.border.green,
                   },
                 ]}
               >
-                <AppIcon color={colors.text.secondary} name={iconName} size={20} />
+                <AppIcon color={colors.green[600]} name={iconName} size={21} />
               </View>
             ) : null}
             <View style={s.titleGroup}>
@@ -127,9 +161,9 @@ const s = StyleSheet.create({
     height: 96,
   },
   body: {
-    gap: spacing.lg,
+    gap: spacing.xl,
     paddingHorizontal: 20,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.xl,
   },
   content: {
     paddingTop: 0,
@@ -156,15 +190,15 @@ const s = StyleSheet.create({
     width: '100%',
   },
   collapsedTitle: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     letterSpacing: 0,
     lineHeight: 20,
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
   },
   headerRow: {
     alignItems: 'center',
@@ -175,22 +209,31 @@ const s = StyleSheet.create({
   iconTile: {
     alignItems: 'center',
     borderRadius: radius.md,
-    height: 36,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 44,
     justifyContent: 'center',
-    width: 36,
+    width: 44,
+  },
+  backButton: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   safeArea: {
     flex: 1,
   },
   subtitle: {
     ...typography.body,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '500',
-    letterSpacing: 0,
-    lineHeight: 25,
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    lineHeight: 32,
   },
   titleGroup: {
     flex: 1,

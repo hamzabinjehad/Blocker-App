@@ -40,12 +40,8 @@ export function Card({
         {
           backgroundColor: colors.bg.elevated,
           borderColor: colors.border.subtle,
+          boxShadow: isDark ? '0 1px 0 rgba(255,255,255,0.02)' : '0 8px 24px rgba(21,32,26,0.06)',
           padding,
-          shadowColor: '#0A100D',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: isDark ? 0 : 0.07,
-          shadowRadius: 8,
-          elevation: isDark ? 0 : 2,
         },
         style,
       ]}
@@ -69,15 +65,15 @@ const s = StyleSheet.create({
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.md,
+    gap: spacing.lg,
     overflow: 'hidden',
   },
   accentStripe: {
     position: 'absolute',
-    bottom: spacing.md,
-    left: 0,
+    bottom: 0,
+    start: 0,
     top: 0,
-    width: 3,
+    width: 4,
   },
   header: {
     alignItems: 'flex-start',

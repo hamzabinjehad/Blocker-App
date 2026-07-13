@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -10,6 +10,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -29,6 +30,7 @@ type AppSheetProps = PropsWithChildren<{
 export function AppSheet({ visible, onClose, dismissable = true, contentStyle, children }: AppSheetProps) {
   const { colors } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   // The Modal stays mounted through the exit animation, then unmounts.
   const [mounted, setMounted] = useState(visible);
   const progress = useSharedValue(0); // 0 = hidden below screen, 1 = fully shown
@@ -76,22 +78,41 @@ export function AppSheet({ visible, onClose, dismissable = true, contentStyle, c
     <Modal statusBarTranslucent transparent visible onRequestClose={requestClose}>
       {/* Gesture handlers need their own root inside an RN Modal on Android. */}
       <GestureHandlerRootView style={styles.fill}>
-        <View style={styles.container}>
-          <Pressable accessibilityRole="button" style={StyleSheet.absoluteFill} onPress={requestClose}>
+        <KeyboardAvoidingView
+          behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
+          style={styles.container}
+        >
+          <Pressable accessible={false} style={StyleSheet.absoluteFill} onPress={requestClose}>
             <Animated.View style={[styles.fill, styles.backdrop, backdropStyle]} />
           </Pressable>
           <GestureDetector gesture={pan}>
             <Animated.View
+              accessibilityViewIsModal
               onLayout={(event) => {
                 sheetHeight.value = event.nativeEvent.layout.height;
               }}
-              style={[styles.sheet, { backgroundColor: colors.bg.elevated }, sheetStyle]}
+              style={[
+                styles.sheet,
+                { backgroundColor: colors.bg.elevated, maxHeight: windowHeight * 0.88 },
+                sheetStyle,
+              ]}
             >
               <View style={[styles.handle, { backgroundColor: colors.border.default }]} />
-              <View style={[styles.content, contentStyle]}>{children}</View>
+              <ScrollView
+                contentContainerStyle={[
+                  styles.content,
+                  { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+                  contentStyle,
+                ]}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {children}
+              </ScrollView>
             </Animated.View>
           </GestureDetector>
-        </View>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   );

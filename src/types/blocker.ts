@@ -1,4 +1,12 @@
-export type ProtectionStatus = 'active' | 'inactive' | 'needs_vpn_permission' | 'tampered';
+export type ProtectionStatus =
+  | 'active'
+  | 'inactive'
+  | 'starting'
+  | 'failed'
+  | 'needs_vpn_permission'
+  | 'tampered';
+
+export type VpnRuntimeState = 'inactive' | 'starting' | 'active' | 'failed';
 
 export type BlockAction = 'blocked' | 'warned' | 'unblock_requested';
 
@@ -343,6 +351,10 @@ export type ProtectionStatusResult = {
   status: ProtectionStatus;
   vpnActive: boolean;
   tampered: boolean;
+  protectionRequested?: boolean;
+  vpnRuntimeState?: VpnRuntimeState;
+  vpnStartFailure?: string | null;
+  vpnStartupRemainingMs?: number;
   vpnPermissionGranted?: boolean;
   pinConfigured?: boolean;
   blockedDomainCount?: number;
@@ -416,6 +428,8 @@ export type TamperSignal = {
 
 export type NativeStartStopResult = {
   status: ProtectionStatus | 'pin_required' | 'pin_locked_out' | 'time_locked' | 'unlock_countdown_active';
+  vpnActive?: boolean;
+  vpnStartFailure?: string | null;
   unlocksAt?: number | null;
   remainingMs?: number | null;
 };

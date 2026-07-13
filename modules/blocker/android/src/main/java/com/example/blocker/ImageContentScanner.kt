@@ -5,7 +5,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabel
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
-import java.util.concurrent.ConcurrentHashMap
 
 data class ImageLabelSignal(
   val text: String,
@@ -77,18 +76,6 @@ object ImageContentScanner {
 
   private const val AMBIGUOUS_THRESHOLD = 0.38
 
-  private val scanThrottle = ConcurrentHashMap<String, Long>()
-  private const val THROTTLE_MS = 2500L
-
-  fun shouldScan(packageName: String): Boolean {
-    val now = System.currentTimeMillis()
-    val last = scanThrottle[packageName] ?: 0L
-    return if (now - last > THROTTLE_MS) {
-      scanThrottle[packageName] = now
-      true
-    } else false
-  }
-
   private fun downscaleIfNeeded(bitmap: Bitmap, maxDim: Int = 512): Bitmap {
     if (bitmap.width <= maxDim && bitmap.height <= maxDim) return bitmap
     val scale = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
@@ -102,15 +89,10 @@ object ImageContentScanner {
 
   fun scanBitmap(
     bitmap: Bitmap,
-    packageName: String? = null,
     onComplete: () -> Unit = {},
     onAmbiguous: (ImageScanDecision) -> Unit = {},
     onNsfw: (ImageScanDecision) -> Unit
   ) {
-    if (packageName != null && !shouldScan(packageName)) {
-      onComplete()
-      return
-    }
     val scaled = downscaleIfNeeded(bitmap)
     val image = InputImage.fromBitmap(scaled, 0)
     labeler.process(image)
@@ -150,6 +132,7 @@ object ImageContentScanner {
     "scanTargetPackageCount" to SCAN_TARGET_PACKAGE_COUNT,
     "limitations" to listOf(
       "Uses in-memory accessibility screenshots and a visible blocking overlay; it cannot decrypt HTTPS browser traffic or rewrite pixels inside another app.",
+      "Real-time scanning can inspect visual events from the foreground app while enabled; this app and password-field events are excluded, and screenshots are not retained.",
       "Cloud fallback only sends local label metadata for ambiguous cases when an HTTPS review endpoint is configured.",
       "Android may deny screenshots for secure windows or protected media surfaces."
     )

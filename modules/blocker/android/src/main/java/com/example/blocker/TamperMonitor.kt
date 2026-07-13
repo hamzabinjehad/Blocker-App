@@ -12,9 +12,9 @@ class TamperMonitor(
   private val handler = Handler(Looper.getMainLooper())
   @Volatile private var accessibilityPollingActive = false
 
-  fun isTampered(vpnActive: Boolean): Boolean {
+  fun isTampered(vpnActive: Boolean, suppressVpnDownTamper: Boolean = false): Boolean {
     if (repository.isTampered()) return true
-    val tampered = repository.isProtectionRequested() && !vpnActive
+    val tampered = repository.isProtectionRequested() && !vpnActive && !suppressVpnDownTamper
     if (tampered) {
       repository.setTampered(true)
       repository.recordAuditEvent(
@@ -28,7 +28,7 @@ class TamperMonitor(
     return tampered
   }
 
-  fun markVpnStoppedUnexpectedly() {
+  fun markVpnStoppedUnexpectedly(failureReason: String = "vpn_stopped_unexpectedly") {
     if (repository.isProtectionRequested()) {
       repository.setTampered(true)
       repository.recordAuditEvent(
@@ -38,13 +38,15 @@ class TamperMonitor(
         subject = "local_vpn",
         action = "vpn_down"
       )
+      repository.markVpnStartFailed(failureReason)
+    } else {
+      repository.setVpnActive(false)
     }
-    repository.setVpnActive(false)
   }
 
   fun handleVpnRevoked() {
     repository.recordDomainEvent("vpn-revoked.local", "tamper", "vpn_revoked")
-    markVpnStoppedUnexpectedly()
+    markVpnStoppedUnexpectedly("vpn_revoked")
   }
 
   fun startAccessibilityPolling() {
@@ -89,7 +91,11 @@ class TamperMonitor(
   // the accessibility setting directly (e.g. FilterVpnService's ContentObserver) are responsible
   // for their own de-duplication so this doesn't fire repeatedly.
   fun reportAccessibilityDisabled(context: Context) {
-    TamperDetector(context, repository).evaluateAndRecord(FilterVpnService.isRunning)
+    val vpnLifecycle = repository.reconcileVpnLifecycle(FilterVpnService.isRunning)
+    TamperDetector(context, repository).evaluateAndRecord(
+      vpnActive = vpnLifecycle.verifiedActive,
+      suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+    )
     repository.setTampered(true)
     repository.recordAuditEvent(
       eventType = "ACCESSIBILITY_DISABLED",

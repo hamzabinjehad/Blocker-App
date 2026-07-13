@@ -44,7 +44,12 @@ export default function GuardianScreen() {
   };
 
   return (
-    <ScreenScaffold title={t('guardian.title')} subtitle={t('guardian.subtitle')} iconName="guardian">
+    <ScreenScaffold
+      backLabel={t('common.back')}
+      showBack
+      title={t('guardian.title')}
+      subtitle={t('guardian.subtitle')}
+    >
       <View style={s.section}>
         <ParentPinCard
           pinConfigured={protection.pinConfigured}

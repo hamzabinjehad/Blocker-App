@@ -69,7 +69,10 @@ export function Banner({
     </>
   );
 
-  const style = [s.banner, { backgroundColor: palette.bg, borderColor: palette.border }];
+  const style = ({ pressed = false }: { pressed?: boolean } = {}) => [
+    s.banner,
+    { backgroundColor: palette.bg, borderColor: palette.border, opacity: pressed ? 0.82 : 1 },
+  ];
 
   if (onPress) {
     return (
@@ -79,7 +82,7 @@ export function Banner({
     );
   }
   return (
-    <View accessibilityLabel={accessibilityLabel} style={style}>
+    <View accessibilityLabel={accessibilityLabel} style={style()}>
       {content}
     </View>
   );
@@ -92,6 +95,7 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.sm,
+    minHeight: 56,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },

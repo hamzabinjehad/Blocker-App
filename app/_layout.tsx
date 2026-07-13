@@ -75,8 +75,15 @@ function AppContent() {
           tabBarActiveTintColor: colors.green[500],
           tabBarInactiveTintColor: colors.text.muted,
           tabBarShowLabel: true,
-          tabBarLabel: ({ color, children }) => (
-            <Text maxFontSizeMultiplier={1.3} style={[styles.tabLabel, { color }]}>{children}</Text>
+          tabBarHideOnKeyboard: true,
+          tabBarLabel: ({ color, children, focused }) => (
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              style={[styles.tabLabel, focused && styles.tabLabelFocused, { color }]}
+            >
+              {children}
+            </Text>
           ),
           tabBarLabelStyle: {
             fontSize: 10,
@@ -84,14 +91,15 @@ function AppContent() {
             marginBottom: 4,
             letterSpacing: 0,
           },
-          tabBarItemStyle: { paddingTop: 4 },
+          tabBarItemStyle: { paddingTop: 5 },
           tabBarStyle: {
             backgroundColor: colors.bg.elevated,
             borderTopColor: colors.border.subtle,
             borderTopWidth: StyleSheet.hairlineWidth,
-            height: 60,
-            paddingBottom: 6,
-            paddingTop: 6,
+            boxShadow: isDark ? '0 -1px 0 rgba(255,255,255,0.02)' : '0 -8px 24px rgba(21,32,26,0.06)',
+            height: 68,
+            paddingBottom: 7,
+            paddingTop: 7,
             elevation: 0,
             shadowColor: 'transparent',
             shadowOpacity: 0,
@@ -168,9 +176,9 @@ const styles = StyleSheet.create({
   tabIconWrap: {
     alignItems: 'center',
     borderRadius: radius.full,
-    height: 32,
+    height: 30,
     justifyContent: 'center',
-    width: 32,
+    width: 52,
   },
   tabIconPill: {
     borderRadius: radius.full,
@@ -180,5 +188,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0,
     marginBottom: 5,
+  },
+  tabLabelFocused: {
+    fontWeight: '700',
   },
 });

@@ -24,7 +24,9 @@ class BlockerDeviceAdminReceiver : DeviceAdminReceiver() {
   override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
     val repository = PolicyRepository(context)
     val timeLockActive = repository.isUninstallLockWindowActive()
-    val protectionActive = (repository.isProtectionRequested() && repository.isVpnActive()) || timeLockActive
+    // Keep tamper protection armed while a requested VPN is starting or recovering. A failed
+    // tunnel must not create a window where Device Admin can be removed without an alert.
+    val protectionActive = repository.isProtectionRequested() || timeLockActive
     if (protectionActive) repository.setTampered(true)
     repository.recordAuditEvent(
       eventType = "DEVICE_ADMIN_DISABLE_REQUESTED",

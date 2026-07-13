@@ -47,23 +47,23 @@ export const spacing = {
 // Softer, larger corners — cards feel like rounded slabs, controls stay tidy.
 export const radius = {
   sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 26,
+  md: 12,
+  lg: 18,
+  xl: 24,
   full: 9999,
 } as const;
 
 export const typography = {
-  display: { fontSize: 34, fontWeight: '600' as const, letterSpacing: -0.5 },
-  h1: { fontSize: 27, fontWeight: '600' as const, letterSpacing: -0.4, lineHeight: 33 },
+  display: { fontSize: 34, fontWeight: '700' as const, letterSpacing: -0.6 },
+  h1: { fontSize: 28, fontWeight: '700' as const, letterSpacing: -0.5, lineHeight: 34 },
   h2: { fontSize: 20, fontWeight: '600' as const, letterSpacing: -0.2, lineHeight: 26 },
-  h3: { fontSize: 16, fontWeight: '600' as const, letterSpacing: -0.1, lineHeight: 21 },
+  h3: { fontSize: 16, fontWeight: '600' as const, letterSpacing: -0.1, lineHeight: 22 },
   bodyLg: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
   body: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
   bodyMd: { fontSize: 14, fontWeight: '500' as const },
-  caption: { fontSize: 12, fontWeight: '400' as const },
-  captionMd: { fontSize: 12, fontWeight: '500' as const, letterSpacing: 0 },
-  label: { fontSize: 11, fontWeight: '500' as const, letterSpacing: 0.2 },
+  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 17 },
+  captionMd: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0, lineHeight: 17 },
+  label: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.1, lineHeight: 16 },
 } as const;
 
 export const theme = { colors: undefined as never, shadow, spacing, radius, typography };

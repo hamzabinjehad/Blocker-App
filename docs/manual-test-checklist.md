@@ -17,6 +17,12 @@ Use this checklist on a physical Android device. Some tests require Device Owner
 
 ## Blocking - DNS & VPN
 
+- [ ] Starting protection stays non-green until Android establishes the tunnel
+  - Pass: Home shows "Starting protection" first, then changes to protected only after the system VPN indicator is active; no `vpn_down` tamper alert is created during normal startup.
+- [ ] VPN establishment failure is visible and retryable
+  - Pass: force `VpnService.Builder.establish()` to fail or revoke VPN permission; Home never turns green, status becomes failed/permission-required, and protection intent remains queued for recovery.
+- [ ] Protection recovers cleanly after reboot
+  - Pass: with protection requested before reboot, startup enters the grace state and then verified active without a false `vpn_down` tamper alert.
 - [ ] DNS blocking active on mobile data
   - Pass: a known adult test domain fails or is blocked while mobile data is active.
 - [ ] DNS blocking active on WiFi
@@ -55,6 +61,12 @@ Use this checklist on a physical Android device. Some tests require Device Owner
   - Pass: accessibility screen context triggers block overlay for configured surfaces.
 - [ ] Keyword detection via accessibility
   - Pass: typing a blocked keyword in a monitored app triggers overlay.
+- [ ] On-device image blocking runs on a visible feed
+  - Pass: with image scanning and protection enabled, a test image above the configured threshold triggers the block overlay and an `IMAGE_SCAN_BLOCKED` audit event.
+- [ ] Image blocking rescans a same-screen feed while scrolling
+  - Pass: remain on one feed, continue scrolling beyond the configured scan interval, and confirm a later qualifying image is scanned without switching screens or apps.
+- [ ] Image scanning skips password and blocker-app windows
+  - Pass: focus a password field or switch back to Control Yourself while a capture is pending; no screenshot scan/block event is produced for that window.
 
 ## Coach & Urge Support
 

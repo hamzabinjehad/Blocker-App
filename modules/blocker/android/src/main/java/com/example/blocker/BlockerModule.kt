@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import java.io.ByteArrayOutputStream
@@ -351,9 +352,22 @@ class BlockerModule : Module() {
     }
 
     val repo = repository()
+    val existingLifecycle = repo.reconcileVpnLifecycle(
+      serviceRunning = FilterVpnService.isRunning,
+      nowElapsedMs = SystemClock.elapsedRealtime()
+    )
+    if (existingLifecycle.verifiedActive) {
+      return mapOf(
+        "status" to VpnRuntimeState.ACTIVE.persistedValue,
+        "vpnActive" to true,
+        "vpnRuntimeState" to VpnRuntimeState.ACTIVE.persistedValue
+      )
+    }
+
     NotificationHelper.ensureChannel(context)
-    repo.setProtectionRequested(true)
-    repo.setTampered(false)
+    if (!existingLifecycle.startupGraceActive) {
+      repo.markVpnStarting()
+    }
     repo.clearPanicUnlockCountdown()
     UninstallLockManager(context, repo).enableForActiveProtection(durationDays)
     DeviceOwnerPolicyManager(context, repo).ensureRestrictionsApplied()
@@ -366,13 +380,37 @@ class BlockerModule : Module() {
       action = FilterVpnService.ACTION_START
     }
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent)
-    } else {
-      context.startService(intent)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+      } else {
+        context.startService(intent)
+      }
+    } catch (error: Exception) {
+      val failure = vpnFailureCode("service_start_exception", error)
+      repo.markVpnStartFailed(failure)
+      repo.recordAuditEvent(
+        eventType = "VPN_SERVICE_START_FAILED",
+        severity = "critical",
+        category = "vpn",
+        subject = context.packageName,
+        action = failure
+      )
+      return mapOf(
+        "status" to VpnRuntimeState.FAILED.persistedValue,
+        "vpnActive" to false,
+        "vpnRuntimeState" to VpnRuntimeState.FAILED.persistedValue,
+        "vpnStartFailure" to failure
+      )
     }
 
-    return mapOf("status" to "active")
+    val snapshot = repo.vpnRuntimeSnapshot()
+    return mapOf(
+      "status" to VpnRuntimeState.STARTING.persistedValue,
+      "vpnActive" to false,
+      "vpnRuntimeState" to VpnRuntimeState.STARTING.persistedValue,
+      "vpnStartFailure" to snapshot.startFailure
+    )
   }
 
   private fun stopProtection(pin: String): Map<String, Any?> {
@@ -434,9 +472,7 @@ class BlockerModule : Module() {
     }
 
     val context = reactContext()
-    repo.setProtectionRequested(false)
-    repo.setTampered(false)
-    repo.setVpnActive(false)
+    repo.markVpnInactive()
     repo.clearPanicUnlockCountdown()
 
     val intent = Intent(context, FilterVpnService::class.java).apply {
@@ -454,7 +490,8 @@ class BlockerModule : Module() {
     NightModeWorker.schedule(context)
     val repo = repository()
     val vpnPermissionGranted = VpnService.prepare(context) == null
-    val vpnActive = FilterVpnService.isRunning && repo.isVpnActive()
+    val vpnLifecycle = repo.reconcileVpnLifecycle(FilterVpnService.isRunning)
+    val vpnActive = vpnLifecycle.verifiedActive
     if (repo.isProtectionRequested() && repo.isNightModeActive()) {
       ManagedPrivateDnsBackup.configureIfPossible(context, repo)
       val enforcement = ManagedEnforcer(context, repo)
@@ -463,20 +500,33 @@ class BlockerModule : Module() {
     }
     val accessibilityServiceEnabled = isAccessibilityServiceEnabled(context)
     recordBehaviorTamperIfNeeded(repo, accessibilityServiceEnabled)
-    TamperMonitor(repo, context).isTampered(vpnActive)
-    val tamperReport = TamperDetector(context, repo).evaluateAndRecord(vpnActive).map { it.toMap() }
+    TamperMonitor(repo, context).isTampered(
+      vpnActive = vpnActive,
+      suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+    )
+    val tamperReport = TamperDetector(context, repo).evaluateAndRecord(
+      vpnActive = vpnActive,
+      suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+    ).map { it.toMap() }
     val tampered = repo.isTampered()
     val status = when {
+      !vpnPermissionGranted && repo.isProtectionRequested() -> "needs_vpn_permission"
+      vpnLifecycle.runtimeState == VpnRuntimeState.STARTING -> VpnRuntimeState.STARTING.persistedValue
+      vpnLifecycle.runtimeState == VpnRuntimeState.FAILED -> VpnRuntimeState.FAILED.persistedValue
       tampered -> "tampered"
-      vpnActive -> "active"
-      !vpnPermissionGranted -> "needs_vpn_permission"
-      else -> "inactive"
+      vpnActive -> VpnRuntimeState.ACTIVE.persistedValue
+      else -> VpnRuntimeState.INACTIVE.persistedValue
     }
+    val vpnRuntimeSnapshot = repo.vpnRuntimeSnapshot()
 
     return mapOf(
       "status" to status,
       "vpnActive" to vpnActive,
       "tampered" to tampered,
+      "protectionRequested" to repo.isProtectionRequested(),
+      "vpnRuntimeState" to vpnLifecycle.runtimeState.persistedValue,
+      "vpnStartFailure" to vpnRuntimeSnapshot.startFailure,
+      "vpnStartupRemainingMs" to vpnLifecycle.startupRemainingMs,
       "vpnPermissionGranted" to vpnPermissionGranted,
       "pinConfigured" to repo.isPinConfigured(),
       "pinLockedOut" to repo.isPinLockedOut(),
@@ -505,7 +555,7 @@ class BlockerModule : Module() {
         ImageContentScanner.status(
           supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
           enabled = repo.isImageScanningEnabled(),
-          protectionActive = repo.isProtectionRequested(),
+          protectionActive = vpnActive,
           accessibilityServiceEnabled = accessibilityServiceEnabled,
           cloudFallbackEnabled = repo.isCloudImageFallbackEnabled(),
           cloudFallbackConfigured = repo.cloudImageFallbackEndpoint().isNotBlank()
@@ -659,19 +709,26 @@ class BlockerModule : Module() {
         action = "permission_missing"
       )
     }
+    val vpnLifecycle = repo.reconcileVpnLifecycle(FilterVpnService.isRunning)
     return mapOf(
       "applied" to true,
       "strictModeEnabled" to repo.isStrictModeEnabled(),
       "managedEnforcementStatus" to enforcement["managedEnforcementStatus"],
-      "tamperReport" to TamperDetector(context, repo).evaluateAndRecord(FilterVpnService.isRunning && repo.isVpnActive()).map { it.toMap() }
+      "tamperReport" to TamperDetector(context, repo).evaluateAndRecord(
+        vpnActive = vpnLifecycle.verifiedActive,
+        suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+      ).map { it.toMap() }
     )
   }
 
   private fun getTamperReport(): List<Map<String, Any?>> {
     val context = reactContext()
     val repo = repository()
-    val vpnActive = FilterVpnService.isRunning && repo.isVpnActive()
-    return TamperDetector(context, repo).evaluateAndRecord(vpnActive).map { it.toMap() }
+    val vpnLifecycle = repo.reconcileVpnLifecycle(FilterVpnService.isRunning)
+    return TamperDetector(context, repo).evaluateAndRecord(
+      vpnActive = vpnLifecycle.verifiedActive,
+      suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+    ).map { it.toMap() }
   }
 
   private fun configureManagedPrivateDns(hostname: String): Map<String, Any?> {
@@ -774,7 +831,7 @@ class BlockerModule : Module() {
   }
 
   private fun testDnsFiltering(): Map<String, Any?> {
-    val vpnActive = FilterVpnService.isRunning && repository().isVpnActive()
+    val vpnActive = repository().reconcileVpnLifecycle(FilterVpnService.isRunning).verifiedActive
     val safeDomains = listOf("google.com", "cloudflare.com", "apple.com")
     val adultDomains = listOf("pornhub.com", "xvideos.com", "xnxx.com")
     val safeResults = safeDomains.map { resolveDomain(it) }
@@ -867,16 +924,29 @@ class BlockerModule : Module() {
   }
 
   private fun restartVpnIfActive(context: Context, repo: PolicyRepository) {
-    if (!FilterVpnService.isRunning || !repo.isProtectionRequested()) return
+    if (!repo.reconcileVpnLifecycle(FilterVpnService.isRunning).verifiedActive) return
     val intent = Intent(context, FilterVpnService::class.java).apply {
       action = FilterVpnService.ACTION_RESTART
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent)
-    } else {
-      context.startService(intent)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+      } else {
+        context.startService(intent)
+      }
+    } catch (error: Exception) {
+      repo.recordAuditEvent(
+        eventType = "VPN_RESTART_REQUEST_FAILED",
+        severity = "high",
+        category = "vpn",
+        subject = context.packageName,
+        action = vpnFailureCode("restart_request_exception", error)
+      )
     }
   }
+
+  private fun vpnFailureCode(prefix: String, error: Throwable): String =
+    "$prefix:${error.javaClass.simpleName.ifBlank { "Exception" }}".take(200)
 
   private fun setAlwaysOnVpnLockdown(enabled: Boolean, pin: String?): Map<String, Any?> {
     val context = reactContext()

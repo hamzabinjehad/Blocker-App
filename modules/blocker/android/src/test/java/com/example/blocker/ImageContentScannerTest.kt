@@ -126,11 +126,4 @@ class ImageContentScannerTest {
     assertTrue(active["imageScanningActive"] as Boolean)
     assertTrue(active["videoThumbnailBlockingActive"] as Boolean)
   }
-
-  @Test
-  fun `scan throttle prevents rapid rescanning`() {
-    val pkg = "com.test.throttle"
-    assertTrue("First scan should be allowed", ImageContentScanner.shouldScan(pkg))
-    assertFalse("Immediate rescan should be throttled", ImageContentScanner.shouldScan(pkg))
-  }
 }

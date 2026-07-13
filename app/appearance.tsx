@@ -22,7 +22,12 @@ export default function AppearanceScreen() {
   ];
 
   return (
-    <ScreenScaffold title={t('appearance.title')} subtitle={t('appearance.subtitle')} iconName="appearance">
+    <ScreenScaffold
+      backLabel={t('common.back')}
+      showBack
+      title={t('appearance.title')}
+      subtitle={t('appearance.subtitle')}
+    >
       <Text style={[s.sectionHeading, { color: colors.text.secondary }]}>{t('appearance.theme')}</Text>
       <View style={[s.list, { backgroundColor: colors.bg.elevated, borderColor: colors.border.subtle }]}>
         {options.map((option) => {

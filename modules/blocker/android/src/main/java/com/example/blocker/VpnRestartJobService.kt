@@ -16,10 +16,12 @@ class VpnRestartJobService : JobService() {
     if (!repository.isProtectionRequested()) {
       return false
     }
-    if (FilterVpnService.isRunning) {
+    val currentLifecycle = repository.reconcileVpnLifecycle(FilterVpnService.isRunning)
+    if (currentLifecycle.verifiedActive || currentLifecycle.startupGraceActive) {
       return false
     }
     if (VpnService.prepare(this) != null) {
+      repository.markVpnStartFailed("restart_needs_permission")
       repository.recordAuditEvent(
         eventType = "VPN_RESTART_NEEDS_PERMISSION",
         severity = "critical",
@@ -33,10 +35,24 @@ class VpnRestartJobService : JobService() {
     val startIntent = Intent(this, FilterVpnService::class.java).apply {
       action = FilterVpnService.ACTION_START
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      startForegroundService(startIntent)
-    } else {
-      startService(startIntent)
+    repository.markVpnStarting()
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        startForegroundService(startIntent)
+      } else {
+        startService(startIntent)
+      }
+    } catch (error: Exception) {
+      val failure = "restart_service_start_exception:${error.javaClass.simpleName.ifBlank { "Exception" }}".take(200)
+      repository.markVpnStartFailed(failure)
+      repository.recordAuditEvent(
+        eventType = "VPN_RESTART_FAILED",
+        severity = "critical",
+        category = "vpn",
+        subject = packageName,
+        action = failure
+      )
+      return false
     }
 
     repository.recordAuditEvent(

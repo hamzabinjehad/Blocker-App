@@ -22,7 +22,7 @@ export function ScheduleProfilesProvider({ children }: { children: ReactNode }) 
   const lastAppliedProfileIdRef = useRef<string | null>(null);
 
   const { activeProfileId, currentStrictness } = store.activeState;
-  const protectionActive = protection.status === 'active' || protection.vpnActive;
+  const protectionActive = protection.statusVerified && protection.vpnActive;
 
   useEffect(() => {
     if (!protection.hydrated) return;

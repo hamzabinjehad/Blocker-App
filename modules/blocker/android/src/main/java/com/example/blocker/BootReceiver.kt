@@ -74,26 +74,48 @@ class BootReceiver : BroadcastReceiver() {
     if (repository.isProtectionRequested()) {
       ManagedPrivateDnsBackup.configureIfPossible(context, repository)
       if (VpnService.prepare(context) == null) {
-        repository.setVpnActive(false)
-        repository.setTampered(false)
+        repository.markVpnStarting()
         val startIntent = Intent(context, FilterVpnService::class.java).apply {
           action = FilterVpnService.ACTION_START
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-          context.startForegroundService(startIntent)
-        } else {
-          context.startService(startIntent)
+        val restartRequested = try {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(startIntent)
+          } else {
+            context.startService(startIntent)
+          }
+          true
+        } catch (error: Exception) {
+          val failure = "boot_service_start_exception:${error.javaClass.simpleName.ifBlank { "Exception" }}".take(200)
+          repository.markVpnStartFailed(failure)
+          repository.recordAuditEvent(
+            eventType = "BOOT_PROTECTION_RESTART_FAILED",
+            severity = "critical",
+            category = "vpn",
+            subject = trigger,
+            action = failure
+          )
+          GuardianNotifier.notify(
+            context = context,
+            eventType = "BOOT_PROTECTION_RESTART_FAILED",
+            severity = "critical",
+            subject = trigger,
+            action = failure
+          )
+          false
         }
-        repository.recordDomainEvent("device-boot.local", "tamper", "vpn_restart_requested")
-        GuardianNotifier.notify(
-          context = context,
-          eventType = "BOOT_PROTECTION_RESTARTED",
-          severity = "high",
-          subject = trigger,
-          action = "vpn_restart_requested"
-        )
+        if (restartRequested) {
+          repository.recordDomainEvent("device-boot.local", "tamper", "vpn_restart_requested")
+          GuardianNotifier.notify(
+            context = context,
+            eventType = "BOOT_PROTECTION_RESTARTED",
+            severity = "high",
+            subject = trigger,
+            action = "vpn_restart_requested"
+          )
+        }
       } else {
-        repository.setVpnActive(false)
+        repository.markVpnStartFailed("vpn_permission_required")
         repository.setTampered(true)
         repository.recordDomainEvent("device-boot.local", "tamper", "restart_required")
         GuardianNotifier.notify(
@@ -113,7 +135,11 @@ class BootReceiver : BroadcastReceiver() {
     DeviceOwnerPolicyManager(context, repository).ensureRestrictionsApplied()
     ManagedEnforcer(context, repository).applyPackageSuspension()
     UninstallLockManager(context, repository).reconcile()
-    TamperDetector(context, repository).evaluateAndRecord(FilterVpnService.isRunning && repository.isVpnActive())
+    val vpnLifecycle = repository.reconcileVpnLifecycle(FilterVpnService.isRunning)
+    TamperDetector(context, repository).evaluateAndRecord(
+      vpnActive = vpnLifecycle.verifiedActive,
+      suppressVpnDownTamper = vpnLifecycle.startupGraceActive
+    )
   }
 
   private fun detectSafeMode(context: Context): Boolean {

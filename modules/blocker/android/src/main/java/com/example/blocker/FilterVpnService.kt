@@ -31,6 +31,8 @@ class FilterVpnService : VpnService() {
   private var privateDnsObserver: ContentObserver? = null
   @Volatile private var accessibilityTamperFired = false
   @Volatile private var privateDnsTamperFired = false
+  @Volatile private var expectedServiceStop = false
+  @Volatile private var shutdownComplete = false
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     NotificationHelper.ensureChannel(this)
@@ -39,6 +41,8 @@ class FilterVpnService : VpnService() {
 
     when (intent?.action) {
       ACTION_STOP -> {
+        PolicyRepository(this).markVpnInactive()
+        expectedServiceStop = true
         shutdown(markTamperIfRequested = false)
         stopSelf()
         return START_NOT_STICKY
@@ -54,97 +58,129 @@ class FilterVpnService : VpnService() {
   }
 
   private fun startVpn() {
-    if (isRunning) return
-
     val repository = PolicyRepository(this)
-    val builder = Builder()
-      .setSession("Parent Blocker local DNS filter")
-      .setMtu(1500)
-      .addAddress(VPN_CLIENT_ADDRESS, 32)
-      .addDnsServer(VPN_DNS_ADDRESS)
-
-    val appliedPolicy = VpnPolicyManager.configure(this, repository, builder)
-    if (appliedPolicy.routesAllIpv4Traffic) {
-      builder.addRoute("0.0.0.0", 0)
-    } else {
-      builder.addRoute(VPN_DNS_ADDRESS, 32)
-    }
-
-    try {
-      builder.addAddress("fd00::2", 128)
-      builder.addDnsServer("fd00::1")
-      if (appliedPolicy.routesAllIpv6Traffic) {
-        builder.addRoute("::", 0)
-      } else {
-        builder.addRoute("fd00::1", 128)
-      }
-    } catch (_: Exception) {
-      // IPv6 not supported on this device
-    }
-    addEncryptedDnsResolverRoutes(builder)
-    val proxyStarted = configureLocalProxy(repository, builder)
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      builder.setMetered(false)
-    }
-
-    vpnInterface = builder.establish()
-    if (vpnInterface == null) {
-      localProxy?.stop()
-      localProxy = null
-      repository.setVpnActive(false)
-      repository.setProtectionRequested(false)
-      repository.recordAuditEvent(
-        eventType = "VPN_ESTABLISH_FAILED",
-        severity = "critical",
-        category = "vpn",
-        subject = packageName,
-        action = "establish_failed"
-      )
-      GuardianNotifier.notify(
-        context = this,
-        eventType = "VPN_ESTABLISH_FAILED",
-        severity = "critical",
-        subject = packageName,
-        action = "establish_failed"
-      )
+    if (!repository.isProtectionRequested()) {
+      repository.markVpnInactive()
+      expectedServiceStop = true
+      shutdown(markTamperIfRequested = false)
       stopSelf()
       return
     }
+    if (isRunning) {
+      repository.markVpnActive()
+      return
+    }
 
-    isRunning = true
-    // Same peak parallelism as a fixed pool, but idle workers die after 30s so a
-    // quiet device isn't holding 6 live threads between DNS bursts.
-    dnsWorkers = ThreadPoolExecutor(
-      DNS_WORKER_THREADS, DNS_WORKER_THREADS,
-      DNS_WORKER_IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS,
-      LinkedBlockingQueue()
-    ).apply { allowCoreThreadTimeOut(true) }
-    repository.setVpnActive(true)
-    repository.setTampered(false)
-    VpnRestartJobService.schedulePeriodic(this)
-    registerAccessibilityObserver()
-    registerPrivateDnsObserver()
+    expectedServiceStop = false
+    shutdownComplete = false
+    if (!repository.vpnLifecycleDecision(serviceRunning = false).startupGraceActive) {
+      repository.markVpnStarting()
+    }
+
+    try {
+      val builder = Builder()
+        .setSession("Parent Blocker local DNS filter")
+        .setMtu(1500)
+        .addAddress(VPN_CLIENT_ADDRESS, 32)
+        .addDnsServer(VPN_DNS_ADDRESS)
+
+      val appliedPolicy = VpnPolicyManager.configure(this, repository, builder)
+      if (appliedPolicy.routesAllIpv4Traffic) {
+        builder.addRoute("0.0.0.0", 0)
+      } else {
+        builder.addRoute(VPN_DNS_ADDRESS, 32)
+      }
+
+      try {
+        builder.addAddress("fd00::2", 128)
+        builder.addDnsServer("fd00::1")
+        if (appliedPolicy.routesAllIpv6Traffic) {
+          builder.addRoute("::", 0)
+        } else {
+          builder.addRoute("fd00::1", 128)
+        }
+      } catch (_: Exception) {
+        // IPv6 not supported on this device
+      }
+      addEncryptedDnsResolverRoutes(builder)
+      val proxyStarted = configureLocalProxy(repository, builder)
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        builder.setMetered(false)
+      }
+
+      vpnInterface = builder.establish()
+      if (vpnInterface == null) {
+        handleVpnStartupFailure(repository, "establish_returned_null")
+        return
+      }
+
+      // Same peak parallelism as a fixed pool, but idle workers die after 30s so a
+      // quiet device isn't holding 6 live threads between DNS bursts.
+      dnsWorkers = ThreadPoolExecutor(
+        DNS_WORKER_THREADS, DNS_WORKER_THREADS,
+        DNS_WORKER_IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS,
+        LinkedBlockingQueue()
+      ).apply { allowCoreThreadTimeOut(true) }
+      isRunning = true
+      worker = Thread({ runPacketLoop(repository) }, "ParentBlockerDnsFilter")
+      worker?.start()
+
+      // The tunnel is only externally active after establish() succeeded and the packet worker
+      // was started. This persisted transition is the second half of the verified-active signal.
+      if (!repository.vpnLifecycleDecision(serviceRunning = false).startupGraceActive) {
+        handleVpnStartupFailure(repository, "startup_timeout")
+        return
+      }
+      repository.markVpnActive()
+      VpnRestartJobService.schedulePeriodic(this)
+      registerAccessibilityObserver()
+      registerPrivateDnsObserver()
+      repository.recordAuditEvent(
+        eventType = "VPN_POLICY_APPLIED",
+        severity = if (appliedPolicy.failedPackages.isEmpty()) "high" else "critical",
+        category = "vpn",
+        subject = packageName,
+        action = appliedPolicy.effectiveTunnelMode,
+        metadata = mapOf(
+          "routesAllIpv4Traffic" to appliedPolicy.routesAllIpv4Traffic,
+          "routesAllIpv6Traffic" to appliedPolicy.routesAllIpv6Traffic,
+          "perAppVpnFilteringEnabled" to appliedPolicy.perAppVpnFilteringEnabled,
+          "filteredPackageCount" to appliedPolicy.allowedPackages.size,
+          "excludedPackageCount" to appliedPolicy.excludedPackages.size,
+          "failedPackages" to appliedPolicy.failedPackages.joinToString(","),
+          "localProxyStarted" to proxyStarted
+        )
+      )
+    } catch (error: Exception) {
+      handleVpnStartupFailure(
+        repository,
+        "startup_exception:${error.javaClass.simpleName.ifBlank { "Exception" }}"
+      )
+    }
+  }
+
+  private fun handleVpnStartupFailure(repository: PolicyRepository, reason: String) {
+    val normalizedReason = reason.take(200)
+    repository.markVpnStartFailed(normalizedReason)
     repository.recordAuditEvent(
-      eventType = "VPN_POLICY_APPLIED",
-      severity = if (appliedPolicy.failedPackages.isEmpty()) "high" else "critical",
+      eventType = "VPN_ESTABLISH_FAILED",
+      severity = "critical",
       category = "vpn",
       subject = packageName,
-      action = appliedPolicy.effectiveTunnelMode,
-      metadata = mapOf(
-        "routesAllIpv4Traffic" to appliedPolicy.routesAllIpv4Traffic,
-        "routesAllIpv6Traffic" to appliedPolicy.routesAllIpv6Traffic,
-        "perAppVpnFilteringEnabled" to appliedPolicy.perAppVpnFilteringEnabled,
-        "filteredPackageCount" to appliedPolicy.allowedPackages.size,
-        "excludedPackageCount" to appliedPolicy.excludedPackages.size,
-        "failedPackages" to appliedPolicy.failedPackages.joinToString(","),
-        "localProxyStarted" to proxyStarted
-      )
+      action = normalizedReason
     )
-
-    worker = Thread({ runPacketLoop(repository) }, "ParentBlockerDnsFilter").also {
-      it.start()
-    }
+    GuardianNotifier.notify(
+      context = this,
+      eventType = "VPN_ESTABLISH_FAILED",
+      severity = "critical",
+      subject = packageName,
+      action = normalizedReason
+    )
+    VpnRestartJobService.schedulePeriodic(this)
+    expectedServiceStop = true
+    shutdown(markTamperIfRequested = false)
+    stopSelf()
   }
 
   private fun configureLocalProxy(repository: PolicyRepository, builder: Builder): Boolean {
@@ -321,9 +357,19 @@ class FilterVpnService : VpnService() {
           }
         }
       }
-    } catch (_: IOException) {
+    } catch (error: Exception) {
       if (isRunning) {
-        TamperMonitor(repository).markVpnStoppedUnexpectedly()
+        val failedWorker = Thread.currentThread()
+        Handler(Looper.getMainLooper()).post {
+          if (!isRunning || worker !== failedWorker) return@post
+          TamperMonitor(repository).markVpnStoppedUnexpectedly(
+            "packet_loop_exception:${error.javaClass.simpleName.ifBlank { "Exception" }}"
+          )
+          scheduleVpnRestart()
+          expectedServiceStop = true
+          shutdown(markTamperIfRequested = false)
+          stopSelf()
+        }
       }
     } finally {
       engine.shutdown()
@@ -402,7 +448,8 @@ class FilterVpnService : VpnService() {
     )
     BlockOverlayService.show(this, "Protection VPN", "Android revoked or stopped the local protection VPN")
     scheduleVpnRestart()
-    shutdown(markTamperIfRequested = true)
+    expectedServiceStop = true
+    shutdown(markTamperIfRequested = false)
     super.onRevoke()
   }
 
@@ -412,19 +459,22 @@ class FilterVpnService : VpnService() {
   }
 
   override fun onDestroy() {
-    scheduleVpnRestart()
-    shutdown(markTamperIfRequested = true)
+    if (!expectedServiceStop) {
+      scheduleVpnRestart()
+    }
+    shutdown(markTamperIfRequested = !expectedServiceStop)
     super.onDestroy()
   }
 
   private fun shutdown(markTamperIfRequested: Boolean) {
+    if (shutdownComplete) return
+    shutdownComplete = true
     val repository = PolicyRepository(this)
     if (markTamperIfRequested) {
       TamperMonitor(repository).markVpnStoppedUnexpectedly()
     }
 
     isRunning = false
-    repository.setVpnActive(false)
     unregisterAccessibilityObserver()
     unregisterPrivateDnsObserver()
     repository.flushAuditLog()

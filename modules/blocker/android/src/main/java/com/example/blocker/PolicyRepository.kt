@@ -80,6 +80,105 @@ class PolicyRepository(context: Context) {
     preferences.edit().putBoolean(KEY_VPN_ACTIVE, active).apply()
   }
 
+  internal fun markVpnStarting(nowElapsedMs: Long = SystemClock.elapsedRealtime()) {
+    preferences.edit()
+      .putBoolean(KEY_PROTECTION_REQUESTED, true)
+      .putBoolean(KEY_VPN_ACTIVE, false)
+      .putString(KEY_VPN_RUNTIME_STATE, VpnRuntimeState.STARTING.persistedValue)
+      .putLong(KEY_VPN_START_REQUESTED_ELAPSED, nowElapsedMs.coerceAtLeast(0L))
+      .remove(KEY_VPN_START_FAILURE)
+      .apply()
+  }
+
+  internal fun markVpnActive() {
+    preferences.edit()
+      .putBoolean(KEY_PROTECTION_REQUESTED, true)
+      .putBoolean(KEY_VPN_ACTIVE, true)
+      .putBoolean(KEY_TAMPERED, false)
+      .putString(KEY_VPN_RUNTIME_STATE, VpnRuntimeState.ACTIVE.persistedValue)
+      .remove(KEY_VPN_START_REQUESTED_ELAPSED)
+      .remove(KEY_VPN_START_FAILURE)
+      .apply()
+  }
+
+  internal fun markVpnStartFailed(reason: String) {
+    val normalizedReason = reason.trim().ifBlank { "unknown" }.take(MAX_VPN_START_FAILURE_LENGTH)
+    preferences.edit()
+      .putBoolean(KEY_PROTECTION_REQUESTED, true)
+      .putBoolean(KEY_VPN_ACTIVE, false)
+      .putString(KEY_VPN_RUNTIME_STATE, VpnRuntimeState.FAILED.persistedValue)
+      .putString(KEY_VPN_START_FAILURE, normalizedReason)
+      .remove(KEY_VPN_START_REQUESTED_ELAPSED)
+      .apply()
+  }
+
+  internal fun markVpnInactive() {
+    preferences.edit()
+      .putBoolean(KEY_PROTECTION_REQUESTED, false)
+      .putBoolean(KEY_VPN_ACTIVE, false)
+      .putBoolean(KEY_TAMPERED, false)
+      .putString(KEY_VPN_RUNTIME_STATE, VpnRuntimeState.INACTIVE.persistedValue)
+      .remove(KEY_VPN_START_REQUESTED_ELAPSED)
+      .remove(KEY_VPN_START_FAILURE)
+      .apply()
+  }
+
+  internal fun vpnRuntimeSnapshot(): VpnRuntimeSnapshot {
+    val protectionRequested = isProtectionRequested()
+    val persistedActive = isVpnActive()
+    val storedState = VpnRuntimeState.fromPersisted(
+      preferences.getString(KEY_VPN_RUNTIME_STATE, null)
+    )
+    val migratedState = storedState ?: when {
+      !protectionRequested -> VpnRuntimeState.INACTIVE
+      persistedActive -> VpnRuntimeState.ACTIVE
+      else -> VpnRuntimeState.FAILED
+    }
+    return VpnRuntimeSnapshot(
+      protectionRequested = protectionRequested,
+      runtimeState = migratedState,
+      persistedActive = persistedActive,
+      startRequestedElapsedMs = preferences.getLong(
+        KEY_VPN_START_REQUESTED_ELAPSED,
+        VpnLifecyclePolicy.NO_START_REQUESTED
+      ),
+      startFailure = preferences.getString(KEY_VPN_START_FAILURE, null)
+    )
+  }
+
+  internal fun vpnLifecycleDecision(
+    serviceRunning: Boolean,
+    nowElapsedMs: Long = SystemClock.elapsedRealtime()
+  ): VpnLifecycleDecision = VpnLifecyclePolicy.evaluate(
+    snapshot = vpnRuntimeSnapshot(),
+    serviceRunning = serviceRunning,
+    nowElapsedMs = nowElapsedMs
+  )
+
+  internal fun reconcileVpnLifecycle(
+    serviceRunning: Boolean,
+    nowElapsedMs: Long = SystemClock.elapsedRealtime()
+  ): VpnLifecycleDecision {
+    val snapshot = vpnRuntimeSnapshot()
+    val decision = VpnLifecyclePolicy.evaluate(snapshot, serviceRunning, nowElapsedMs)
+    if (decision.runtimeState != VpnRuntimeState.FAILED || snapshot.runtimeState == VpnRuntimeState.FAILED) {
+      return decision
+    }
+
+    val failure = when (snapshot.runtimeState) {
+      VpnRuntimeState.STARTING -> when {
+        snapshot.startRequestedElapsedMs == VpnLifecyclePolicy.NO_START_REQUESTED -> "startup_timestamp_missing"
+        nowElapsedMs < snapshot.startRequestedElapsedMs -> "startup_clock_reset"
+        else -> "startup_timeout"
+      }
+      VpnRuntimeState.ACTIVE -> if (!serviceRunning) "service_not_running" else "active_flag_missing"
+      VpnRuntimeState.INACTIVE -> "runtime_state_inactive"
+      VpnRuntimeState.FAILED -> return decision
+    }
+    markVpnStartFailed(failure)
+    return VpnLifecyclePolicy.evaluate(vpnRuntimeSnapshot(), serviceRunning, nowElapsedMs)
+  }
+
   fun panicUnlockStartedAt(): Long = preferences.getLong(KEY_PANIC_UNLOCK_STARTED_AT, 0L)
 
   fun panicUnlockReadyAt(): Long = preferences.getLong(KEY_PANIC_UNLOCK_READY_AT, 0L)
@@ -1621,6 +1720,9 @@ class PolicyRepository(context: Context) {
     private const val KEY_ADULT_FILTERING = "adultFilteringEnabled"
     private const val KEY_PROTECTION_REQUESTED = "protectionRequested"
     private const val KEY_VPN_ACTIVE = "vpnActive"
+    private const val KEY_VPN_RUNTIME_STATE = "vpnRuntimeState"
+    private const val KEY_VPN_START_REQUESTED_ELAPSED = "vpnStartRequestedElapsed"
+    private const val KEY_VPN_START_FAILURE = "vpnStartFailure"
     private const val KEY_PANIC_UNLOCK_STARTED_AT = "panicUnlockStartedAt"
     private const val KEY_PANIC_UNLOCK_READY_AT = "panicUnlockReadyAt"
     private const val KEY_PANIC_UNLOCK_STARTED_ELAPSED = "panicUnlockStartedElapsed"
@@ -1749,6 +1851,7 @@ class PolicyRepository(context: Context) {
     private const val KEY_NOTIFICATION_FILTERING_ENABLED = "notificationFilteringEnabled"
     private const val KEY_NOTIFICATION_LISTENER_CONNECTED = "notificationListenerConnected"
     private const val MAX_GUARDIAN_ALERTS = 100
+    private const val MAX_VPN_START_FAILURE_LENGTH = 200
     private const val MAX_CUSTOM_DOMAIN_IMPORT = 5_000
     private const val MINUTES_PER_DAY = 24 * 60
     private const val DEFAULT_BEDTIME_START_MINUTES = 21 * 60

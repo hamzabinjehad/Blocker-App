@@ -18,7 +18,12 @@ export default function FocusScreen() {
   }, [protection.refreshInstalledApps]);
 
   return (
-    <ScreenScaffold title={t('focus.title')} subtitle={t('focus.subtitle')} iconName="focus">
+    <ScreenScaffold
+      backLabel={t('common.back')}
+      showBack
+      title={t('focus.title')}
+      subtitle={t('focus.subtitle')}
+    >
       {/* Usage access is requested here, where limits actually need it — not in onboarding. */}
       {protection.hydrated && !protection.usageAccessStatus.granted ? (
         <Banner

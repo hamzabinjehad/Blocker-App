@@ -6,23 +6,39 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.example.blocker.BlockerConfig
 import com.example.blocker.GuardianNotifier
 import com.example.blocker.ImageContentScanner
 import com.example.blocker.PolicyRepository
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 class BehaviorAccessibilityService : AccessibilityService() {
 
   private val executor = Executors.newSingleThreadExecutor { r ->
     Thread(r, "BehaviorEngine-Worker").also { it.isDaemon = true }
   }
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   private val lastWindowEventMs = AtomicLong(0L)
   private val lastTextEventMs = AtomicLong(0L)
-  private val lastScreenshotMs = AtomicLong(0L)
+  private val visualDispatchPending = AtomicBoolean(false)
+  private val visualAuditSuppressed = AtomicBoolean(false)
+  private val latestVisualPackage = AtomicReference<String?>(null)
+  private val screenshotAuditGate = ScreenshotAuditGate()
+  private val visualAuditDispatch = Runnable {
+    if (!visualDispatchPending.compareAndSet(true, false) || executor.isShutdown) {
+      return@Runnable
+    }
+    executor.execute {
+      prepareScreenshotAudit(PolicyRepository(applicationContext))
+    }
+  }
 
   private var lastAnalyzedKey = ""
 
@@ -45,7 +61,19 @@ class BehaviorAccessibilityService : AccessibilityService() {
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     event ?: return
+    if (event.isPassword || event.source?.isPassword == true) {
+      cancelPendingVisualAudit()
+      return
+    }
+    val eventPackageName = event.packageName?.toString()?.takeIf { it.isNotBlank() } ?: return
+    if (eventPackageName == packageName) {
+      cancelPendingVisualAudit()
+      return
+    }
     val type = event.eventType
+    if (ScreenshotAuditEventPolicy.shouldRequestAudit(type)) {
+      handleVisualChange(eventPackageName)
+    }
 
     when (type) {
       AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
@@ -71,7 +99,6 @@ class BehaviorAccessibilityService : AccessibilityService() {
       lastAnalyzedKey = key
 
       BehaviorEngine(applicationContext, repo).analyzeScreenContext(context)
-      maybeRunScreenshotAudit(repo, context.packageName)
     }
   }
 
@@ -102,27 +129,52 @@ class BehaviorAccessibilityService : AccessibilityService() {
     }
   }
 
-  private fun maybeRunScreenshotAudit(repo: PolicyRepository, packageName: String) {
+  private fun handleVisualChange(eventPackageName: String) {
+    // Fixed-window, latest-wins coalescing avoids an executor queue storm without starving a
+    // continuously scrolling feed. ScreenshotAuditGate remains the sole owner of capture timing.
+    visualAuditSuppressed.set(false)
+    latestVisualPackage.set(eventPackageName)
+    if (!visualDispatchPending.compareAndSet(false, true)) return
+    mainHandler.postDelayed(visualAuditDispatch, VISUAL_EVENT_COALESCE_MS)
+  }
+
+  private fun cancelPendingVisualAudit() {
+    visualAuditSuppressed.set(true)
+    latestVisualPackage.set(null)
+    visualDispatchPending.set(false)
+    mainHandler.removeCallbacks(visualAuditDispatch)
+  }
+
+  private fun prepareScreenshotAudit(repo: PolicyRepository) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-    if (!repo.isScreenshotAuditEnabled() && !BlockerConfig.imageScanningEnabled) return
     if (!repo.isProtectionRequested()) return
 
-    val now = System.currentTimeMillis()
-    val intervalMs = if (repo.isScreenshotAuditEnabled()) {
-      repo.screenshotAuditIntervalMs()
-    } else {
-      IMAGE_SCAN_DEFAULT_INTERVAL_MS
-    }
-    if (now - lastScreenshotMs.get() < intervalMs) return
-    if (!ImageContentScanner.shouldScan(packageName)) return
-    lastScreenshotMs.set(now)
-
-    Handler(Looper.getMainLooper()).post {
+    val intervalMs = ScreenshotScanPolicy.effectiveIntervalMs(
+      imageScanningEnabled = BlockerConfig.imageScanningEnabled,
+      screenshotAuditEnabled = repo.isScreenshotAuditEnabled(),
+      screenshotAuditIntervalMs = repo.screenshotAuditIntervalMs()
+    ) ?: return
+    mainHandler.post {
+      if (visualAuditSuppressed.get()) return@post
+      val targetPackageName = activePackageName() ?: latestVisualPackage.get() ?: return@post
+      if (targetPackageName == packageName) return@post
+      if (activeWindowIsPassword()) return@post
+      if (!screenshotAuditGate.tryAcquire(SystemClock.elapsedRealtime(), intervalMs)) return@post
       takeScreenshot(
         android.view.Display.DEFAULT_DISPLAY,
         applicationContext.mainExecutor,
         object : TakeScreenshotCallback {
           override fun onSuccess(screenshot: ScreenshotResult) {
+            val activePackage = activePackageName()
+            if (
+              visualAuditSuppressed.get() ||
+              activeWindowIsPassword() ||
+              activePackage == packageName ||
+              (activePackage != null && activePackage != targetPackageName)
+            ) {
+              screenshot.hardwareBuffer.close()
+              return
+            }
             val bitmap = android.graphics.Bitmap.wrapHardwareBuffer(
               screenshot.hardwareBuffer, screenshot.colorSpace
             )
@@ -134,7 +186,6 @@ class BehaviorAccessibilityService : AccessibilityService() {
 
             ImageContentScanner.scanBitmap(
               bitmap = softBitmap,
-              packageName = packageName,
               onComplete = { softBitmap.recycle() },
               onAmbiguous = { decision ->
                 if (repo.isCloudImageFallbackEnabled() && repo.cloudImageFallbackEndpoint().isNotBlank()) {
@@ -148,8 +199,8 @@ class BehaviorAccessibilityService : AccessibilityService() {
                 val event = BehaviorBlockEvent(
                   keyword = "explicit image (score=${String.format("%.2f", decision.score)})",
                   keywordSource = "image_scanner",
-                  appName = packageName,
-                  packageName = packageName,
+                  appName = targetPackageName,
+                  packageName = targetPackageName,
                   screen = "screenshot_audit",
                   source = "accessibility_service",
                   reason = "image_content"
@@ -159,7 +210,7 @@ class BehaviorAccessibilityService : AccessibilityService() {
                   eventType = "IMAGE_SCAN_BLOCKED",
                   severity = "critical",
                   category = "media",
-                  subject = packageName,
+                  subject = targetPackageName,
                   action = "nsfw_detected",
                   metadata = mapOf("score" to decision.score, "scanner" to decision.scanner)
                 )
@@ -167,11 +218,10 @@ class BehaviorAccessibilityService : AccessibilityService() {
                   context = applicationContext,
                   eventType = "IMAGE_SCAN_BLOCKED",
                   severity = "critical",
-                  subject = packageName,
+                  subject = targetPackageName,
                   action = "nsfw_detected",
                   metadata = mapOf("score" to decision.score)
                 )
-                softBitmap.recycle()
               }
             )
           }
@@ -184,7 +234,17 @@ class BehaviorAccessibilityService : AccessibilityService() {
     }
   }
 
+  private fun activePackageName(): String? = runCatching {
+    rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
+  }.getOrNull()
+
+  private fun activeWindowIsPassword(): Boolean = runCatching {
+    rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.isPassword == true
+  }.getOrDefault(false)
+
   override fun onDestroy() {
+    cancelPendingVisualAudit()
+    mainHandler.removeCallbacksAndMessages(null)
     executor.shutdown()
     super.onDestroy()
   }
@@ -193,6 +253,6 @@ class BehaviorAccessibilityService : AccessibilityService() {
     private const val WINDOW_EVENT_THROTTLE_MS = 300L
     private const val TEXT_EVENT_THROTTLE_MS = 600L
     private const val CONTENT_EVENT_THROTTLE_MS = 1500L
-    private const val IMAGE_SCAN_DEFAULT_INTERVAL_MS = 4_000L
+    private const val VISUAL_EVENT_COALESCE_MS = 500L
   }
 }

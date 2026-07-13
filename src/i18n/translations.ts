@@ -2,6 +2,7 @@
 // Screens migrate to t('key') incrementally — any not-yet-migrated string keeps its literal.
 
 export const en = {
+  'common.back': 'Back',
   // Common
   'common.appName': 'Control Yourself',
   'common.save': 'Save',
@@ -26,10 +27,12 @@ export const en = {
   'home.goodAfternoon': 'Good afternoon',
   'home.goodEvening': 'Good evening',
   'home.protected': 'Protected',
-  'home.notProtected': 'Not protected',
-  'home.tapToProtect': 'Tap to turn on protection',
+  'home.notProtected': 'Protection is off',
+  'home.tapToProtect': 'Turn on protection',
+  'home.protectionOffSubtitle': 'Block adult content, risky searches, and common bypasses.',
   'home.tapToManage': 'Protection is on. Tap to manage.',
   'home.starting': 'Starting protection…',
+  'home.startingSubtitle': 'Waiting for Android to confirm the VPN tunnel.',
   'home.stopping': 'Working…',
 
   // Recently blocked card
@@ -681,6 +684,7 @@ export const en = {
 export type TranslationKey = keyof typeof en;
 
 export const ar: Record<TranslationKey, string> = {
+  'common.back': 'رجوع',
   // Common
   'common.appName': 'اضبط نفسك',
   'common.save': 'حفظ',
@@ -705,10 +709,12 @@ export const ar: Record<TranslationKey, string> = {
   'home.goodAfternoon': 'مساء الخير',
   'home.goodEvening': 'مساء الخير',
   'home.protected': 'محمي',
-  'home.notProtected': 'غير محمي',
-  'home.tapToProtect': 'اضغط لتفعيل الحماية',
+  'home.notProtected': 'الحماية متوقفة',
+  'home.tapToProtect': 'فعّل الحماية',
+  'home.protectionOffSubtitle': 'احجب المحتوى للبالغين وعمليات البحث الخطرة ومحاولات التجاوز الشائعة.',
   'home.tapToManage': 'الحماية مُفعّلة. اضغط للإدارة.',
   'home.starting': 'جارٍ تفعيل الحماية…',
+  'home.startingSubtitle': 'بانتظار تأكيد نفق VPN من Android.',
   'home.stopping': 'جارٍ التنفيذ…',
 
   // Recently blocked card

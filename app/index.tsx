@@ -68,6 +68,7 @@ export default function HomeScreen() {
   const alertCenter = useAlertCenter();
   const appStartedAtRef = useRef(Date.now());
   const syncedGuardianAlertIdsRef = useRef<Set<string>>(new Set());
+  const pendingProtectionSuccessRef = useRef(false);
   const streakPopup = useDailyStreakPopup({
     currentStreak: gamification.currentStreak,
     dayHistory: gamification.dayHistory,
@@ -85,7 +86,9 @@ export default function HomeScreen() {
   const [moodModalStep, setMoodModalStep] = useState<'picker' | 'detail' | null>(null);
   const [pendingMood, setPendingMood] = useState<MoodCheckIn | null>(null);
   const [moodNote, setMoodNote] = useState('');
-  const isProtected = protection.status === 'active' || protection.vpnActive;
+  const isProtected =
+    protection.statusVerified && protection.status === 'active' && protection.vpnActive;
+  const isProtectionStarting = protection.status === 'starting';
   const liveSessionMinutes =
     isProtected && sessionStartedAt ? Math.max(0, Math.floor((now - sessionStartedAt) / 60000)) : 0;
   const cleanMinutes = gamification.todayCleanHours * 60 + liveSessionMinutes;
@@ -138,6 +141,20 @@ export default function HomeScreen() {
   }, [isProtected]);
 
   useEffect(() => {
+    if (!pendingProtectionSuccessRef.current) return;
+    if (isProtected) {
+      pendingProtectionSuccessRef.current = false;
+      haptics.success();
+      setShowXp(true);
+      const timer = setTimeout(() => setShowXp(false), 1800);
+      return () => clearTimeout(timer);
+    }
+    if (!protection.loading && protection.status !== 'starting') {
+      pendingProtectionSuccessRef.current = false;
+    }
+  }, [isProtected, protection.loading, protection.status]);
+
+  useEffect(() => {
     const event = protection.activeBlockEvent;
     if (!event || event.id === lastRecordedBlockId) return;
     gamification.recordBlock();
@@ -170,16 +187,12 @@ export default function HomeScreen() {
     return t('home.statusLine', { count: gamification.blocksToday });
   }, [gamification.blocksToday, isProtected, t]);
 
-  const showXpGain = () => {
-    haptics.success();
-    setShowXp(true);
-    setTimeout(() => setShowXp(false), 1800);
-  };
-
   const handleProtectionPress = () => {
+    if (protection.loading || isProtectionStarting) return;
     haptics.press();
     if (!isProtected) {
-      void protection.startProtection(7).then(showXpGain);
+      pendingProtectionSuccessRef.current = true;
+      void protection.startProtection(7);
       return;
     }
     setDisableSheetVisible(true);
@@ -304,14 +317,17 @@ export default function HomeScreen() {
       {/* Hero card — skeleton until the first bridge status lands, so a cold
           start never flashes deceptive "Not protected · 0 blocks" copy. */}
       {!protection.hydrated ? (
-        <Skeleton height={96} radius={radius.lg} />
+        <Skeleton height={148} radius={radius.lg} />
       ) : (
       <Animated.View style={heroAnimStyle}>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ checked: isProtected }}
-          accessibilityLabel={isProtected ? t('home.protected') : t('home.notProtected')}
-          accessibilityHint={isProtected ? undefined : t('home.tapToProtect')}
+          accessibilityState={{ checked: isProtected, disabled: protection.loading || isProtectionStarting }}
+          accessibilityLabel={
+            isProtectionStarting ? t('home.starting') : isProtected ? t('home.protected') : t('home.notProtected')
+          }
+          accessibilityHint={isProtected || isProtectionStarting ? undefined : t('home.tapToProtect')}
+          disabled={protection.loading || isProtectionStarting}
           onPress={handleProtectionPress}
           onPressIn={heroPressIn}
           onPressOut={heroPressOut}
@@ -332,20 +348,26 @@ export default function HomeScreen() {
           ) : null}
           <View style={s.heroCardTop}>
             <View style={[s.heroIconCircle, { backgroundColor: isProtected ? 'rgba(255,255,255,0.18)' : colors.bg.tertiary }]}>
-              {protection.loading ? (
+              {protection.loading || isProtectionStarting ? (
                 <ActivityIndicator size="small" color={isProtected ? colors.text.inverse : colors.text.muted} />
               ) : (
-                <AppIcon name="shield" size={18} color={isProtected ? colors.text.inverse : colors.text.muted} />
+                <AppIcon name="shield" size={23} color={isProtected ? colors.text.inverse : colors.green[600]} />
               )}
             </View>
             <View style={s.heroCardCenter}>
-              <Text maxFontSizeMultiplier={1.3} style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.muted }]}>
-                {isProtected ? t('home.protected') : t('home.notProtected')}
+              <Text maxFontSizeMultiplier={1.3} style={[s.heroStatus, { color: isProtected ? colors.text.inverse : colors.text.primary }]}>
+                {isProtectionStarting
+                  ? t('home.starting')
+                  : isProtected
+                    ? t('home.protected')
+                    : t('home.notProtected')}
               </Text>
               <Text maxFontSizeMultiplier={1.3} style={[s.heroSub, { color: isProtected ? 'rgba(255,255,255,0.7)' : colors.text.muted }]}>
-                {protection.loading
+                {isProtectionStarting
+                  ? t('home.startingSubtitle')
+                  : protection.loading
                   ? (isProtected ? t('home.stopping') : t('home.starting'))
-                  : (isProtected ? statusLine : t('home.tapToProtect'))}
+                  : (isProtected ? statusLine : t('home.protectionOffSubtitle'))}
               </Text>
             </View>
             <View style={s.heroBlocksRight}>
@@ -374,13 +396,22 @@ export default function HomeScreen() {
                 <Text maxFontSizeMultiplier={1.3} style={s.heroStatLabel}>{t(levelNameKey(gamification.level))}</Text>
               </View>
             </View>
-          ) : null}
+          ) : (
+            <View
+              style={[
+                s.heroOffAction,
+                { backgroundColor: colors.green[50], borderTopColor: colors.border.green },
+              ]}
+            >
+              <Text style={[s.heroOffActionText, { color: colors.green[700] }]}>{t('home.tapToProtect')}</Text>
+              <View style={[s.heroOffActionIcon, { backgroundColor: colors.bg.elevated }]}>
+                <Chevron color={colors.green[700]} size={18} />
+              </View>
+            </View>
+          )}
         </Pressable>
       </Animated.View>
       )}
-
-      {/* Mood check-in */}
-      <MoodStrip mood={mood} onPress={openMoodModal} />
 
       {protection.hydrated && !protection.vpnPermissionGranted ? (
         <Banner
@@ -413,6 +444,10 @@ export default function HomeScreen() {
           onPress={() => void protection.requestIgnoreBatteryOptimizations()}
         />
       ) : null}
+
+      {/* Mood check-in */}
+      <MoodStrip mood={mood} onPress={openMoodModal} />
+
       <View style={s.quickActionsGrid}>
         <View style={s.quickActionsRow}>
           <QuickAction icon="moon" label={t('home.quickFocus')} onPress={() => router.push('/focus')} colors={colors} />
@@ -504,8 +539,11 @@ function QuickAction({
         onPressOut={onPressOut}
         style={s.quickActionPressable}
       >
-        <Feather name={icon} size={15} color={colors.green[500]} />
+        <View style={[s.quickActionIcon, { backgroundColor: colors.green[50] }]}>
+          <Feather name={icon} size={17} color={colors.green[600]} />
+        </View>
         <Text style={[s.quickActionLabel, { color: colors.text.primary }]}>{label}</Text>
+        <Chevron size={16} color={colors.text.muted} />
       </Pressable>
     </Animated.View>
   );
@@ -651,52 +689,57 @@ const s = StyleSheet.create({
   heroCard: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
+    boxShadow: '0 10px 30px rgba(13,18,16,0.08)',
     overflow: 'hidden',
   },
   heroCardTop: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: spacing.lg,
+    minHeight: 92,
+    padding: spacing.lg,
   },
   heroIconCircle: {
     alignItems: 'center',
     borderRadius: radius.full,
-    height: 38,
+    height: 52,
     justifyContent: 'center',
-    width: 38,
+    width: 52,
   },
   heroCardCenter: {
     flex: 1,
     gap: 3,
   },
   heroStatus: {
-    fontSize: 13,
+    fontSize: 20,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: -0.2,
+    lineHeight: 25,
   },
   heroSub: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '400',
+    lineHeight: 19,
   },
   heroBlocksRight: {
     alignItems: 'flex-end',
     gap: 1,
   },
   heroBlocksNum: {
-    fontSize: 30,
+    fontSize: 32,
+    fontVariant: ['tabular-nums'],
     fontWeight: '700',
-    lineHeight: 34,
+    lineHeight: 36,
   },
   heroBlocksLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '400',
   },
   heroStatsRow: {
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
   },
   heroStat: {
     alignItems: 'center',
@@ -705,18 +748,38 @@ const s = StyleSheet.create({
   },
   heroStatVal: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
   },
   heroStatLabel: {
     color: 'rgba(255,255,255,0.65)',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '400',
   },
   heroStatDivider: {
     alignSelf: 'stretch',
     marginVertical: 4,
     width: StyleSheet.hairlineWidth,
+  },
+  heroOffAction: {
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 56,
+    paddingHorizontal: spacing.lg,
+  },
+  heroOffActionText: {
+    ...typography.bodyMd,
+    fontWeight: '700',
+  },
+  heroOffActionIcon: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
   },
 
   // Mood strip
@@ -727,7 +790,7 @@ const s = StyleSheet.create({
     borderStartWidth: 3,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 52,
+    minHeight: 60,
     paddingHorizontal: spacing.lg,
   },
   completedMoodRight: {
@@ -767,12 +830,20 @@ const s = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    minHeight: 52,
+    minHeight: 64,
     paddingHorizontal: spacing.md,
   },
+  quickActionIcon: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
   quickActionLabel: {
+    flex: 1,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 
   // Header alerts bell

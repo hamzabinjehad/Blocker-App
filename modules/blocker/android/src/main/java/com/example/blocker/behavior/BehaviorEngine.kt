@@ -66,7 +66,7 @@ class BehaviorEngine(
   fun analyzeScreenContext(screenContext: ScreenContext): Map<String, Any?>? {
     repository.setCurrentScreenContext(screenContext.packageName, screenContext.screenType)
     val protectionSurfaceMonitoringActive =
-      (repository.isProtectionRequested() && repository.isVpnActive()) || repository.isUninstallLockWindowActive()
+      repository.isProtectionRequested() || repository.isUninstallLockWindowActive()
 
     if (protectionSurfaceMonitoringActive) {
       val protectedSurface = ScreenContextDetector.matchProtectedSettingsSurface(

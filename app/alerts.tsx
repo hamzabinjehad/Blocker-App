@@ -8,7 +8,12 @@ export default function AlertsScreen() {
   const alertCenter = useAlertCenter();
 
   return (
-    <ScreenScaffold title={t('alerts.title')} subtitle={t('alerts.subtitle')} iconName="alerts">
+    <ScreenScaffold
+      backLabel={t('common.back')}
+      showBack
+      title={t('alerts.title')}
+      subtitle={t('alerts.subtitle')}
+    >
       <AlertCenterCard
         alerts={alertCenter.alerts}
         preferences={alertCenter.preferences}

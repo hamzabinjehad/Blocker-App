@@ -43,7 +43,8 @@ export default function SettingsScreen() {
   const remote = useRemoteManagement();
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [aboutVisible, setAboutVisible] = useState(false);
-  const isProtected = protection.status === 'active' || protection.vpnActive;
+  const isProtected =
+    protection.statusVerified && protection.status === 'active' && protection.vpnActive;
   const unreadAlerts = alertCenter.alerts.filter((alert) => !alert.read);
   const criticalUnread = unreadAlerts.filter((alert) => alert.severity === 'critical').length;
   const warningUnread = unreadAlerts.filter((alert) => alert.severity === 'warning').length;
@@ -260,7 +261,12 @@ function ValueChip({ value, tone }: { value: string; tone: RowTone }) {
 }
 
 function getProtectionDetailsSublabel(protection: ReturnType<typeof useProtection>, t: Translate) {
-  const dnsOn = protection.adultFilteringEnabled || protection.privateDnsStatus.mode === 'hostname' || protection.vpnActive;
+  const vpnDnsOn = protection.statusVerified && protection.vpnActive && protection.adultFilteringEnabled;
+  const privateDnsOn =
+    protection.statusVerified &&
+    protection.privateDnsStatus.mode === 'hostname' &&
+    Boolean(protection.privateDnsStatus.activeHost);
+  const dnsOn = vpnDnsOn || privateDnsOn;
   const safeSearchOn = Object.values(protection.safeSearchSettings).every(Boolean);
   const appBlockingOn =
     Object.values(protection.riskySettings).every(Boolean) ||

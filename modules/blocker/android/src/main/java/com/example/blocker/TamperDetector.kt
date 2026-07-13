@@ -32,13 +32,13 @@ class TamperDetector(
   private val context: Context,
   private val repository: PolicyRepository
 ) {
-  fun report(vpnActive: Boolean): List<TamperSignal> {
+  fun report(vpnActive: Boolean, suppressVpnDownTamper: Boolean = false): List<TamperSignal> {
     val strict = repository.isStrictModeEnabled()
     return listOf(
       TamperSignal(
         id = "vpn_down",
         severity = "critical",
-        detected = repository.isProtectionRequested() && !vpnActive,
+        detected = repository.isProtectionRequested() && !vpnActive && !suppressVpnDownTamper,
         subject = "Local VPN",
         recommendation = "Restart protection and require always-on VPN lockdown in Device Owner mode."
       ),
@@ -143,8 +143,11 @@ class TamperDetector(
     )
   }
 
-  fun evaluateAndRecord(vpnActive: Boolean): List<TamperSignal> {
-    val signals = report(vpnActive)
+  fun evaluateAndRecord(
+    vpnActive: Boolean,
+    suppressVpnDownTamper: Boolean = false
+  ): List<TamperSignal> {
+    val signals = report(vpnActive, suppressVpnDownTamper)
     signals.filter { it.detected }.forEach { signal ->
       repository.recordAuditEvent(
         eventType = "TAMPER_SIGNAL",
